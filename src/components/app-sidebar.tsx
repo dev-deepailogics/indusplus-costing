@@ -22,6 +22,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { PARAMETER_TABLES } from "@/lib/parameters/registry";
+import { UserMenu } from "@/components/auth/user-menu";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -80,6 +81,7 @@ export function AppSidebar() {
           </SidebarGroup>
         </Collapsible>
       </SidebarContent>
+      <UserMenu />
     </Sidebar>
   );
 }
