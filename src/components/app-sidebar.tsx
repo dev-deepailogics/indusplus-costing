@@ -23,9 +23,12 @@ import {
 } from "@/components/ui/collapsible";
 import { PARAMETER_TABLES } from "@/lib/parameters/registry";
 import { UserMenu } from "@/components/auth/user-menu";
+import { useAuth } from "@/lib/auth/auth-provider";
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
 
   return (
     <Sidebar collapsible="icon">
@@ -52,14 +55,16 @@ export function AppSidebar() {
           <SidebarGroupLabel>Pre-Order Costing</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={pathname === "/style-master"}
-                  render={<Link href="/style-master" />}
-                >
-                  <span>Style Master</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={pathname === "/style-master"}
+                    render={<Link href="/style-master" />}
+                  >
+                    <span>Style Master</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={pathname === "/cost-sheet"}
@@ -76,42 +81,54 @@ export function AppSidebar() {
                   <span>Saved Cost Sheets</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={pathname === "/users"}
+                    render={<Link href="/users" />}
+                  >
+                    <span>Manage Users</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <Collapsible defaultOpen className="group/collapsible">
-          <SidebarGroup>
-            <SidebarGroupLabel
-              render={
-                <CollapsibleTrigger className="flex w-full items-center gap-2">
-                  <ListTree />
-                  <span>POC Parameters</span>
-                  <ChevronRight className="ml-auto transition-transform group-data-[panel-open]/collapsible:rotate-90" />
-                </CollapsibleTrigger>
-              }
-            />
-            <CollapsibleContent>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {PARAMETER_TABLES.map((table) => {
-                    const href = `/parameters/${table.slug}`;
-                    return (
-                      <SidebarMenuItem key={table.slug}>
-                        <SidebarMenuButton
-                          isActive={pathname === href}
-                          render={<Link href={href} />}
-                        >
-                          <span>{table.title}</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </CollapsibleContent>
-          </SidebarGroup>
-        </Collapsible>
+        {isAdmin && (
+          <Collapsible defaultOpen className="group/collapsible">
+            <SidebarGroup>
+              <SidebarGroupLabel
+                render={
+                  <CollapsibleTrigger className="flex w-full items-center gap-2">
+                    <ListTree />
+                    <span>POC Parameters</span>
+                    <ChevronRight className="ml-auto transition-transform group-data-[panel-open]/collapsible:rotate-90" />
+                  </CollapsibleTrigger>
+                }
+              />
+              <CollapsibleContent>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {PARAMETER_TABLES.map((table) => {
+                      const href = `/parameters/${table.slug}`;
+                      return (
+                        <SidebarMenuItem key={table.slug}>
+                          <SidebarMenuButton
+                            isActive={pathname === href}
+                            render={<Link href={href} />}
+                          >
+                            <span>{table.title}</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </CollapsibleContent>
+            </SidebarGroup>
+          </Collapsible>
+        )}
       </SidebarContent>
       <UserMenu />
     </Sidebar>

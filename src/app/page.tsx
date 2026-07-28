@@ -1,5 +1,17 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth/auth-provider";
 
 export default function Home() {
-  redirect("/parameters");
+  const router = useRouter();
+  const { role, loading } = useAuth();
+
+  useEffect(() => {
+    if (loading) return;
+    router.replace(role === "admin" ? "/parameters" : "/cost-sheet");
+  }, [role, loading, router]);
+
+  return null;
 }
