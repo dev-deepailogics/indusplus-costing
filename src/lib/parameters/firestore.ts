@@ -23,9 +23,15 @@ async function ensureSeeded(slug: string) {
   if (!snap.exists()) {
     const seed = seedFor(slug);
     if (seed) await setDoc(ref, seed as Record<string, unknown>);
+  } else if (slug === "rejection-grid") {
+    // If rejection-grid exists and does NOT have WIP in processes, force re-seeding to add it
+    const data = snap.data() as ProcessMatrixTableData;
+    if (data.processes && !data.processes.includes("WIP")) {
+      const seed = seedFor(slug);
+      if (seed) await setDoc(ref, seed as Record<string, unknown>);
+    }
   }
 }
-
 export function subscribeToTable<T>(
   slug: string,
   onData: (data: T) => void
