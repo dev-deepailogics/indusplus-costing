@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, FileDown, FileUp, Edit, Trash2, ArrowRight, X } from "lucide-react";
+import { Plus, Search, FileDown, Edit, Trash2, ArrowRight, X } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
@@ -42,6 +42,79 @@ import type { DropdownListsData } from "@/lib/parameters/types";
 const DEFAULT_CUSTOMERS = ["Duer", "Zara", "Mustang", "Miniconf", "Mohito", "Retrojeans"];
 const DEFAULT_CATEGORIES = ["Top Ware", "Men's Pant", "Ladies Pant", "Shorts", "Shirt"];
 const DEFAULT_WASHES = ["Rinse", "Dyeing", "Softner", "Stone Wash", "EW/Biopolish", "Silicon Ball"];
+
+const DEFAULT_ACCESSORIES_TEMPLATES = [
+  { category: "Zipper", itemName: "Zippers" },
+  { category: "Thread", itemName: "Thread" },
+  { category: "Label", itemName: "Labels" },
+  { category: "Trims", itemName: "Trims Mix Materials" },
+  { category: "Poly Bag", itemName: "Poly Bags" },
+  { category: "Tag", itemName: "Tag" },
+  { category: "Carton", itemName: "Cartons" },
+  { category: "Button & Rivets", itemName: "Button & Rivets" },
+  { category: "Packing Mix Materials", itemName: "Packing Mix Materials" },
+  { category: "Sticker", itemName: "Sticker" },
+];
+
+const DEFAULT_CHEMICALS_TEMPLATES = [
+  { washItem: "Rinse" },
+];
+
+const DEFAULT_SPECIAL_TEMPLATES = [
+  { itemName: "Embroidery" },
+  { itemName: "Printing Charges" },
+  { itemName: "Testing Charges" },
+  { itemName: "Inspection Charges" },
+];
+
+function mergeAccessories(existing: BOMAccessoriesItem[] | undefined): BOMAccessoriesItem[] {
+  const list = [...(existing || [])];
+  DEFAULT_ACCESSORIES_TEMPLATES.forEach(tmpl => {
+    const hasCategory = list.some(item => item.category?.toLowerCase() === tmpl.category.toLowerCase());
+    if (!hasCategory) {
+      list.push({
+        category: tmpl.category,
+        itemName: tmpl.itemName,
+        consPerPc: 0,
+        ratePKR: 0,
+        totalCostPKR: 0
+      });
+    }
+  });
+  return list;
+}
+
+function mergeChemicals(existing: BOMChemicalsItem[] | undefined): BOMChemicalsItem[] {
+  const list = [...(existing || [])];
+  DEFAULT_CHEMICALS_TEMPLATES.forEach(tmpl => {
+    const hasItem = list.some(item => item.washItem?.toLowerCase() === tmpl.washItem.toLowerCase());
+    if (!hasItem) {
+      list.push({
+        washItem: tmpl.washItem,
+        consPerPc: 0,
+        ratePKR: 0,
+        totalCostPKR: 0
+      });
+    }
+  });
+  return list;
+}
+
+function mergeSpecialCharges(existing: BOMSpecialChargesItem[] | undefined): BOMSpecialChargesItem[] {
+  const list = [...(existing || [])];
+  DEFAULT_SPECIAL_TEMPLATES.forEach(tmpl => {
+    const hasItem = list.some(item => item.itemName?.toLowerCase().replace(/\s+/g, "") === tmpl.itemName.toLowerCase().replace(/\s+/g, ""));
+    if (!hasItem) {
+      list.push({
+        itemName: tmpl.itemName,
+        consPerPc: 0,
+        ratePKR: 0,
+        totalCostPKR: 0
+      });
+    }
+  });
+  return list;
+}
 
 export default function StyleMasterPage() {
   const router = useRouter();
@@ -122,37 +195,13 @@ export default function StyleMasterPage() {
       setFormLining(initialLining);
 
       // Ensure Accessories defaults are loaded
-      const initialAcc = [...(style.bomAccessories || [])];
-      if (initialAcc.length === 0) {
-        initialAcc.push(
-          { category: "Zipper", itemName: "Zipper", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-          { category: "Thread", itemName: "Thread", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-          { category: "Label", itemName: "Label", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-          { category: "Trims", itemName: "Trims", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-          { category: "Poly Bag", itemName: "Poly Bag", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-          { category: "Carton", itemName: "Carton", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 }
-        );
-      }
-      setFormAccessories(initialAcc);
+      setFormAccessories(mergeAccessories(style.bomAccessories));
 
       // Ensure Chemicals are initialized
-      const initialChem = [...(style.bomChemicals || [])];
-      if (initialChem.length === 0) {
-        initialChem.push({ washItem: "Wash Chemicals", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 });
-      }
-      setFormChemicals(initialChem);
+      setFormChemicals(mergeChemicals(style.bomChemicals));
 
       // Ensure Special Charges are initialized
-      const initialSpecial = [...(style.bomSpecialCharges || [])];
-      if (initialSpecial.length === 0) {
-        initialSpecial.push(
-          { itemName: "Embroidery", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-          { itemName: "Printing", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-          { itemName: "Testing", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-          { itemName: "Inspection", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 }
-        );
-      }
-      setFormSpecialCharges(initialSpecial);
+      setFormSpecialCharges(mergeSpecialCharges(style.bomSpecialCharges));
     } else {
       setEditingStyle(null);
       // New style defaults
@@ -167,21 +216,9 @@ export default function StyleMasterPage() {
       // Initial items
       setFormFabric(Array.from({ length: 5 }, (_, i) => ({ itemName: `Fabric ${i+1}`, consumptionPerPc: 0, rateUSD: 0, ratePKR: 0, fabricCostPKR: 0 })));
       setFormLining(Array.from({ length: 5 }, (_, i) => ({ itemName: `Lining ${i+1}`, consumptionPerPc: 0, rateUSD: 0, ratePKR: 0, liningCostPKR: 0 })));
-      setFormAccessories([
-        { category: "Zipper", itemName: "Zipper", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-        { category: "Thread", itemName: "Thread", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-        { category: "Label", itemName: "Label", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-        { category: "Trims", itemName: "Trims", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-        { category: "Poly Bag", itemName: "Poly Bag", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-        { category: "Carton", itemName: "Carton", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-      ]);
-      setFormChemicals([{ washItem: "Wash Chemicals", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 }]);
-      setFormSpecialCharges([
-        { itemName: "Embroidery", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-        { itemName: "Printing", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-        { itemName: "Testing", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-        { itemName: "Inspection", consPerPc: 0, ratePKR: 0, totalCostPKR: 0 },
-      ]);
+      setFormAccessories(mergeAccessories([]));
+      setFormChemicals(mergeChemicals([]));
+      setFormSpecialCharges(mergeSpecialCharges([]));
     }
     setDialogOpen(true);
   }
@@ -220,9 +257,9 @@ export default function StyleMasterPage() {
       sizeBracket: calculatedBracket,
       bomFabric: formFabric.filter((f) => f.consumptionPerPc > 0 || f.rateUSD > 0),
       bomLining: formLining.filter((l) => l.consumptionPerPc > 0 || l.rateUSD > 0),
-      bomAccessories: formAccessories.filter((a) => a.consPerPc > 0 || a.ratePKR > 0),
-      bomChemicals: formChemicals.filter((c) => c.consPerPc > 0 || c.ratePKR > 0),
-      bomSpecialCharges: formSpecialCharges.filter((s) => s.consPerPc > 0 || s.ratePKR > 0),
+      bomAccessories: formAccessories,
+      bomChemicals: formChemicals,
+      bomSpecialCharges: formSpecialCharges,
     };
 
     try {
@@ -345,10 +382,6 @@ export default function StyleMasterPage() {
           <Button variant="outline" size="sm" onClick={handleExport} className="h-9">
             <FileDown className="mr-1.5 size-4" /> Export
           </Button>
-          <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent hover:text-accent-foreground">
-            <FileUp className="mr-1.5 size-4" /> Import
-            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
-          </label>
           <Button size="sm" onClick={() => openEditDialog(null)} className="h-9">
             <Plus className="mr-1.5 size-4" /> Add Style
           </Button>

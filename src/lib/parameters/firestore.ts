@@ -20,16 +20,30 @@ function seedFor(slug: string): unknown {
 async function ensureSeeded(slug: string) {
   const ref = doc(db, COLLECTION, slug);
   const snap = await getDoc(ref);
+  let needsSeeding = false;
+
   if (!snap.exists()) {
+    needsSeeding = true;
+  } else {
+    const data = snap.data();
+    if (!data || Object.keys(data).length === 0) {
+      needsSeeding = true;
+    } else if (slug === "cut-to-ship-grid" && (!data.columnLabels || !data.rowLabels)) {
+      needsSeeding = true;
+    } else if (slug === "rejection-grid" && (!data.processes || !data.tables)) {
+      needsSeeding = true;
+    } else if (slug === "rejection-grid") {
+      // If rejection-grid exists and does NOT have WIP in processes, force re-seeding to add it
+      const processGrid = data as ProcessMatrixTableData;
+      if (processGrid.processes && !processGrid.processes.includes("WIP")) {
+        needsSeeding = true;
+      }
+    }
+  }
+
+  if (needsSeeding) {
     const seed = seedFor(slug);
     if (seed) await setDoc(ref, seed as Record<string, unknown>);
-  } else if (slug === "rejection-grid") {
-    // If rejection-grid exists and does NOT have WIP in processes, force re-seeding to add it
-    const data = snap.data() as ProcessMatrixTableData;
-    if (data.processes && !data.processes.includes("WIP")) {
-      const seed = seedFor(slug);
-      if (seed) await setDoc(ref, seed as Record<string, unknown>);
-    }
   }
 }
 export function subscribeToTable<T>(

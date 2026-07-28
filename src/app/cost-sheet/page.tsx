@@ -73,6 +73,82 @@ const CUSTOM_STYLE: StyleMasterItem = {
   bomSpecialCharges: [],
 };
 
+const DEFAULT_ACCESSORIES_TEMPLATES = [
+  { category: "Zipper", itemName: "Zippers" },
+  { category: "Thread", itemName: "Thread" },
+  { category: "Label", itemName: "Labels" },
+  { category: "Trims", itemName: "Trims Mix Materials" },
+  { category: "Poly Bag", itemName: "Poly Bags" },
+  { category: "Tag", itemName: "Tag" },
+  { category: "Carton", itemName: "Cartons" },
+  { category: "Button & Rivets", itemName: "Button & Rivets" },
+  { category: "Packing Mix Materials", itemName: "Packing Mix Materials" },
+  { category: "Sticker", itemName: "Sticker" },
+];
+
+const DEFAULT_CHEMICALS_TEMPLATES = [
+  { washItem: "Rinse" },
+];
+
+const DEFAULT_SPECIAL_TEMPLATES = [
+  { itemName: "Embroidery" },
+  { itemName: "Printing Charges" },
+  { itemName: "Testing Charges" },
+  { itemName: "Inspection Charges" },
+];
+
+function ensureStyleBOMDefaults(style: StyleMasterItem): StyleMasterItem {
+  const merged = { ...style };
+  
+  // Accessories
+  const accList = [...(style.bomAccessories || [])];
+  DEFAULT_ACCESSORIES_TEMPLATES.forEach(tmpl => {
+    const hasCategory = accList.some(item => item.category?.toLowerCase() === tmpl.category.toLowerCase());
+    if (!hasCategory) {
+      accList.push({
+        category: tmpl.category,
+        itemName: tmpl.itemName,
+        consPerPc: 0,
+        ratePKR: 0,
+        totalCostPKR: 0
+      });
+    }
+  });
+  merged.bomAccessories = accList;
+
+  // Chemicals
+  const chemList = [...(style.bomChemicals || [])];
+  DEFAULT_CHEMICALS_TEMPLATES.forEach(tmpl => {
+    const hasItem = chemList.some(item => item.washItem?.toLowerCase() === tmpl.washItem.toLowerCase());
+    if (!hasItem) {
+      chemList.push({
+        washItem: tmpl.washItem,
+        consPerPc: 0,
+        ratePKR: 0,
+        totalCostPKR: 0
+      });
+    }
+  });
+  merged.bomChemicals = chemList;
+
+  // Special Charges
+  const specialList = [...(style.bomSpecialCharges || [])];
+  DEFAULT_SPECIAL_TEMPLATES.forEach(tmpl => {
+    const hasItem = specialList.some(item => item.itemName?.toLowerCase().replace(/\s+/g, "") === tmpl.itemName.toLowerCase().replace(/\s+/g, ""));
+    if (!hasItem) {
+      specialList.push({
+        itemName: tmpl.itemName,
+        consPerPc: 0,
+        ratePKR: 0,
+        totalCostPKR: 0
+      });
+    }
+  });
+  merged.bomSpecialCharges = specialList;
+
+  return merged;
+}
+
 function CostSheetContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -91,6 +167,7 @@ function CostSheetContent() {
   const [directLabourFoh, setDirectLabourFoh] = useState<SimpleTableData | undefined>(undefined);
   const [cutToShipGrid, setCutToShipGrid] = useState<MatrixTableData | undefined>(undefined);
   const [rejectionGrid, setRejectionGrid] = useState<ProcessMatrixTableData | undefined>(undefined);
+  const [stylesCategoryGrid, setStylesCategoryGrid] = useState<SimpleTableData | undefined>(undefined);
 
   // Loading States
   const [loadingStyles, setLoadingStyles] = useState(true);
@@ -130,6 +207,9 @@ function CostSheetContent() {
 
   // Financial Parameters
   const [discountRate, setDiscountRate] = useState(0.12);
+  const [taxEdsPct, setTaxEdsPct] = useState(0.025);
+  const [inlandFreightPct, setInlandFreightPct] = useState(0.0125);
+  const [localBankChargesPct, setLocalBankChargesPct] = useState(0.0085);
   const [paymentTermsDays, setPaymentTermsDays] = useState(60);
   const [factoringDays, setFactoringDays] = useState(0);
   const [commissionPct, setCommissionPct] = useState(0);
@@ -147,6 +227,7 @@ function CostSheetContent() {
   const [customersList, setCustomersList] = useState(["Duer", "Zara", "Mustang", "Miniconf", "Mohito", "Retrojeans"]);
   const [categoriesList, setCategoriesList] = useState(["Top Ware", "Men's Pant", "Ladies Pant", "Shorts", "Shirt"]);
   const [washTypesList, setWashTypesList] = useState(["Rinse", "Dyeing", "Softner", "Stone Wash", "EW/Biopolish", "Silicon Ball"]);
+  const [orderTypesList, setOrderTypesList] = useState(["Denim", "Non Denim"]);
 
   useEffect(() => {
     // Subscribe to Style Master
@@ -158,10 +239,10 @@ function CostSheetContent() {
       if (data.length > 0 && !costSheetIdParam) {
         const targetId = styleIdParam || data[0].id;
         if (targetId === "custom") {
-          setActiveStyle(CUSTOM_STYLE);
+          setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
         } else {
           const found = data.find((s) => s.id === targetId) || data[0];
-          setActiveStyle(found);
+          setActiveStyle(ensureStyleBOMDefaults(found));
         }
       }
     });
@@ -170,6 +251,13 @@ function CostSheetContent() {
     const unsubDLF = subscribeToTable<SimpleTableData>("direct-labour-foh", setDirectLabourFoh);
     const unsubCTS = subscribeToTable<MatrixTableData>("cut-to-ship-grid", setCutToShipGrid);
     const unsubRej = subscribeToTable<ProcessMatrixTableData>("rejection-grid", setRejectionGrid);
+    const unsubStylesGrid = subscribeToTable<SimpleTableData>("styles", setStylesCategoryGrid);
+    const unsubOrderTypes = subscribeToTable<SimpleTableData>("order-type", (data) => {
+      if (data?.rows?.length) {
+        const types = data.rows.map((r) => r.values?.orderType).filter(Boolean) as string[];
+        if (types.length > 0) setOrderTypesList(types);
+      }
+    });
 
     const unsubDropdowns = subscribeToTable<DropdownListsData>("dropdown-lists", (data) => {
       if (data?.lists) {
@@ -186,6 +274,48 @@ function CostSheetContent() {
         if (custs) setCustomersList(custs);
         if (cats) setCategoriesList(cats);
         if (washes) setWashTypesList(washes);
+        const orderTypes = data.lists.find((l) => l.key === "orderType" || l.key === "Order Type")?.items;
+        if (orderTypes && orderTypes.length > 0) setOrderTypesList(orderTypes);
+      }
+    });
+
+    const unsubCostOfSales = subscribeToTable<SimpleTableData>("cost-as-percent-of-sales", (data) => {
+      if (data?.rows?.length) {
+        const getVal = (desc: string) => {
+          const row = data.rows.find(r => r.values.description?.toLowerCase().trim() === desc.toLowerCase().trim());
+          return row?.values.percentOfSales ? parseFloat(row.values.percentOfSales) : null;
+        };
+
+        const eds = getVal("EDS");
+        const taxes = getVal("Taxes");
+        const rebate = getVal("Rebate");
+        const exchangeRate = getVal("Exchange Rate");
+        const inlandFreight = getVal("Inland Freight");
+        const localBankCharges = getVal("Local Bank Charges");
+        const discountRateVal = getVal("Discount Rate");
+
+        if (!costSheetIdParam) {
+          if (eds !== null || taxes !== null) {
+            const totalTaxEds = (taxes || 0) + (eds || 0);
+            if (totalTaxEds > 0) setTaxEdsPct(totalTaxEds / 100);
+          }
+          if (exchangeRate !== null && exchangeRate > 0) {
+            setParitySale(exchangeRate);
+            setParityProcurement(exchangeRate);
+          }
+          if (rebate !== null && rebate > 0) {
+            setRebatePct(rebate);
+          }
+          if (inlandFreight !== null && inlandFreight > 0) {
+            setInlandFreightPct(inlandFreight / 100);
+          }
+          if (localBankCharges !== null && localBankCharges > 0) {
+            setLocalBankChargesPct(localBankCharges / 100);
+          }
+          if (discountRateVal !== null && discountRateVal > 0) {
+            setDiscountRate(discountRateVal / 100);
+          }
+        }
       }
     });
 
@@ -194,7 +324,10 @@ function CostSheetContent() {
       unsubDLF();
       unsubCTS();
       unsubRej();
+      unsubStylesGrid();
+      unsubOrderTypes();
       unsubDropdowns();
+      unsubCostOfSales();
     };
   }, [styleIdParam, costSheetIdParam]);
 
@@ -228,7 +361,7 @@ function CostSheetContent() {
             bomChemicals: sheet.bomChemicals || [],
             bomSpecialCharges: sheet.bomSpecialCharges || [],
           };
-          setActiveStyle(styleFromSheet);
+          setActiveStyle(ensureStyleBOMDefaults(styleFromSheet));
           
           // Set state inputs
           setCostingDate(sheet.costingDate);
@@ -323,17 +456,36 @@ function CostSheetContent() {
     });
   }, [paymentTerms]);
 
+  // Keep activeStyle.bomChemicals[0].washItem in sync with washType
+  useEffect(() => {
+    if (activeStyle && activeStyle.bomChemicals && activeStyle.bomChemicals.length > 0) {
+      if (activeStyle.bomChemicals[0].washItem !== washType) {
+        const nextChem = [...activeStyle.bomChemicals];
+        nextChem[0] = {
+          ...nextChem[0],
+          washItem: washType
+        };
+        Promise.resolve().then(() => {
+          setActiveStyle({
+            ...activeStyle,
+            bomChemicals: nextChem
+          });
+        });
+      }
+    }
+  }, [washType, activeStyle]);
+
   // Handle active style change from dropdown
   function handleStyleChange(id: string) {
     if (id === "custom") {
       setLoadedCostSheet(null);
-      setActiveStyle(CUSTOM_STYLE);
+      setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
       router.push("/cost-sheet?styleId=custom");
     } else {
       const selected = styles.find((s) => s.id === id);
       if (selected) {
         setLoadedCostSheet(null);
-        setActiveStyle(selected);
+        setActiveStyle(ensureStyleBOMDefaults(selected));
         router.push(`/cost-sheet?styleId=${id}`);
       }
     }
@@ -417,6 +569,7 @@ function CostSheetContent() {
           itemName: "",
           consPerPc: 0,
           ratePKR: 0,
+          rateUSD: 0,
           totalCostPKR: 0,
         };
       }
@@ -425,7 +578,14 @@ function CostSheetContent() {
       ...nextAcc[idx],
       [key]: val,
     } as BOMAccessoriesItem;
-    if (key === "consPerPc" || key === "ratePKR") {
+
+    if (key === "rateUSD") {
+      nextAcc[idx].ratePKR = Number(val) * parityProcurement;
+    } else if (key === "ratePKR") {
+      nextAcc[idx].rateUSD = Number(val) / parityProcurement;
+    }
+
+    if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
       nextAcc[idx].totalCostPKR = (nextAcc[idx].consPerPc || 0) * (nextAcc[idx].ratePKR || 0);
     }
     setActiveStyle({
@@ -443,6 +603,7 @@ function CostSheetContent() {
           washItem: "",
           consPerPc: 0,
           ratePKR: 0,
+          rateUSD: 0,
           totalCostPKR: 0,
         };
       }
@@ -451,7 +612,14 @@ function CostSheetContent() {
       ...nextChem[idx],
       [key]: val,
     } as BOMChemicalsItem;
-    if (key === "consPerPc" || key === "ratePKR") {
+
+    if (key === "rateUSD") {
+      nextChem[idx].ratePKR = Number(val) * parityProcurement;
+    } else if (key === "ratePKR") {
+      nextChem[idx].rateUSD = Number(val) / parityProcurement;
+    }
+
+    if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
       nextChem[idx].totalCostPKR = (nextChem[idx].consPerPc || 0) * (nextChem[idx].ratePKR || 0);
     }
     setActiveStyle({
@@ -469,6 +637,7 @@ function CostSheetContent() {
           itemName: "",
           consPerPc: 0,
           ratePKR: 0,
+          rateUSD: 0,
           totalCostPKR: 0,
         };
       }
@@ -477,7 +646,14 @@ function CostSheetContent() {
       ...nextChg[idx],
       [key]: val,
     } as BOMSpecialChargesItem;
-    if (key === "consPerPc" || key === "ratePKR") {
+
+    if (key === "rateUSD") {
+      nextChg[idx].ratePKR = Number(val) * parityProcurement;
+    } else if (key === "ratePKR") {
+      nextChg[idx].rateUSD = Number(val) / parityProcurement;
+    }
+
+    if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
       nextChg[idx].totalCostPKR = (nextChg[idx].consPerPc || 0) * (nextChg[idx].ratePKR || 0);
     }
     setActiveStyle({
@@ -705,6 +881,9 @@ function CostSheetContent() {
         factoringDays,
         commissionPct: commissionPct / 100,
         foreignBankCharges,
+        taxEdsPct,
+        inlandFreightPct,
+        localBankChargesPct,
         inhouseOrSubcontract,
         rebatePct: rebatePct / 100,
       },
@@ -712,6 +891,7 @@ function CostSheetContent() {
         directLabourFoh,
         cutToShipGrid,
         rejectionGrid,
+        stylesCategoryGrid,
       }
     );
   }, [
@@ -734,6 +914,9 @@ function CostSheetContent() {
     costingStage,
     paymentTerms,
     discountRate,
+    taxEdsPct,
+    inlandFreightPct,
+    localBankChargesPct,
     paymentTermsDays,
     factoringDays,
     commissionPct,
@@ -743,6 +926,7 @@ function CostSheetContent() {
     directLabourFoh,
     cutToShipGrid,
     rejectionGrid,
+    stylesCategoryGrid,
   ]);
 
   if (loadingStyles || !activeStyle || !calcs) {
@@ -926,8 +1110,9 @@ function CostSheetContent() {
                 value={orderType}
                 onChange={(e) => setOrderType(e.target.value as "Denim" | "Non Denim")}
               >
-                <option value="Denim">Denim</option>
-                <option value="Non Denim">Non Denim</option>
+                {orderTypesList.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
               </select>
             </div>
             <div className="space-y-1">
@@ -1058,28 +1243,33 @@ function CostSheetContent() {
             <div className="space-y-1">
               <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Line Efficiency %</label>
               <Input
-                type="text"
-                disabled
-                className="h-8 text-xs border-blue-200 bg-blue-100/30 text-slate-500 font-semibold"
-                value={`${(calcs.efficiency * 100).toFixed(1)}%`}
+                type="number"
+                step="0.1"
+                className="h-8 text-xs border-blue-200"
+                placeholder={`${(calcs.efficiency * 100).toFixed(1)}%`}
+                value={efficiencyOverride}
+                onChange={(e) => setEfficiencyOverride(e.target.value)}
               />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Rejection %</label>
               <Input
-                type="text"
-                disabled
-                className="h-8 text-xs border-blue-200 bg-blue-100/30 text-slate-500 font-semibold"
-                value={`${(calcs.rejectionPct * 100).toFixed(2)}%`}
+                type="number"
+                step="0.01"
+                className="h-8 text-xs border-blue-200"
+                placeholder={`${(calcs.rejectionPct * 100).toFixed(2)}%`}
+                value={rejectionOverride}
+                onChange={(e) => setRejectionOverride(e.target.value)}
               />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Line Target (Pc/Day)</label>
               <Input
-                type="text"
-                disabled
-                className="h-8 text-xs border-blue-200 bg-blue-100/30 text-slate-500 font-semibold"
-                value={`${calcs.lineTarget.toFixed(0)}`}
+                type="number"
+                className="h-8 text-xs border-blue-200"
+                placeholder={`${calcs.lineTarget.toFixed(0)}`}
+                value={lineTargetOverride}
+                onChange={(e) => setLineTargetOverride(e.target.value)}
               />
             </div>
           </div>
@@ -1195,6 +1385,86 @@ function CostSheetContent() {
         </Card>
       </div>
 
+      {/* ZONE 2.5: FINANCIAL PARAMETERS SUMMARY ROW */}
+      <div className="rounded-xl border bg-card shadow-sm px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">Financial Params:</span>
+
+          {/* Commission % */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground font-medium">Commission %</span>
+            <input
+              type="number"
+              step="0.01"
+              className="w-14 h-6 text-[11px] bg-muted/30 border border-border text-center rounded focus:outline-none focus:border-primary font-semibold"
+              value={commissionPct}
+              onChange={(e) => setCommissionPct(Number(e.target.value))}
+            />
+            <span className="text-muted-foreground">{commissionPct.toFixed(2)}%</span>
+          </div>
+
+          <div className="h-4 w-px bg-border" />
+
+          {/* Tax & EDS */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground font-medium">Tax &amp; EDS</span>
+            <input
+              type="number"
+              step="0.01"
+              className="w-14 h-6 text-[11px] bg-muted/30 border border-border text-center rounded focus:outline-none focus:border-primary font-semibold"
+              value={(taxEdsPct * 100).toFixed(2)}
+              onChange={(e) => setTaxEdsPct(Number(e.target.value) / 100)}
+            />
+            <span className="text-muted-foreground">%</span>
+          </div>
+
+          <div className="h-4 w-px bg-border" />
+
+          {/* Inland Freight & Clearing */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground font-medium">Inland Freight &amp; Clearing</span>
+            <input
+              type="number"
+              step="0.01"
+              className="w-14 h-6 text-[11px] bg-muted/30 border border-border text-center rounded focus:outline-none focus:border-primary font-semibold"
+              value={(inlandFreightPct * 100).toFixed(2)}
+              onChange={(e) => setInlandFreightPct(Number(e.target.value) / 100)}
+            />
+            <span className="text-muted-foreground">%</span>
+          </div>
+
+          <div className="h-4 w-px bg-border" />
+
+          {/* Local Bank Charges */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground font-medium">Local Bank Charges</span>
+            <input
+              type="number"
+              step="0.01"
+              className="w-14 h-6 text-[11px] bg-muted/30 border border-border text-center rounded focus:outline-none focus:border-primary font-semibold"
+              value={(localBankChargesPct * 100).toFixed(2)}
+              onChange={(e) => setLocalBankChargesPct(Number(e.target.value) / 100)}
+            />
+            <span className="text-muted-foreground">%</span>
+          </div>
+
+          <div className="h-4 w-px bg-border" />
+
+          {/* Discount Rate */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-muted-foreground font-medium font-bold">Discount Rate</span>
+            <input
+              type="number"
+              step="0.01"
+              className="w-14 h-6 text-[11px] bg-yellow-50 border border-yellow-300 text-center rounded focus:outline-none focus:border-yellow-500 font-bold text-yellow-900"
+              value={(discountRate * 100).toFixed(0)}
+              onChange={(e) => setDiscountRate(Number(e.target.value) / 100)}
+            />
+            <span className="text-yellow-700 font-bold">%</span>
+          </div>
+        </div>
+      </div>
+
       {/* ZONE 3: SPLIT PANEL VIEW */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         
@@ -1227,7 +1497,7 @@ function CostSheetContent() {
 
                 {/* DEDUCTIONS */}
                 <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">Tax & EDS (2.5%)</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">Tax &amp; EDS ({(taxEdsPct * 100).toFixed(2)}%)</TableCell>
                   <TableCell className="text-right text-muted-foreground">{calcs.taxEDS_PKR.toFixed(1)}</TableCell>
                   <TableCell className="text-right text-muted-foreground">${calcs.taxEDS_USD.toFixed(3)}</TableCell>
                   <TableCell className="text-right text-muted-foreground">{(calcs.taxEDS_Pct * 100).toFixed(2)}%</TableCell>
@@ -1258,7 +1528,7 @@ function CostSheetContent() {
                   <TableCell className="text-right text-muted-foreground">{(calcs.freightPct * 100).toFixed(2)}%</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">Local Bank Charges (0.85%)</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">Local Bank Charges ({(localBankChargesPct * 100).toFixed(2)}%)</TableCell>
                   <TableCell className="text-right text-muted-foreground">{calcs.bankChargesPKR.toFixed(1)}</TableCell>
                   <TableCell className="text-right text-muted-foreground">${calcs.bankChargesUSD.toFixed(3)}</TableCell>
                   <TableCell className="text-right text-muted-foreground">{(calcs.bankChargesPct * 100).toFixed(2)}%</TableCell>
@@ -1658,13 +1928,14 @@ function CostSheetContent() {
                       <TableHead className="w-28">Category</TableHead>
                       <TableHead>Item Name</TableHead>
                       <TableHead className="w-16">Cons.</TableHead>
-                      <TableHead className="w-24">Rate (Rs)</TableHead>
+                      <TableHead className="w-24 text-center">Rate ($)</TableHead>
+                      <TableHead className="w-24 text-center">Rate (Rs)</TableHead>
                       <TableHead className="w-28 text-right">Cost (Rs)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {/* ACCESSORIES */}
-                    <TableRow className="bg-muted/20 font-bold"><TableCell colSpan={5}>Accessories (Before & After Wash)</TableCell></TableRow>
+                    <TableRow className="bg-muted/20 font-bold"><TableCell colSpan={6}>Accessories (Before & After Wash)</TableCell></TableRow>
                     {activeStyle.bomAccessories.map((item, idx) => (
                       <TableRow key={`acc-${idx}`}>
                         <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">{item.category}</TableCell>
@@ -1691,6 +1962,17 @@ function CostSheetContent() {
                           <input
                             type="number"
                             disabled={activeStyle.id !== "custom"}
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            value={item.rateUSD !== undefined ? (item.rateUSD || "") : (item.ratePKR ? Number((item.ratePKR / parityProcurement).toFixed(4)) : "")}
+                            onChange={(e) => updateAccessoriesBOM(idx, "rateUSD", Number(e.target.value))}
+                          />
+                        </TableCell>
+                        <TableCell className="p-1.5">
+                          <input
+                            type="number"
+                            disabled={activeStyle.id !== "custom"}
                             className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.ratePKR || ""}
                             onChange={(e) => updateAccessoriesBOM(idx, "ratePKR", Number(e.target.value))}
@@ -1703,14 +1985,14 @@ function CostSheetContent() {
                     ))}
 
                     {/* CHEMICALS */}
-                    <TableRow className="bg-muted/20 font-bold"><TableCell colSpan={5}>Chemical Costs</TableCell></TableRow>
+                    <TableRow className="bg-muted/20 font-bold"><TableCell colSpan={6}>Chemical Costs</TableCell></TableRow>
                     {activeStyle.bomChemicals.map((item, idx) => (
                       <TableRow key={`chem-${idx}`}>
                         <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">Chemicals</TableCell>
                         <TableCell className="p-1.5">
                           <input
                             type="text"
-                            disabled={activeStyle.id !== "custom"}
+                            disabled={true}
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.washItem}
                             onChange={(e) => updateChemicalsBOM(idx, "washItem", e.target.value)}
@@ -1730,6 +2012,17 @@ function CostSheetContent() {
                           <input
                             type="number"
                             disabled={activeStyle.id !== "custom"}
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            value={item.rateUSD !== undefined ? (item.rateUSD || "") : (item.ratePKR ? Number((item.ratePKR / parityProcurement).toFixed(4)) : "")}
+                            onChange={(e) => updateChemicalsBOM(idx, "rateUSD", Number(e.target.value))}
+                          />
+                        </TableCell>
+                        <TableCell className="p-1.5">
+                          <input
+                            type="number"
+                            disabled={activeStyle.id !== "custom"}
                             className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.ratePKR || ""}
                             onChange={(e) => updateChemicalsBOM(idx, "ratePKR", Number(e.target.value))}
@@ -1742,7 +2035,7 @@ function CostSheetContent() {
                     ))}
 
                     {/* SPECIAL CHARGES */}
-                    <TableRow className="bg-muted/20 font-bold"><TableCell colSpan={5}>Special Charges (Embroidery, Testing, etc.)</TableCell></TableRow>
+                    <TableRow className="bg-muted/20 font-bold"><TableCell colSpan={6}>Special Charges (Embroidery, Testing, etc.)</TableCell></TableRow>
                     {activeStyle.bomSpecialCharges.map((item, idx) => (
                       <TableRow key={`chg-${idx}`}>
                         <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">{item.itemName}</TableCell>
@@ -1757,6 +2050,17 @@ function CostSheetContent() {
                             className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.consPerPc || ""}
                             onChange={(e) => updateSpecialChargesBOM(idx, "consPerPc", Number(e.target.value))}
+                          />
+                        </TableCell>
+                        <TableCell className="p-1.5">
+                          <input
+                            type="number"
+                            disabled={activeStyle.id !== "custom"}
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            value={item.rateUSD !== undefined ? (item.rateUSD || "") : (item.ratePKR ? Number((item.ratePKR / parityProcurement).toFixed(4)) : "")}
+                            onChange={(e) => updateSpecialChargesBOM(idx, "rateUSD", Number(e.target.value))}
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
