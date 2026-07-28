@@ -3,12 +3,24 @@ import type { SimpleTableData, MatrixTableData, ProcessMatrixTableData } from ".
 
 // Standard Excel rates as default fallbacks
 const FALLBACK_CPMS = {
-  directLabour: 8.934030,
-  salaries: 12.508913,
-  utilities: 3.949478, // 3.5565 Utilities & Power + 0.3929 Utility Expenses
-  repair: 1.146272,    // 0.1931 R&M + 0.0214 R&M + 0.9324 General Overheads
-  fohAdmin: 6.868587,
-  depreciation: 1.171741 // 1.0545 Dep + 0.1171 Dep
+  directLabour: 8.928,
+  salaries: 12.492,
+  utilities: 4.5,
+  repair: 1.224,
+  fohAdmin: 6.876,
+  depreciation: 1.764
+};
+
+const FALLBACK_CUT_TO_SHIP: Record<string, Record<string, string>> = {
+  "<=500": { "Basic": "54", "Semi Fashion": "50", "Fashion": "47", "High Fashion": "45" },
+  "501-1000": { "Basic": "56", "Semi Fashion": "52", "Fashion": "48", "High Fashion": "46" },
+  "1001-2000": { "Basic": "58", "Semi Fashion": "53", "Fashion": "50", "High Fashion": "48" },
+  "2001-3000": { "Basic": "60", "Semi Fashion": "55", "Fashion": "52", "High Fashion": "50" },
+  "3001-4000": { "Basic": "62", "Semi Fashion": "57", "Fashion": "54", "High Fashion": "52" },
+  "4001-5000": { "Basic": "65", "Semi Fashion": "59", "Fashion": "56", "High Fashion": "54" },
+  "5001-10000": { "Basic": "68", "Semi Fashion": "62", "Fashion": "58", "High Fashion": "56" },
+  "10001-25000": { "Basic": "72", "Semi Fashion": "65", "Fashion": "60", "High Fashion": "58" },
+  ">25000": { "Basic": "75", "Semi Fashion": "66", "Fashion": "62", "High Fashion": "60" }
 };
 
 function findRate(tableData: SimpleTableData | undefined, description: string, fallback: number): number {
@@ -20,7 +32,57 @@ function findRate(tableData: SimpleTableData | undefined, description: string, f
   return parseFloat(row.values.costPerSam) || fallback;
 }
 
-export function mapSMVToCategory(smv: number): "Basic" | "Semi Fashion" | "Fashion" | "High Fashion" {
+export function mapSMVToCategory(
+  smv: number,
+  stylesGrid?: SimpleTableData
+): string {
+  if (stylesGrid?.rows && stylesGrid.rows.length > 0) {
+    for (const row of stylesGrid.rows) {
+      const cat = row.values.styleName;
+      if (!cat) continue;
+      
+      const fromStr = (row.values.samPcFrom || "").trim();
+      const toStr = (row.values.samPcTo || "").trim();
+      
+      let matchesFrom = true;
+      if (fromStr) {
+        if (fromStr.startsWith(">=")) {
+          const val = parseFloat(fromStr.replace(">=", ""));
+          matchesFrom = smv >= val;
+        } else if (fromStr.startsWith(">")) {
+          const val = parseFloat(fromStr.replace(">", ""));
+          matchesFrom = smv > val;
+        } else {
+          const val = parseFloat(fromStr);
+          if (!isNaN(val)) {
+            matchesFrom = smv >= val;
+          }
+        }
+      }
+      
+      let matchesTo = true;
+      if (toStr) {
+        if (toStr.startsWith("<=")) {
+          const val = parseFloat(toStr.replace("<=", ""));
+          matchesTo = smv <= val;
+        } else if (toStr.startsWith("<")) {
+          const val = parseFloat(toStr.replace("<", ""));
+          matchesTo = smv < val;
+        } else {
+          const val = parseFloat(toStr);
+          if (!isNaN(val)) {
+            matchesTo = smv <= val;
+          }
+        }
+      }
+      
+      if (matchesFrom && matchesTo) {
+        return cat;
+      }
+    }
+  }
+
+  // Fallback to hardcoded defaults
   if (smv <= 18) return "Basic";
   if (smv <= 23) return "Semi Fashion";
   if (smv <= 36) return "Fashion";
@@ -208,6 +270,9 @@ export function runFormulaEngine(
     factoringDays: number;
     commissionPct: number;
     foreignBankCharges: number;
+    taxEdsPct: number;
+    inlandFreightPct: number;
+    localBankChargesPct: number;
     inhouseOrSubcontract?: string;
     rebatePct?: number;
   },
@@ -215,6 +280,7 @@ export function runFormulaEngine(
     directLabourFoh?: SimpleTableData;
     cutToShipGrid?: MatrixTableData;
     rejectionGrid?: ProcessMatrixTableData;
+    stylesCategoryGrid?: SimpleTableData;
   }
 ): CalculationResult {
   const {
@@ -230,6 +296,9 @@ export function runFormulaEngine(
     factoringDays,
     commissionPct,
     foreignBankCharges,
+    taxEdsPct,
+    inlandFreightPct,
+    localBankChargesPct,
     inhouseOrSubcontract,
     rebatePct: inputRebatePct,
   } = inputs;
@@ -237,14 +306,16 @@ export function runFormulaEngine(
   const smv = style.smvSewing;
   const qty = style.orderQuantity;
   const sizeBracket = calculateSizeBracket(qty);
-  const styleCategory = mapSMVToCategory(smv);
+  const styleCategory = mapSMVToCategory(smv, params.stylesCategoryGrid);
 
   // 1. Calculate Average Efficiency
   let efficiency = 0.47;
   if (efficiencyOverride !== null) {
     efficiency = efficiencyOverride;
-  } else if (params.cutToShipGrid?.cells) {
-    const cellVal = params.cutToShipGrid.cells[sizeBracket]?.[styleCategory] || "47";
+  } else {
+    const dbVal = params.cutToShipGrid?.cells?.[sizeBracket]?.[styleCategory];
+    const fallbackVal = FALLBACK_CUT_TO_SHIP[sizeBracket]?.[styleCategory];
+    const cellVal = dbVal || fallbackVal || "47";
     efficiency = parseFloat(cellVal.replace("%", "")) / 100;
   }
 
@@ -296,7 +367,7 @@ export function runFormulaEngine(
   const sellingPricePKR = orderFOB * paritySale;
 
   // Deductions calculations (PKR & USD per Pc)
-  const taxEDS_PKR = sellingPricePKR * 0.025; // 2.5% Tax & EDS
+  const taxEDS_PKR = sellingPricePKR * taxEdsPct;
   const taxEDS_USD = taxEDS_PKR / paritySale;
   const taxEDS_Pct = taxEDS_USD / sellingPriceUSD;
 
@@ -309,8 +380,7 @@ export function runFormulaEngine(
   const commissionPctCalc = commissionUSD / sellingPriceUSD;
 
   // Inland Freight & Clearing
-  const freightRate = style.customerName === "Duer" ? 0.0125 : 0.0065;
-  const freightPKR = sellingPricePKR * freightRate;
+  const freightPKR = sellingPricePKR * inlandFreightPct;
   const freightUSD = freightPKR / paritySale;
   const freightPct = freightUSD / sellingPriceUSD;
 
@@ -319,7 +389,7 @@ export function runFormulaEngine(
   const markupDiscountUSD = markupDiscountPKR / paritySale;
   const markupDiscountPct = markupDiscountUSD / sellingPriceUSD;
 
-  const bankChargesPKR = sellingPricePKR * 0.0085; // Local Bank Charges 0.85%
+  const bankChargesPKR = sellingPricePKR * localBankChargesPct;
   const bankChargesUSD = bankChargesPKR / paritySale;
   const bankChargesPct = bankChargesUSD / sellingPriceUSD;
 
@@ -453,7 +523,7 @@ export function runFormulaEngine(
   // Target FOB = ((Total Cost - Net Profit) + (Total Cost - Net Profit - Selling Price) * Sum(Deduction Pcts)) / 0.9
   // Wait, let's look at Excel J5: =((E20-E56)+(E20-E56-J6)*(O12+O13+O14+S5))/90%*100%
   // Let's implement that exact formula:
-  const deductionSum = 0.025 + freightRate + 0.0085 + (commissionPct) + (discountRate * paymentTermsDays / 365) + (discountRate * factoringDays / 365);
+  const deductionSum = taxEdsPct + inlandFreightPct + localBankChargesPct + (commissionPct) + (discountRate * paymentTermsDays / 365) + (discountRate * factoringDays / 365);
   const targetFobUSD = ((sellingPriceUSD - netProfitUSD) + (sellingPriceUSD - netProfitUSD - sellingPriceUSD) * deductionSum) / 0.9;
 
   // EBITDA / Min (Cents) = (EBITDA_USD * Efficiency / SMV) / (1 + Rejection_Pct) * 100

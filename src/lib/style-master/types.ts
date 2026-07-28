@@ -15,10 +15,11 @@ export interface BOMLiningItem {
 }
 
 export interface BOMAccessoriesItem {
-  category: "Zipper" | "Thread" | "Label" | "Trims" | "Poly Bag" | "Carton" | "Button" | "Packing Mix" | "Sticker";
+  category: string;
   itemName: string;
   consPerPc: number;
   ratePKR: number;
+  rateUSD?: number;
   totalCostPKR: number;
 }
 
@@ -26,6 +27,7 @@ export interface BOMChemicalsItem {
   washItem: string;
   consPerPc: number;
   ratePKR: number;
+  rateUSD?: number;
   totalCostPKR: number;
 }
 
@@ -33,6 +35,7 @@ export interface BOMSpecialChargesItem {
   itemName: string;
   consPerPc: number;
   ratePKR: number;
+  rateUSD?: number;
   totalCostPKR: number;
 }
 

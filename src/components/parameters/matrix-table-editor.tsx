@@ -33,6 +33,20 @@ export function MatrixTableEditor({
   const [deleteCol, setDeleteCol] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
+
+  if (!data || !data.columnLabels || !data.rowLabels || !data.cells) {
+    return (
+      <div className="p-4 text-sm text-amber-600 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
+        Table data is empty or loading...
+      </div>
+    );
+  }
+
   function scheduleSave(next: MatrixTableData) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
@@ -111,11 +125,6 @@ export function MatrixTableEditor({
     onSave(next).then(() => toast.success("Column deleted"));
   }
 
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, []);
 
   return (
     <div className="space-y-3">

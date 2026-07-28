@@ -38,9 +38,10 @@ function matrix(values: number[][], suffix = ""): MatrixTableData {
 }
 
 export const SEED_SIMPLE: Record<string, SimpleTableData> = {
+  // Style Categories — SAM/PC range classifier (used by formula engine to map SMV → category)
   styles: {
     columns: [
-      { key: "styleName", label: "Style Name" },
+      { key: "styleName", label: "Style Category" },
       { key: "samPcFrom", label: "SAM/PC From" },
       { key: "samPcTo", label: "SAM/PC To" },
     ],
@@ -72,7 +73,15 @@ export const SEED_SIMPLE: Record<string, SimpleTableData> = {
     ],
     rows: simpleRows(
       ["description", "percentOfSales"],
-      [["Taxes", ""], ["EDS", ""], ["Rebate", ""], ["Exchange Rate", ""]]
+      [
+        ["Taxes", ""],
+        ["EDS", ""],
+        ["Rebate", ""],
+        ["Exchange Rate", ""],
+        ["Inland Freight", ""],
+        ["Local Bank Charges", ""],
+        ["Discount Rate", ""]
+      ]
     ),
   },
   "direct-labour-foh": {
