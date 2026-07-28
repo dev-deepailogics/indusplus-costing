@@ -37,7 +37,8 @@ import type {
   BOMChemicalsItem,
   BOMSpecialChargesItem,
 } from "@/lib/style-master/types";
-import type { SimpleTableData, MatrixTableData, ProcessMatrixTableData, DropdownListsData } from "@/lib/parameters/types";
+import type { SimpleTableData, MatrixTableData, ProcessMatrixTableData, DropdownListsData, GridCardListData } from "@/lib/parameters/types";
+import { getActiveCard } from "@/lib/parameters/types";
 import { runFormulaEngine, calculateSizeBracket, mapSMVToCategory, getWashingRejection } from "@/lib/cost-sheet/formula-engine";
 
 export default function CostSheetPage() {
@@ -168,8 +169,12 @@ function CostSheetContent() {
 
     // Subscribe to POC Parameters
     const unsubDLF = subscribeToTable<SimpleTableData>("direct-labour-foh", setDirectLabourFoh);
-    const unsubCTS = subscribeToTable<MatrixTableData>("cut-to-ship-grid", setCutToShipGrid);
-    const unsubRej = subscribeToTable<ProcessMatrixTableData>("rejection-grid", setRejectionGrid);
+    const unsubCTS = subscribeToTable<GridCardListData<MatrixTableData>>("cut-to-ship-grid", (list) =>
+      setCutToShipGrid(getActiveCard(list)?.data)
+    );
+    const unsubRej = subscribeToTable<GridCardListData<ProcessMatrixTableData>>("rejection-grid", (list) =>
+      setRejectionGrid(getActiveCard(list)?.data)
+    );
 
     const unsubDropdowns = subscribeToTable<DropdownListsData>("dropdown-lists", (data) => {
       if (data?.lists) {

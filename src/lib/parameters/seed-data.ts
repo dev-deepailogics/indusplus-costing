@@ -119,6 +119,14 @@ export const SEED_SIMPLE: Record<string, SimpleTableData> = {
   },
 };
 
+export const EMPTY_MATRIX: MatrixTableData = {
+  rowLabels: QTY_BANDS,
+  columnLabels: STYLE_CATEGORIES,
+  cells: Object.fromEntries(
+    QTY_BANDS.map((band) => [band, Object.fromEntries(STYLE_CATEGORIES.map((cat) => [cat, ""]))])
+  ),
+};
+
 export const SEED_CUT_TO_SHIP: MatrixTableData = matrix([
   [54, 50, 47, 45],
   [56, 52, 48, 46],
@@ -217,6 +225,11 @@ export const SEED_REJECTION_GRID: ProcessMatrixTableData = {
     WIP: matrix(WIP_REJECTION, "%"),
     E1: matrix(E1_REJECTION, "%"),
   },
+};
+
+export const EMPTY_PROCESS_MATRIX: ProcessMatrixTableData = {
+  processes: REJECTION_PROCESSES,
+  tables: Object.fromEntries(REJECTION_PROCESSES.map((p) => [p, EMPTY_MATRIX])),
 };
 
 export const SEED_DROPDOWN_LISTS: DropdownListsData = {
