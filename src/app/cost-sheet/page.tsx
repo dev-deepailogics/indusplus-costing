@@ -1143,6 +1143,7 @@ function CostSheetContent() {
   // Helper formatting classes
   const isProfitPositive = calcs.netProfitUSD >= 0;
   const isEbitdaPositive = calcs.ebitdaUSD >= 0;
+  const bomCostUSD = calcs.fabricCostUSD + calcs.liningCostUSD + calcs.accessoriesCostUSD + calcs.chemicalsCostUSD + calcs.specialChargesCostUSD;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -1189,410 +1190,513 @@ function CostSheetContent() {
             </Button>
           )}
         </div>
-      </div>
+      </div>      {/* ZONE 1: 4-COLUMN PARAMETERS SPREADSHEET LAYOUT */}
+      <Card className="shadow-sm border-slate-200/85 bg-white dark:bg-slate-900 overflow-hidden">
+        <div className="bg-blue-50/50 dark:bg-slate-800/45 px-4 py-2.5 border-b border-slate-200/80">
+          <h2 className="text-xs font-bold text-blue-900/85 dark:text-blue-300 uppercase tracking-wider">
+            📊 Pre-Order Cost Sheet Header
+          </h2>
+        </div>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 text-xs">
+            
+            {/* COLUMN 1: Basic Style & Quantity Specs */}
+            <div className="space-y-2.5">
+              <div className="font-bold text-blue-900/80 dark:text-blue-300 uppercase tracking-wide border-b border-slate-100 pb-1 mb-1">
+                Style &amp; Qty Specs
+              </div>
+              
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Costing Date</span>
+                <input
+                  type="date"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  value={costingDate}
+                  onChange={(e) => setCostingDate(e.target.value)}
+                />
+              </div>
 
-      {/* ZONE 1: HEADER CONTROLS & INPUTS (Soft blue background) */}
-      <Card className="bg-[#f2f7fc]/80 dark:bg-slate-900/40 border-blue-100 shadow-sm">
-        <CardContent className="p-5 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-blue-100/50 pb-4">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-blue-900/80 dark:text-blue-200">
-                Select Apparel Style
-              </label>
-              <select
-                className="w-full h-9 rounded-md border border-blue-200 bg-background px-3 py-1.5 text-sm shadow-sm focus-visible:outline-none focus:ring-1 focus:ring-blue-400 font-semibold"
-                value={activeStyle.id}
-                onChange={(e) => handleStyleChange(e.target.value)}
-              >
-                <option value="custom">
-                  -- Custom Style / Manual Input --
-                </option>
-                {styles.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.id} - {s.styleName} ({s.customerName})
-                  </option>
-                ))}
-              </select>
-              {activeStyle.id === "custom" && (
-                <div className="space-y-1 pt-1.5">
-                  <label className="text-xs font-semibold text-blue-900/80 dark:text-blue-200">
-                    Style Name *
-                  </label>
-                  <Input
-                    type="text"
-                    className="h-7 text-xs border-blue-200 px-2 font-semibold"
-                    value={activeStyle.styleName || ""}
-                    onChange={(e) => {
-                      setActiveStyle({
-                        ...activeStyle,
-                        styleName: e.target.value,
-                      });
-                    }}
-                    placeholder="Enter custom style name"
-                  />
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-sm bg-white/50 dark:bg-slate-950/30 p-2.5 rounded-md border border-blue-100/50">
-              <div className="space-y-0.5">
-                <span className="text-xs text-muted-foreground font-semibold">
-                  Customer:
-                </span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Customer Name:</span>
                 <select
-                  className="w-full h-7 rounded border border-blue-200 bg-background px-2 py-0.5 text-xs focus-visible:outline-none focus:ring-1 focus:ring-blue-400 font-semibold"
+                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                 >
                   {customersList.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
+                    <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
               </div>
-              <div className="space-y-0.5">
-                <span className="text-xs text-muted-foreground font-semibold">
-                  Style Category:
-                </span>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Order Type</span>
                 <select
-                  className="w-full h-7 rounded border border-blue-200 bg-background px-2 py-0.5 text-xs focus-visible:outline-none focus:ring-1 focus:ring-blue-400 font-semibold"
+                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                  value={orderType}
+                  onChange={(e) => setOrderType(e.target.value as "Denim" | "Non Denim")}
+                >
+                  {orderTypesList.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5 bg-slate-50/50 dark:bg-slate-950/20 p-1.5 rounded border border-slate-100">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-blue-900/80 dark:text-blue-300">Style Select</span>
+                  <select
+                    className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-white dark:bg-slate-900 font-semibold rounded focus:outline-none"
+                    value={activeStyle.id}
+                    onChange={(e) => handleStyleChange(e.target.value)}
+                  >
+                    <option value="custom">-- Custom Style --</option>
+                    {styles.map((s) => (
+                      <option key={s.id} value={s.id}>{s.id}</option>
+                    ))}
+                  </select>
+                </div>
+                {activeStyle.id === "custom" && (
+                  <div className="flex items-center justify-between gap-2 pl-2">
+                    <span className="text-[10px] text-muted-foreground font-semibold">Custom Name *</span>
+                    <input
+                      type="text"
+                      className="w-32 h-7 px-2 text-xs border border-slate-200 bg-white dark:bg-slate-900 font-semibold rounded text-right focus:outline-none"
+                      value={activeStyle.styleName || ""}
+                      onChange={(e) => setActiveStyle({ ...activeStyle, styleName: e.target.value })}
+                      placeholder="Enter Style Name"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Style Category</span>
+                <select
+                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={styleCategory}
                   onChange={(e) => setStyleCategory(e.target.value)}
                 >
                   {categoriesList.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
+                    <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
               </div>
-              <div className="space-y-0.5">
-                <span className="text-xs text-muted-foreground font-semibold">
-                  Wash Type:
-                </span>
-                <select
-                  className="w-full h-7 rounded border border-blue-200 bg-background px-2 py-0.5 text-xs focus-visible:outline-none focus:ring-1 focus:ring-blue-400 font-semibold"
-                  value={washType}
-                  onChange={(e) => setWashType(e.target.value)}
-                >
-                  {washTypesList.map((w) => (
-                    <option key={w} value={w}>
-                      {w}
-                    </option>
-                  ))}
-                </select>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Order Size</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">{calcs.sizeBracket}</span>
               </div>
-              <div className="space-y-0.5">
-                <span className="text-xs text-muted-foreground font-semibold">
-                  Order Qty:
-                </span>
-                <Input
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Order Quantity pcs</span>
+                <input
                   type="number"
-                  className="h-7 text-xs border-blue-200 px-2 font-semibold"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
                   value={orderQuantity || ""}
                   onChange={(e) => setOrderQuantity(Number(e.target.value))}
                 />
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-sm bg-white/50 dark:bg-slate-950/30 p-2.5 rounded-md border border-blue-100/50">
-              <div>
-                <span className="text-xs text-muted-foreground">
-                  Size Bracket:
-                </span>
-                <p className="font-semibold text-primary">
-                  {calcs.sizeBracket}
-                </p>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Per Color Quantity pcs</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">{Math.round(orderQuantity / noOfColors)}</span>
               </div>
-              <div className="space-y-0.5">
-                <span className="text-xs text-muted-foreground font-semibold">
-                  SMV (Sewing):
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">No of Color</span>
+                <input
+                  type="number"
+                  min="1"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  value={noOfColors}
+                  onChange={(e) => setNoOfColors(Math.max(1, Number(e.target.value)))}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Wash Type:</span>
+                <select
+                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                  value={washType}
+                  onChange={(e) => setWashType(e.target.value)}
+                >
+                  {washTypesList.map((w) => (
+                    <option key={w} value={w}>{w}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Rejection %</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="w-32 h-7 px-2 text-xs border border-yellow-200 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
+                  placeholder={`${(calcs.rejectionPct * 100).toFixed(2)}%`}
+                  value={rejectionOverride}
+                  onChange={(e) => setRejectionOverride(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Ex fty Date(mm/dd/yy)</span>
+                <input
+                  type="date"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  value={exFactoryDate}
+                  onChange={(e) => setExFactoryDate(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* COLUMN 2: Logistics & Commercial Parameters */}
+            <div className="space-y-2.5">
+              <div className="font-bold text-blue-900/80 dark:text-blue-300 uppercase tracking-wide border-b border-slate-100 pb-1 mb-1">
+                Logistics &amp; Commercial
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Current Date</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
+                  {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Costing Stage</span>
+                <select
+                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                  value={costingStage}
+                  onChange={(e) => setCostingStage(e.target.value)}
+                >
+                  <option value="Quote">Quote</option>
+                  <option value="Final">Final</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Country</span>
+                <select
+                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                >
+                  {countriesList.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Payment Terms</span>
+                <select
+                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                  value={paymentTerms}
+                  onChange={(e) => setPaymentTerms(e.target.value)}
+                >
+                  {paymentTermsList.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Shipment mode</span>
+                <select
+                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                  value={shipmentMode}
+                  onChange={(e) => setShipmentMode(e.target.value)}
+                >
+                  <option value="Sea">Sea</option>
+                  <option value="Air">Air</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Delivery terms</span>
+                <select
+                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                  value={deliveryTerms}
+                  onChange={(e) => setDeliveryTerms(e.target.value)}
+                >
+                  {deliveryTermsList.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Merch_Group</span>
+                <input
+                  type="text"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  value={merchGroup}
+                  onChange={(e) => setMerchGroup(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Delv. Destination</span>
+                <select
+                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                  value={deliveryDestination}
+                  onChange={(e) => setDeliveryDestination(e.target.value)}
+                >
+                  <option value="EURO">EURO</option>
+                  <option value="USA">USA</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Parity-Sale</span>
+                <input
+                  type="number"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  value={paritySale || ""}
+                  onChange={(e) => setParitySale(Number(e.target.value))}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Parity-Procurement</span>
+                <input
+                  type="number"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  value={parityProcurement || ""}
+                  onChange={(e) => setParityProcurement(Number(e.target.value))}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Inhouse/Sub-contract</span>
+                <select
+                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                  value={inhouseOrSubcontract}
+                  onChange={(e) => setInhouseOrSubcontract(e.target.value)}
+                >
+                  <option value="INHOUSE">INHOUSE</option>
+                  <option value="CMT">CMT (Sub-contract)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Work Order No.</span>
+                <input
+                  type="text"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  value={workOrderNumber}
+                  onChange={(e) => setWorkOrderNumber(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* COLUMN 3: FOB/CM Targets & Labor Metrics */}
+            <div className="space-y-2.5">
+              <div className="font-bold text-blue-900/80 dark:text-blue-300 uppercase tracking-wide border-b border-slate-100 pb-1 mb-1">
+                FOB / CM &amp; Labor Metrics
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Target FOB/PC</span>
+                <span className="font-extrabold text-slate-800 dark:text-slate-200 pr-2">US$ {calcs.targetFobUSD.toFixed(2)}</span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Order FOB/PC</span>
                 <div className="flex items-center gap-1">
-                  <Input
+                  <span className="text-slate-400 font-semibold">US$</span>
+                  <input
                     type="number"
                     step="0.01"
-                    className="h-7 text-xs border-blue-200 px-2 font-semibold"
-                    value={smvSewingInput}
-                    onChange={(e) => setSmvSewingInput(e.target.value)}
+                    className="w-24 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-extrabold text-slate-900 rounded text-right focus:bg-white focus:outline-none transition-colors"
+                    value={quotedPriceInput}
+                    onChange={(e) => setQuotedPriceInput(e.target.value)}
                   />
-                  <span className="text-xs text-muted-foreground">min</span>
                 </div>
               </div>
-              <div>
-                <span className="text-xs text-muted-foreground">
-                  Style Class:
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Order CM/PC</span>
+                <span className="font-extrabold text-slate-800 dark:text-slate-200 pr-2">US$ {calcs.cmUSD.toFixed(2)}</span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Target CM/SMV-Cents</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
+                  {((calcs.targetFobUSD - bomCostUSD) * 100 / (parseFloat(smvSewingInput) || 1)).toFixed(2)}
                 </span>
-                <p className="font-semibold">{calcs.styleCategory}</p>
               </div>
-              <div>
-                <span className="text-xs text-muted-foreground">Base FOB:</span>
-                <p className="font-semibold">
-                  ${activeStyle.baseSellingPrice.toFixed(2)}
-                </p>
-              </div>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Costing Date
-              </label>
-              <Input
-                type="date"
-                className="h-8 text-xs border-blue-200"
-                value={costingDate}
-                onChange={(e) => setCostingDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Ex-Factory Date
-              </label>
-              <Input
-                type="date"
-                className="h-8 text-xs border-blue-200"
-                value={exFactoryDate}
-                onChange={(e) => setExFactoryDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Costing Stage
-              </label>
-              <select
-                className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none"
-                value={costingStage}
-                onChange={(e) => setCostingStage(e.target.value)}
-              >
-                <option value="Quote">Quote</option>
-                <option value="Final">Final</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Order Type
-              </label>
-              <select
-                className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none font-semibold"
-                value={orderType}
-                onChange={(e) =>
-                  setOrderType(e.target.value as "Denim" | "Non Denim")
-                }
-              >
-                {orderTypesList.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Inhouse / CMT
-              </label>
-              <select
-                className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none font-semibold"
-                value={inhouseOrSubcontract}
-                onChange={(e) => setInhouseOrSubcontract(e.target.value)}
-              >
-                <option value="INHOUSE">INHOUSE</option>
-                <option value="CMT">CMT (Sub-contract)</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                No. of Colors
-              </label>
-              <Input
-                type="number"
-                min="1"
-                className="h-8 text-xs border-blue-200"
-                value={noOfColors}
-                onChange={(e) =>
-                  setNoOfColors(Math.max(1, Number(e.target.value)))
-                }
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Per Color Qty
-              </label>
-              <Input
-                type="text"
-                disabled
-                className="h-8 text-xs border-blue-200 bg-blue-100/30 text-slate-500 font-semibold"
-                value={Math.round(orderQuantity / noOfColors)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Merch Group
-              </label>
-              <Input
-                type="text"
-                className="h-8 text-xs border-blue-200"
-                value={merchGroup}
-                onChange={(e) => setMerchGroup(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Work Order No.
-              </label>
-              <Input
-                type="text"
-                className="h-8 text-xs border-blue-200"
-                value={workOrderNumber}
-                onChange={(e) => setWorkOrderNumber(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Delivery Dest.
-              </label>
-              <select
-                className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none font-semibold"
-                value={deliveryDestination}
-                onChange={(e) => setDeliveryDestination(e.target.value)}
-              >
-                <option value="EURO">EURO</option>
-                <option value="USA">USA</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Country
-              </label>
-              <select
-                className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-              >
-                {countriesList.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Payment Terms
-              </label>
-              <select
-                className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none"
-                value={paymentTerms}
-                onChange={(e) => setPaymentTerms(e.target.value)}
-              >
-                {paymentTermsList.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Shipment Mode
-              </label>
-              <select
-                className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none"
-                value={shipmentMode}
-                onChange={(e) => setShipmentMode(e.target.value)}
-              >
-                <option value="Sea">Sea</option>
-                <option value="Air">Air</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Delivery Terms
-              </label>
-              <select
-                className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none"
-                value={deliveryTerms}
-                onChange={(e) => setDeliveryTerms(e.target.value)}
-              >
-                {deliveryTermsList.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Order CM-SMV-Cents</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
+                  {(calcs.cmUSD * 100 / (parseFloat(smvSewingInput) || 1)).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="border-t border-slate-200/60 my-2 pt-2.5" />
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">SMV</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  value={smvSewingInput}
+                  onChange={(e) => setSmvSewingInput(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Manpower Per Line</span>
+                <input
+                  type="number"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  value={manpower || ""}
+                  onChange={(e) => setManpower(Number(e.target.value))}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Avg. Efficiency</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.1"
+                    className="w-28 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
+                    placeholder={`${(calcs.efficiency * 100).toFixed(1)}%`}
+                    value={efficiencyOverride}
+                    onChange={(e) => setEfficiencyOverride(e.target.value)}
+                  />
+                  <span className="text-yellow-700 font-bold">%</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Avg. Line Target</span>
+                <input
+                  type="number"
+                  className="w-32 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
+                  placeholder={`${calcs.lineTarget.toFixed(0)}`}
+                  value={lineTargetOverride}
+                  onChange={(e) => setLineTargetOverride(e.target.value)}
+                />
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Parity - Sale (Rs/$)
-              </label>
-              <Input
-                type="number"
-                className="h-8 text-xs border-blue-200"
-                value={paritySale || ""}
-                onChange={(e) => setParitySale(Number(e.target.value))}
-              />
+            {/* COLUMN 4: EBITDA, Net Profit & Financial Variables */}
+            <div className="space-y-2.5">
+              <div className="font-bold text-blue-900/80 dark:text-blue-300 uppercase tracking-wide border-b border-slate-100 pb-1 mb-1">
+                Profitability &amp; Financial Rates
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">EBITDA/Min-Cents</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
+                  {(calcs.ebitdaUSD * 100 / (parseFloat(smvSewingInput) || 1)).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">EBITDA/PC</span>
+                <span className="font-extrabold text-slate-800 dark:text-slate-200 pr-2">US$ {calcs.ebitdaUSD.toFixed(2)}</span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Net Profit/Min-Cents</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
+                  {(calcs.netProfitUSD * 100 / (parseFloat(smvSewingInput) || 1)).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Net Profit/PC</span>
+                <span className={`font-extrabold pr-2 ${isProfitPositive ? "text-green-600 dark:text-green-400" : "text-red-600"}`}>
+                  US$ {calcs.netProfitUSD.toFixed(2)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Net Profit % on FOB</span>
+                <span className={`font-extrabold pr-2 ${isProfitPositive ? "text-green-600 dark:text-green-400" : "text-red-600"}`}>
+                  {(calcs.netProfitPct * 100).toFixed(2)}%
+                </span>
+              </div>
+
+              <div className="border-t border-slate-200/60 my-2 pt-2.5" />
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Commission %</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
+                    value={commissionPct ? (commissionPct * 100).toFixed(2) : ""}
+                    onChange={(e) => setCommissionPct(Number(e.target.value) / 100)}
+                  />
+                  <span className="text-yellow-750 font-bold">%</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Tax &amp; EDS</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
+                    value={taxEdsPct ? (taxEdsPct * 100).toFixed(2) : ""}
+                    onChange={(e) => setTaxEdsPct(Number(e.target.value) / 100)}
+                  />
+                  <span className="text-yellow-750 font-bold">%</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Inland Freight &amp; Clearing</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
+                    value={inlandFreightPct ? (inlandFreightPct * 100).toFixed(2) : ""}
+                    onChange={(e) => setInlandFreightPct(Number(e.target.value) / 100)}
+                  />
+                  <span className="text-yellow-750 font-bold">%</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">Local Bank Charges</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
+                    value={localBankChargesPct ? (localBankChargesPct * 100).toFixed(2) : ""}
+                    onChange={(e) => setLocalBankChargesPct(Number(e.target.value) / 100)}
+                  />
+                  <span className="text-yellow-750 font-bold">%</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground font-bold text-yellow-950">Discount Rate</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-24 h-7 px-2 text-xs border border-yellow-300 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
+                    value={discountRate ? (discountRate * 100).toFixed(0) : ""}
+                    onChange={(e) => setDiscountRate(Number(e.target.value) / 100)}
+                  />
+                  <span className="text-yellow-700 font-bold">%</span>
+                </div>
+              </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Parity - Proc. (Rs/$)
-              </label>
-              <Input
-                type="number"
-                className="h-8 text-xs border-blue-200"
-                value={parityProcurement || ""}
-                onChange={(e) => setParityProcurement(Number(e.target.value))}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Manpower/Line
-              </label>
-              <Input
-                type="number"
-                className="h-8 text-xs border-blue-200"
-                value={manpower || ""}
-                onChange={(e) => setManpower(Number(e.target.value))}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Line Efficiency %
-              </label>
-              <Input
-                type="number"
-                step="0.1"
-                className="h-8 text-xs border-blue-200"
-                placeholder={`${(calcs.efficiency * 100).toFixed(1)}%`}
-                value={efficiencyOverride}
-                onChange={(e) => setEfficiencyOverride(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Rejection %
-              </label>
-              <Input
-                type="number"
-                step="0.01"
-                className="h-8 text-xs border-blue-200"
-                placeholder={`${(calcs.rejectionPct * 100).toFixed(2)}%`}
-                value={rejectionOverride}
-                onChange={(e) => setRejectionOverride(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
-                Line Target (Pc/Day)
-              </label>
-              <Input
-                type="number"
-                className="h-8 text-xs border-blue-200"
-                placeholder={`${calcs.lineTarget.toFixed(0)}`}
-                value={lineTargetOverride}
-                onChange={(e) => setLineTargetOverride(e.target.value)}
-              />
-            </div>
+
           </div>
         </CardContent>
       </Card>
@@ -1788,7 +1892,7 @@ function CostSheetContent() {
             <input
               type="number"
               step="0.01"
-              className="w-14 h-6 text-[11px] bg-muted/30 border border-border text-center rounded focus:outline-none focus:border-primary font-semibold"
+              className="w-14 h-6 text-[11px] bg-yellow-50 border border-yellow-300 text-center rounded focus:outline-none focus:border-yellow-500 font-semibold text-yellow-900 transition-colors duration-150"
               value={commissionPct || ""}
               onChange={(e) => setCommissionPct(Number(e.target.value))}
             />
@@ -1807,7 +1911,7 @@ function CostSheetContent() {
             <input
               type="number"
               step="0.01"
-              className="w-14 h-6 text-[11px] bg-muted/30 border border-border text-center rounded focus:outline-none focus:border-primary font-semibold"
+              className="w-14 h-6 text-[11px] bg-yellow-50 border border-yellow-300 text-center rounded focus:outline-none focus:border-yellow-500 font-semibold text-yellow-900 transition-colors duration-150"
               value={(taxEdsPct * 100).toFixed(2)}
               onChange={(e) => setTaxEdsPct(Number(e.target.value) / 100)}
             />
@@ -1824,7 +1928,7 @@ function CostSheetContent() {
             <input
               type="number"
               step="0.01"
-              className="w-14 h-6 text-[11px] bg-muted/30 border border-border text-center rounded focus:outline-none focus:border-primary font-semibold"
+              className="w-14 h-6 text-[11px] bg-yellow-50 border border-yellow-300 text-center rounded focus:outline-none focus:border-yellow-500 font-semibold text-yellow-900 transition-colors duration-150"
               value={(inlandFreightPct * 100).toFixed(2)}
               onChange={(e) =>
                 setInlandFreightPct(Number(e.target.value) / 100)
@@ -1843,7 +1947,7 @@ function CostSheetContent() {
             <input
               type="number"
               step="0.01"
-              className="w-14 h-6 text-[11px] bg-muted/30 border border-border text-center rounded focus:outline-none focus:border-primary font-semibold"
+              className="w-14 h-6 text-[11px] bg-yellow-50 border border-yellow-300 text-center rounded focus:outline-none focus:border-yellow-500 font-semibold text-yellow-900 transition-colors duration-150"
               value={(localBankChargesPct * 100).toFixed(2)}
               onChange={(e) =>
                 setLocalBankChargesPct(Number(e.target.value) / 100)
