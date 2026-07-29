@@ -514,7 +514,7 @@ export default function StyleMasterPage() {
                     <Input
                       type="number"
                       step="0.01"
-                      value={formMeta.smvSewing}
+                      value={formMeta.smvSewing || ""}
                       onChange={(e) => setFormMeta({ ...formMeta, smvSewing: Number(e.target.value) })}
                     />
                   </div>
@@ -524,7 +524,7 @@ export default function StyleMasterPage() {
                     <Input
                       type="number"
                       step="0.01"
-                      value={formMeta.baseSellingPrice}
+                      value={formMeta.baseSellingPrice || ""}
                       onChange={(e) => setFormMeta({ ...formMeta, baseSellingPrice: Number(e.target.value) })}
                     />
                   </div>

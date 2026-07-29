@@ -263,8 +263,8 @@ function CostSheetContent() {
 
   // Order FOB / Quoted Price / Freight & Insurance inputs
   const [quotedPriceInput, setQuotedPriceInput] = useState<string>("");
-  const [intlFreight, setIntlFreight] = useState<string>("0");
-  const [intlInsurance, setIntlInsurance] = useState<string>("0");
+  const [intlFreight, setIntlFreight] = useState<string>("");
+  const [intlInsurance, setIntlInsurance] = useState<string>("");
 
   // Options lists (will subscribe to parameter dropdown-lists if exists)
   const [paymentTermsList, setPaymentTermsList] = useState([
@@ -530,9 +530,9 @@ function CostSheetContent() {
             sheet.intlFreight !== undefined ? sheet.intlFreight : 0;
           const iInsurance =
             sheet.intlInsurance !== undefined ? sheet.intlInsurance : 0;
-          setQuotedPriceInput(qPrice.toString());
-          setIntlFreight(iFreight.toString());
-          setIntlInsurance(iInsurance.toString());
+          setQuotedPriceInput(qPrice ? qPrice.toString() : "");
+          setIntlFreight(iFreight ? iFreight.toString() : "");
+          setIntlInsurance(iInsurance ? iInsurance.toString() : "");
 
           // Set editable style fields from loaded sheet
           setCustomerName(sheet.customerName || "Duer");
@@ -563,8 +563,8 @@ function CostSheetContent() {
     if (activeStyle && !costSheetIdParam) {
       Promise.resolve().then(() => {
         setQuotedPriceInput(activeStyle.baseSellingPrice.toString());
-        setIntlFreight("0");
-        setIntlInsurance("0");
+        setIntlFreight("");
+        setIntlInsurance("");
         setRejectionOverride("");
         setEfficiencyOverride("");
         setLineTargetOverride("");
@@ -1278,7 +1278,7 @@ function CostSheetContent() {
                 <Input
                   type="number"
                   className="h-7 text-xs border-blue-200 px-2 font-semibold"
-                  value={orderQuantity}
+                  value={orderQuantity || ""}
                   onChange={(e) => setOrderQuantity(Number(e.target.value))}
                 />
               </div>
@@ -1498,7 +1498,7 @@ function CostSheetContent() {
               <Input
                 type="number"
                 className="h-8 text-xs border-blue-200"
-                value={paritySale}
+                value={paritySale || ""}
                 onChange={(e) => setParitySale(Number(e.target.value))}
               />
             </div>
@@ -1509,7 +1509,7 @@ function CostSheetContent() {
               <Input
                 type="number"
                 className="h-8 text-xs border-blue-200"
-                value={parityProcurement}
+                value={parityProcurement || ""}
                 onChange={(e) => setParityProcurement(Number(e.target.value))}
               />
             </div>
@@ -1520,7 +1520,7 @@ function CostSheetContent() {
               <Input
                 type="number"
                 className="h-8 text-xs border-blue-200"
-                value={manpower}
+                value={manpower || ""}
                 onChange={(e) => setManpower(Number(e.target.value))}
               />
             </div>
@@ -1758,7 +1758,7 @@ function CostSheetContent() {
               type="number"
               step="0.01"
               className="w-14 h-6 text-[11px] bg-muted/30 border border-border text-center rounded focus:outline-none focus:border-primary font-semibold"
-              value={commissionPct}
+              value={commissionPct || ""}
               onChange={(e) => setCommissionPct(Number(e.target.value))}
             />
             <span className="text-muted-foreground">
@@ -1912,7 +1912,7 @@ function CostSheetContent() {
                         type="number"
                         step="0.01"
                         className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={rebatePct}
+                        value={rebatePct || ""}
                         onChange={(e) => setRebatePct(Number(e.target.value))}
                       />
                     </div>
@@ -1971,7 +1971,7 @@ function CostSheetContent() {
                       <input
                         type="number"
                         className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={paymentTermsDays}
+                        value={paymentTermsDays || ""}
                         onChange={(e) =>
                           setPaymentTermsDays(Number(e.target.value))
                         }
@@ -2003,7 +2003,7 @@ function CostSheetContent() {
                       <input
                         type="number"
                         className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={factoringDays}
+                        value={factoringDays || ""}
                         onChange={(e) =>
                           setFactoringDays(Number(e.target.value))
                         }
@@ -2029,7 +2029,7 @@ function CostSheetContent() {
                       <input
                         type="number"
                         className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={commissionPct}
+                        value={commissionPct || ""}
                         onChange={(e) =>
                           setCommissionPct(Number(e.target.value))
                         }
@@ -2056,7 +2056,7 @@ function CostSheetContent() {
                         type="number"
                         step="0.01"
                         className="w-12 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={foreignBankCharges}
+                        value={foreignBankCharges || ""}
                         onChange={(e) =>
                           setForeignBankCharges(Number(e.target.value))
                         }
