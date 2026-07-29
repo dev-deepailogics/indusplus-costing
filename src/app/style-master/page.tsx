@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, FileDown, Edit, Trash2, ArrowRight, X } from "lucide-react";
+import {
+  Plus,
+  Search,
+  FileDown,
+  Edit,
+  Trash2,
+  ArrowRight,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
@@ -26,7 +34,11 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { subscribeToStyles, saveStyle, deleteStyle } from "@/lib/style-master/firestore";
+import {
+  subscribeToStyles,
+  saveStyle,
+  deleteStyle,
+} from "@/lib/style-master/firestore";
 import type {
   StyleMasterItem,
   BOMFabricItem,
@@ -39,9 +51,29 @@ import { subscribeToTable } from "@/lib/parameters/firestore";
 import type { DropdownListsData } from "@/lib/parameters/types";
 
 // Default options if database list is empty
-const DEFAULT_CUSTOMERS = ["Duer", "Zara", "Mustang", "Miniconf", "Mohito", "Retrojeans"];
-const DEFAULT_CATEGORIES = ["Top Ware", "Men's Pant", "Ladies Pant", "Shorts", "Shirt"];
-const DEFAULT_WASHES = ["Rinse", "Dyeing", "Softner", "Stone Wash", "EW/Biopolish", "Silicon Ball"];
+const DEFAULT_CUSTOMERS = [
+  "Duer",
+  "Zara",
+  "Mustang",
+  "Miniconf",
+  "Mohito",
+  "Retrojeans",
+];
+const DEFAULT_CATEGORIES = [
+  "Top Ware",
+  "Men's Pant",
+  "Ladies Pant",
+  "Shorts",
+  "Shirt",
+];
+const DEFAULT_WASHES = [
+  "Rinse",
+  "Dyeing",
+  "Softner",
+  "Stone Wash",
+  "EW/Biopolish",
+  "Silicon Ball",
+];
 
 const DEFAULT_ACCESSORIES_TEMPLATES = [
   { category: "Zipper", itemName: "Zippers" },
@@ -56,9 +88,7 @@ const DEFAULT_ACCESSORIES_TEMPLATES = [
   { category: "Sticker", itemName: "Sticker" },
 ];
 
-const DEFAULT_CHEMICALS_TEMPLATES = [
-  { washItem: "Rinse" },
-];
+const DEFAULT_CHEMICALS_TEMPLATES = [{ washItem: "Rinse" }];
 
 const DEFAULT_SPECIAL_TEMPLATES = [
   { itemName: "Embroidery" },
@@ -67,49 +97,63 @@ const DEFAULT_SPECIAL_TEMPLATES = [
   { itemName: "Inspection Charges" },
 ];
 
-function mergeAccessories(existing: BOMAccessoriesItem[] | undefined): BOMAccessoriesItem[] {
+function mergeAccessories(
+  existing: BOMAccessoriesItem[] | undefined,
+): BOMAccessoriesItem[] {
   const list = [...(existing || [])];
-  DEFAULT_ACCESSORIES_TEMPLATES.forEach(tmpl => {
-    const hasCategory = list.some(item => item.category?.toLowerCase() === tmpl.category.toLowerCase());
+  DEFAULT_ACCESSORIES_TEMPLATES.forEach((tmpl) => {
+    const hasCategory = list.some(
+      (item) => item.category?.toLowerCase() === tmpl.category.toLowerCase(),
+    );
     if (!hasCategory) {
       list.push({
         category: tmpl.category,
         itemName: tmpl.itemName,
         consPerPc: 0,
         ratePKR: 0,
-        totalCostPKR: 0
+        totalCostPKR: 0,
       });
     }
   });
   return list;
 }
 
-function mergeChemicals(existing: BOMChemicalsItem[] | undefined): BOMChemicalsItem[] {
+function mergeChemicals(
+  existing: BOMChemicalsItem[] | undefined,
+): BOMChemicalsItem[] {
   const list = [...(existing || [])];
-  DEFAULT_CHEMICALS_TEMPLATES.forEach(tmpl => {
-    const hasItem = list.some(item => item.washItem?.toLowerCase() === tmpl.washItem.toLowerCase());
+  DEFAULT_CHEMICALS_TEMPLATES.forEach((tmpl) => {
+    const hasItem = list.some(
+      (item) => item.washItem?.toLowerCase() === tmpl.washItem.toLowerCase(),
+    );
     if (!hasItem) {
       list.push({
         washItem: tmpl.washItem,
         consPerPc: 0,
         ratePKR: 0,
-        totalCostPKR: 0
+        totalCostPKR: 0,
       });
     }
   });
   return list;
 }
 
-function mergeSpecialCharges(existing: BOMSpecialChargesItem[] | undefined): BOMSpecialChargesItem[] {
+function mergeSpecialCharges(
+  existing: BOMSpecialChargesItem[] | undefined,
+): BOMSpecialChargesItem[] {
   const list = [...(existing || [])];
-  DEFAULT_SPECIAL_TEMPLATES.forEach(tmpl => {
-    const hasItem = list.some(item => item.itemName?.toLowerCase().replace(/\s+/g, "") === tmpl.itemName.toLowerCase().replace(/\s+/g, ""));
+  DEFAULT_SPECIAL_TEMPLATES.forEach((tmpl) => {
+    const hasItem = list.some(
+      (item) =>
+        item.itemName?.toLowerCase().replace(/\s+/g, "") ===
+        tmpl.itemName.toLowerCase().replace(/\s+/g, ""),
+    );
     if (!hasItem) {
       list.push({
         itemName: tmpl.itemName,
         consPerPc: 0,
         ratePKR: 0,
-        totalCostPKR: 0
+        totalCostPKR: 0,
       });
     }
   });
@@ -123,7 +167,9 @@ export default function StyleMasterPage() {
   const [search, setSearch] = useState("");
   // Dialog State
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingStyle, setEditingStyle] = useState<StyleMasterItem | null>(null);
+  const [editingStyle, setEditingStyle] = useState<StyleMasterItem | null>(
+    null,
+  );
 
   // Exchange rate helper
   const DEFAULT_PARITY = 278;
@@ -152,9 +198,13 @@ export default function StyleMasterPage() {
 
   const [formFabric, setFormFabric] = useState<BOMFabricItem[]>([]);
   const [formLining, setFormLining] = useState<BOMLiningItem[]>([]);
-  const [formAccessories, setFormAccessories] = useState<BOMAccessoriesItem[]>([]);
+  const [formAccessories, setFormAccessories] = useState<BOMAccessoriesItem[]>(
+    [],
+  );
   const [formChemicals, setFormChemicals] = useState<BOMChemicalsItem[]>([]);
-  const [formSpecialCharges, setFormSpecialCharges] = useState<BOMSpecialChargesItem[]>([]);
+  const [formSpecialCharges, setFormSpecialCharges] = useState<
+    BOMSpecialChargesItem[]
+  >([]);
 
   // Setup Form when Editing
   function openEditDialog(style: StyleMasterItem | null) {
@@ -214,8 +264,24 @@ export default function StyleMasterPage() {
         baseSellingPrice: 10,
       });
       // Initial items
-      setFormFabric(Array.from({ length: 5 }, (_, i) => ({ itemName: `Fabric ${i+1}`, consumptionPerPc: 0, rateUSD: 0, ratePKR: 0, fabricCostPKR: 0 })));
-      setFormLining(Array.from({ length: 5 }, (_, i) => ({ itemName: `Lining ${i+1}`, consumptionPerPc: 0, rateUSD: 0, ratePKR: 0, liningCostPKR: 0 })));
+      setFormFabric(
+        Array.from({ length: 5 }, (_, i) => ({
+          itemName: `Fabric ${i + 1}`,
+          consumptionPerPc: 0,
+          rateUSD: 0,
+          ratePKR: 0,
+          fabricCostPKR: 0,
+        })),
+      );
+      setFormLining(
+        Array.from({ length: 5 }, (_, i) => ({
+          itemName: `Lining ${i + 1}`,
+          consumptionPerPc: 0,
+          rateUSD: 0,
+          ratePKR: 0,
+          liningCostPKR: 0,
+        })),
+      );
       setFormAccessories(mergeAccessories([]));
       setFormChemicals(mergeChemicals([]));
       setFormSpecialCharges(mergeSpecialCharges([]));
@@ -255,8 +321,12 @@ export default function StyleMasterPage() {
       washType: editingStyle?.washType || "Rinse",
       orderQuantity: editingStyle?.orderQuantity || qty,
       sizeBracket: calculatedBracket,
-      bomFabric: formFabric.filter((f) => f.consumptionPerPc > 0 || f.rateUSD > 0),
-      bomLining: formLining.filter((l) => l.consumptionPerPc > 0 || l.rateUSD > 0),
+      bomFabric: formFabric.filter(
+        (f) => f.consumptionPerPc > 0 || f.rateUSD > 0,
+      ),
+      bomLining: formLining.filter(
+        (l) => l.consumptionPerPc > 0 || l.rateUSD > 0,
+      ),
       bomAccessories: formAccessories,
       bomChemicals: formChemicals,
       bomSpecialCharges: formSpecialCharges,
@@ -264,7 +334,11 @@ export default function StyleMasterPage() {
 
     try {
       await saveStyle(styleItem);
-      toast.success(editingStyle ? "Style updated successfully" : "New Style added successfully");
+      toast.success(
+        editingStyle
+          ? "Style updated successfully"
+          : "New Style added successfully",
+      );
       setDialogOpen(false);
     } catch (e) {
       console.error(e);
@@ -329,7 +403,8 @@ export default function StyleMasterPage() {
         const workbook = XLSX.read(bstr, { type: "binary" });
         const wsname = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[wsname];
-        const importedData = XLSX.utils.sheet_to_json<ImportedStyleRow>(worksheet);
+        const importedData =
+          XLSX.utils.sheet_to_json<ImportedStyleRow>(worksheet);
 
         for (const row of importedData) {
           const qty = 1000;
@@ -365,8 +440,10 @@ export default function StyleMasterPage() {
 
   // Filter and Search logic
   const filteredStyles = styles.filter((s) => {
-    return s.id.toLowerCase().includes(search.toLowerCase()) ||
-      s.styleName.toLowerCase().includes(search.toLowerCase());
+    return (
+      s.id.toLowerCase().includes(search.toLowerCase()) ||
+      s.styleName.toLowerCase().includes(search.toLowerCase())
+    );
   });
 
   return (
@@ -375,14 +452,24 @@ export default function StyleMasterPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Style Master</h1>
           <p className="text-sm text-muted-foreground">
-            Central repository for apparel style metadata, BOM, SAM/SMV, and target pricing.
+            Central repository for apparel style metadata, BOM, SAM/SMV, and
+            target pricing.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={handleExport} className="h-9">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            className="h-9"
+          >
             <FileDown className="mr-1.5 size-4" /> Export
           </Button>
-          <Button size="sm" onClick={() => openEditDialog(null)} className="h-9">
+          <Button
+            size="sm"
+            onClick={() => openEditDialog(null)}
+            className="h-9"
+          >
             <Plus className="mr-1.5 size-4" /> Add Style
           </Button>
         </div>
@@ -408,25 +495,43 @@ export default function StyleMasterPage() {
       <Card className="shadow-md border-muted/60">
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">Loading styles…</div>
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              Loading styles…
+            </div>
           ) : filteredStyles.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">No styles found.</div>
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              No styles found.
+            </div>
           ) : (
             <Table>
               <TableHeader className="bg-muted/40">
                 <TableRow>
-                  <TableHead className="font-semibold text-foreground">Style ID</TableHead>
-                  <TableHead className="font-semibold text-foreground">Style Name</TableHead>
-                  <TableHead className="font-semibold text-foreground">SMV Sewing</TableHead>
-                  <TableHead className="font-semibold text-foreground">Target FOB ($)</TableHead>
-                  <TableHead className="text-right font-semibold text-foreground">Actions</TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Style ID
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Style Name
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    SMV Sewing
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Target FOB ($)
+                  </TableHead>
+                  <TableHead className="text-right font-semibold text-foreground">
+                    Actions
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredStyles.map((style) => (
                   <TableRow key={style.id} className="hover:bg-muted/20">
-                    <TableCell className="font-medium text-primary">{style.id}</TableCell>
-                    <TableCell className="font-medium">{style.styleName}</TableCell>
+                    <TableCell className="font-medium text-primary">
+                      {style.id}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {style.styleName}
+                    </TableCell>
                     <TableCell>{style.smvSewing}</TableCell>
                     <TableCell>${style.baseSellingPrice.toFixed(2)}</TableCell>
                     <TableCell className="text-right">
@@ -435,7 +540,9 @@ export default function StyleMasterPage() {
                           variant="outline"
                           size="icon"
                           className="size-8 text-blue-600 border-blue-200 bg-blue-50/50 hover:bg-blue-50"
-                          onClick={() => router.push(`/cost-sheet?styleId=${style.id}`)}
+                          onClick={() =>
+                            router.push(`/cost-sheet?styleId=${style.id}`)
+                          }
                           title="Pull to Cost Sheet"
                         >
                           <ArrowRight className="size-4" />
@@ -473,18 +580,51 @@ export default function StyleMasterPage() {
         <DialogContent className="sm:max-w-4xl max-h-[85vh] w-full flex flex-col p-0">
           <DialogHeader className="px-6 pt-5 pb-2 border-b">
             <DialogTitle className="text-lg font-semibold flex items-center justify-between">
-              <span>{editingStyle ? "Edit Apparel Style" : "Add New Apparel Style"}</span>
+              <span>
+                {editingStyle ? "Edit Apparel Style" : "Add New Apparel Style"}
+              </span>
             </DialogTitle>
           </DialogHeader>
 
-          <Tabs defaultValue="meta" className="flex-1 overflow-hidden flex flex-col">
+          <Tabs
+            defaultValue="meta"
+            className="flex-1 overflow-hidden flex flex-col"
+          >
             <div className="px-6 border-b bg-muted/20">
-              <TabsList variant="line" className="h-12 w-full justify-start gap-4 p-0">
-                <TabsTrigger value="meta" className="px-1 py-3 text-sm font-semibold">General Meta</TabsTrigger>
-                <TabsTrigger value="fabric" className="px-1 py-3 text-sm font-semibold">Fabric BOM</TabsTrigger>
-                <TabsTrigger value="lining" className="px-1 py-3 text-sm font-semibold">Lining BOM</TabsTrigger>
-                <TabsTrigger value="accessories" className="px-1 py-3 text-sm font-semibold">Accessories</TabsTrigger>
-                <TabsTrigger value="charges" className="px-1 py-3 text-sm font-semibold">Chem & Others</TabsTrigger>
+              <TabsList
+                variant="line"
+                className="h-12 w-full justify-start gap-4 p-0"
+              >
+                <TabsTrigger
+                  value="meta"
+                  className="px-1 py-3 text-sm font-semibold"
+                >
+                  General Meta
+                </TabsTrigger>
+                <TabsTrigger
+                  value="fabric"
+                  className="px-1 py-3 text-sm font-semibold"
+                >
+                  Fabric BOM
+                </TabsTrigger>
+                <TabsTrigger
+                  value="lining"
+                  className="px-1 py-3 text-sm font-semibold"
+                >
+                  Lining BOM
+                </TabsTrigger>
+                <TabsTrigger
+                  value="accessories"
+                  className="px-1 py-3 text-sm font-semibold"
+                >
+                  Accessories
+                </TabsTrigger>
+                <TabsTrigger
+                  value="charges"
+                  className="px-1 py-3 text-sm font-semibold"
+                >
+                  Chem & Others
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -493,39 +633,61 @@ export default function StyleMasterPage() {
               <TabsContent value="meta" className="m-0 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-muted-foreground">Style ID *</label>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Style ID *
+                    </label>
                     <Input
                       disabled={editingStyle !== null}
                       value={formMeta.id}
-                      onChange={(e) => setFormMeta({ ...formMeta, id: e.target.value })}
+                      onChange={(e) =>
+                        setFormMeta({ ...formMeta, id: e.target.value })
+                      }
                       placeholder="e.g. STY-001"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-muted-foreground">Style Name *</label>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Style Name *
+                    </label>
                     <Input
                       value={formMeta.styleName}
-                      onChange={(e) => setFormMeta({ ...formMeta, styleName: e.target.value })}
+                      onChange={(e) =>
+                        setFormMeta({ ...formMeta, styleName: e.target.value })
+                      }
                       placeholder="e.g. TR 298 VITA"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-muted-foreground">SMV Sewing (SAM)</label>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      SMV Sewing (SAM)
+                    </label>
                     <Input
                       type="number"
                       step="0.01"
                       value={formMeta.smvSewing || ""}
-                      onChange={(e) => setFormMeta({ ...formMeta, smvSewing: Number(e.target.value) })}
+                      onChange={(e) =>
+                        setFormMeta({
+                          ...formMeta,
+                          smvSewing: Number(e.target.value),
+                        })
+                      }
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-muted-foreground">Base Selling Price ($)</label>
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Order FOB
+                    </label>
                     <Input
                       type="number"
                       step="0.01"
                       value={formMeta.baseSellingPrice || ""}
-                      onChange={(e) => setFormMeta({ ...formMeta, baseSellingPrice: Number(e.target.value) })}
+                      onChange={(e) =>
+                        setFormMeta({
+                          ...formMeta,
+                          baseSellingPrice: Number(e.target.value),
+                        })
+                      }
                     />
                   </div>
                 </div>
@@ -533,16 +695,23 @@ export default function StyleMasterPage() {
 
               {/* FABRIC TAB */}
               <TabsContent value="fabric" className="m-0 space-y-3">
-                <p className="text-xs text-muted-foreground mb-2">Configure Fabric requirements (rates in USD. Conversion default is {DEFAULT_PARITY} PKR/$).</p>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Configure Fabric requirements (rates in USD. Conversion
+                  default is {DEFAULT_PARITY} PKR/$).
+                </p>
                 <div className="rounded-lg border">
                   <Table>
                     <TableHeader className="bg-muted/40">
                       <TableRow>
                         <TableHead>Fabric Item Name</TableHead>
-                        <TableHead className="w-24">Consumption (Mtr)</TableHead>
+                        <TableHead className="w-24">
+                          Consumption (Mtr)
+                        </TableHead>
                         <TableHead className="w-28">Rate (USD)</TableHead>
                         <TableHead className="w-32">Rate (PKR)</TableHead>
-                        <TableHead className="w-32">Fabric Cost (PKR)</TableHead>
+                        <TableHead className="w-32">
+                          Fabric Cost (PKR)
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -567,7 +736,8 @@ export default function StyleMasterPage() {
                                 const cons = Number(e.target.value);
                                 const newFab = [...formFabric];
                                 newFab[idx].consumptionPerPc = cons;
-                                newFab[idx].fabricCostPKR = cons * newFab[idx].ratePKR;
+                                newFab[idx].fabricCostPKR =
+                                  cons * newFab[idx].ratePKR;
                                 setFormFabric(newFab);
                               }}
                             />
@@ -583,7 +753,8 @@ export default function StyleMasterPage() {
                                 const newFab = [...formFabric];
                                 newFab[idx].rateUSD = rateUSD;
                                 newFab[idx].ratePKR = ratePKR;
-                                newFab[idx].fabricCostPKR = newFab[idx].consumptionPerPc * ratePKR;
+                                newFab[idx].fabricCostPKR =
+                                  newFab[idx].consumptionPerPc * ratePKR;
                                 setFormFabric(newFab);
                               }}
                             />
@@ -597,7 +768,8 @@ export default function StyleMasterPage() {
                                 const newFab = [...formFabric];
                                 newFab[idx].ratePKR = ratePKR;
                                 newFab[idx].rateUSD = ratePKR / DEFAULT_PARITY;
-                                newFab[idx].fabricCostPKR = newFab[idx].consumptionPerPc * ratePKR;
+                                newFab[idx].fabricCostPKR =
+                                  newFab[idx].consumptionPerPc * ratePKR;
                                 setFormFabric(newFab);
                               }}
                             />
@@ -614,13 +786,18 @@ export default function StyleMasterPage() {
 
               {/* LINING TAB */}
               <TabsContent value="lining" className="m-0 space-y-3">
-                <p className="text-xs text-muted-foreground mb-2">Configure Pocket Lining requirements (rates in USD. Conversion default is {DEFAULT_PARITY} PKR/$).</p>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Configure Pocket Lining requirements (rates in USD. Conversion
+                  default is {DEFAULT_PARITY} PKR/$).
+                </p>
                 <div className="rounded-lg border">
                   <Table>
                     <TableHeader className="bg-muted/40">
                       <TableRow>
                         <TableHead>Lining Item Name</TableHead>
-                        <TableHead className="w-24">Consumption (Mtr)</TableHead>
+                        <TableHead className="w-24">
+                          Consumption (Mtr)
+                        </TableHead>
                         <TableHead className="w-28">Rate (USD)</TableHead>
                         <TableHead className="w-32">Rate (PKR)</TableHead>
                         <TableHead className="w-32">Cost (PKR)</TableHead>
@@ -648,7 +825,8 @@ export default function StyleMasterPage() {
                                 const cons = Number(e.target.value);
                                 const newLin = [...formLining];
                                 newLin[idx].consumptionPerPc = cons;
-                                newLin[idx].liningCostPKR = cons * newLin[idx].ratePKR;
+                                newLin[idx].liningCostPKR =
+                                  cons * newLin[idx].ratePKR;
                                 setFormLining(newLin);
                               }}
                             />
@@ -664,7 +842,8 @@ export default function StyleMasterPage() {
                                 const newLin = [...formLining];
                                 newLin[idx].rateUSD = rateUSD;
                                 newLin[idx].ratePKR = ratePKR;
-                                newLin[idx].liningCostPKR = newLin[idx].consumptionPerPc * ratePKR;
+                                newLin[idx].liningCostPKR =
+                                  newLin[idx].consumptionPerPc * ratePKR;
                                 setFormLining(newLin);
                               }}
                             />
@@ -678,7 +857,8 @@ export default function StyleMasterPage() {
                                 const newLin = [...formLining];
                                 newLin[idx].ratePKR = ratePKR;
                                 newLin[idx].rateUSD = ratePKR / DEFAULT_PARITY;
-                                newLin[idx].liningCostPKR = newLin[idx].consumptionPerPc * ratePKR;
+                                newLin[idx].liningCostPKR =
+                                  newLin[idx].consumptionPerPc * ratePKR;
                                 setFormLining(newLin);
                               }}
                             />
@@ -695,7 +875,9 @@ export default function StyleMasterPage() {
 
               {/* ACCESSORIES TAB */}
               <TabsContent value="accessories" className="m-0 space-y-3">
-                <p className="text-xs text-muted-foreground mb-2">Configure Accessories (rates in PKR directly).</p>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Configure Accessories (rates in PKR directly).
+                </p>
                 <div className="rounded-lg border max-h-[300px] overflow-auto">
                   <Table>
                     <TableHeader className="bg-muted/40 sticky top-0 z-10">
@@ -717,7 +899,8 @@ export default function StyleMasterPage() {
                               value={item.category}
                               onChange={(e) => {
                                 const nextAcc = [...formAccessories];
-                                nextAcc[idx].category = e.target.value as BOMAccessoriesItem["category"];
+                                nextAcc[idx].category = e.target
+                                  .value as BOMAccessoriesItem["category"];
                                 setFormAccessories(nextAcc);
                               }}
                             >
@@ -753,7 +936,8 @@ export default function StyleMasterPage() {
                                 const cons = Number(e.target.value);
                                 const nextAcc = [...formAccessories];
                                 nextAcc[idx].consPerPc = cons;
-                                nextAcc[idx].totalCostPKR = cons * nextAcc[idx].ratePKR;
+                                nextAcc[idx].totalCostPKR =
+                                  cons * nextAcc[idx].ratePKR;
                                 setFormAccessories(nextAcc);
                               }}
                             />
@@ -767,7 +951,8 @@ export default function StyleMasterPage() {
                                 const rate = Number(e.target.value);
                                 const nextAcc = [...formAccessories];
                                 nextAcc[idx].ratePKR = rate;
-                                nextAcc[idx].totalCostPKR = nextAcc[idx].consPerPc * rate;
+                                nextAcc[idx].totalCostPKR =
+                                  nextAcc[idx].consPerPc * rate;
                                 setFormAccessories(nextAcc);
                               }}
                             />
@@ -780,7 +965,11 @@ export default function StyleMasterPage() {
                               variant="ghost"
                               size="icon"
                               className="size-6 text-destructive"
-                              onClick={() => setFormAccessories(formAccessories.filter((_, i) => i !== idx))}
+                              onClick={() =>
+                                setFormAccessories(
+                                  formAccessories.filter((_, i) => i !== idx),
+                                )
+                              }
                             >
                               <X className="size-3.5" />
                             </Button>
@@ -796,7 +985,13 @@ export default function StyleMasterPage() {
                   onClick={() =>
                     setFormAccessories([
                       ...formAccessories,
-                      { category: "Trims", itemName: "New Trim", consPerPc: 1, ratePKR: 0, totalCostPKR: 0 },
+                      {
+                        category: "Trims",
+                        itemName: "New Trim",
+                        consPerPc: 1,
+                        ratePKR: 0,
+                        totalCostPKR: 0,
+                      },
                     ])
                   }
                 >
@@ -807,7 +1002,9 @@ export default function StyleMasterPage() {
               {/* CHEMICAL & SPECIAL CHARGES TAB */}
               <TabsContent value="charges" className="m-0 space-y-6">
                 <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Chemical / Wash Costs</h3>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                    Chemical / Wash Costs
+                  </h3>
                   <div className="rounded-lg border">
                     <Table>
                       <TableHeader className="bg-muted/40">
@@ -840,7 +1037,8 @@ export default function StyleMasterPage() {
                                   const cons = Number(e.target.value);
                                   const nextChem = [...formChemicals];
                                   nextChem[idx].consPerPc = cons;
-                                  nextChem[idx].totalCostPKR = cons * nextChem[idx].ratePKR;
+                                  nextChem[idx].totalCostPKR =
+                                    cons * nextChem[idx].ratePKR;
                                   setFormChemicals(nextChem);
                                 }}
                               />
@@ -853,7 +1051,8 @@ export default function StyleMasterPage() {
                                   const rate = Number(e.target.value);
                                   const nextChem = [...formChemicals];
                                   nextChem[idx].ratePKR = rate;
-                                  nextChem[idx].totalCostPKR = nextChem[idx].consPerPc * rate;
+                                  nextChem[idx].totalCostPKR =
+                                    nextChem[idx].consPerPc * rate;
                                   setFormChemicals(nextChem);
                                 }}
                               />
@@ -869,7 +1068,9 @@ export default function StyleMasterPage() {
                 </div>
 
                 <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Special Charges (Embroidery, Print, Testing, etc.)</h3>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                    Special Charges (Embroidery, Print, Testing, etc.)
+                  </h3>
                   <div className="rounded-lg border">
                     <Table>
                       <TableHeader className="bg-muted/40">
@@ -895,7 +1096,8 @@ export default function StyleMasterPage() {
                                   const cons = Number(e.target.value);
                                   const nextChg = [...formSpecialCharges];
                                   nextChg[idx].consPerPc = cons;
-                                  nextChg[idx].totalCostPKR = cons * nextChg[idx].ratePKR;
+                                  nextChg[idx].totalCostPKR =
+                                    cons * nextChg[idx].ratePKR;
                                   setFormSpecialCharges(nextChg);
                                 }}
                               />
@@ -908,7 +1110,8 @@ export default function StyleMasterPage() {
                                   const rate = Number(e.target.value);
                                   const nextChg = [...formSpecialCharges];
                                   nextChg[idx].ratePKR = rate;
-                                  nextChg[idx].totalCostPKR = nextChg[idx].consPerPc * rate;
+                                  nextChg[idx].totalCostPKR =
+                                    nextChg[idx].consPerPc * rate;
                                   setFormSpecialCharges(nextChg);
                                 }}
                               />
@@ -926,7 +1129,9 @@ export default function StyleMasterPage() {
             </div>
 
             <div className="px-6 py-4 border-t bg-muted/20 flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
               <Button onClick={handleSave}>Save Style</Button>
             </div>
           </Tabs>

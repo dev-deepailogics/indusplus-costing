@@ -4,7 +4,15 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { Search, FileDown, Trash2, ArrowRight, Calendar, User, ShoppingBag } from "lucide-react";
+import {
+  Search,
+  FileDown,
+  Trash2,
+  ArrowRight,
+  Calendar,
+  User,
+  ShoppingBag,
+} from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,7 +27,10 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
-import { subscribeToCostSheets, deleteCostSheet } from "@/lib/cost-sheet/firestore";
+import {
+  subscribeToCostSheets,
+  deleteCostSheet,
+} from "@/lib/cost-sheet/firestore";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 
 export default function SavedCostSheetsPage() {
@@ -43,7 +54,11 @@ export default function SavedCostSheetsPage() {
   // Delete cost sheet
   async function handleDelete(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    if (confirm("Are you sure you want to permanently delete this costing snapshot?")) {
+    if (
+      confirm(
+        "Are you sure you want to permanently delete this costing snapshot?",
+      )
+    ) {
       try {
         await deleteCostSheet(id);
         toast.success("Costing snapshot deleted");
@@ -60,12 +75,12 @@ export default function SavedCostSheetsPage() {
       "Scenario Reference": s.referenceName,
       "Style ID": s.styleId,
       "Style Name": s.styleName,
-      "Customer": s.customerName,
-      "Category": s.styleCategory,
+      Customer: s.customerName,
+      Category: s.styleCategory,
       "Quantity (Pcs)": s.orderQuantity,
       "Costing Date": s.costingDate,
       "Costing Stage": s.costingStage,
-      "Country": s.country,
+      Country: s.country,
       "Payment Terms": s.paymentTerms,
       "Order FOB ($)": s.orderFOB,
       "EBITDA / Min (Cents)": s.calculations.ebitdaMinCents,
@@ -82,7 +97,9 @@ export default function SavedCostSheetsPage() {
   }
 
   // Derive filter list values
-  const uniqueCustomers = Array.from(new Set(costSheets.map((c) => c.customerName)));
+  const uniqueCustomers = Array.from(
+    new Set(costSheets.map((c) => c.customerName)),
+  );
 
   // Filter & Search Logic
   const filteredSheets = costSheets.filter((s) => {
@@ -91,10 +108,12 @@ export default function SavedCostSheetsPage() {
       s.styleId.toLowerCase().includes(search.toLowerCase()) ||
       s.styleName.toLowerCase().includes(search.toLowerCase()) ||
       s.id.toLowerCase().includes(search.toLowerCase());
-    
-    const matchesCustomer = customerFilter === "all" || s.customerName === customerFilter;
-    const matchesStage = stageFilter === "all" || s.costingStage === stageFilter;
-    
+
+    const matchesCustomer =
+      customerFilter === "all" || s.customerName === customerFilter;
+    const matchesStage =
+      stageFilter === "all" || s.costingStage === stageFilter;
+
     return matchesSearch && matchesCustomer && matchesStage;
   });
 
@@ -102,13 +121,22 @@ export default function SavedCostSheetsPage() {
     <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Saved Cost Sheets</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Saved Cost Sheets
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Directory of saved pre-order costing runs, run calculations, and custom scenario snapshots.
+            Directory of saved pre-order costing runs, run calculations, and
+            custom scenario snapshots.
           </p>
         </div>
         <div>
-          <Button variant="outline" size="sm" onClick={handleExport} className="h-9" disabled={filteredSheets.length === 0}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            className="h-9"
+            disabled={filteredSheets.length === 0}
+          >
             <FileDown className="mr-1.5 size-4" /> Export History
           </Button>
         </div>
@@ -135,7 +163,9 @@ export default function SavedCostSheetsPage() {
             >
               <option value="all">All Customers</option>
               {uniqueCustomers.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c}>
+                  {c}
+                </option>
               ))}
             </select>
             <select
@@ -155,27 +185,53 @@ export default function SavedCostSheetsPage() {
       <Card className="shadow-md border-muted/60">
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-8 text-center text-sm text-muted-foreground font-medium">Loading saved runs...</div>
+            <div className="p-8 text-center text-sm text-muted-foreground font-medium">
+              Loading saved runs...
+            </div>
           ) : filteredSheets.length === 0 ? (
             <div className="p-10 text-center text-sm text-muted-foreground flex flex-col items-center justify-center gap-2">
               <ShoppingBag className="size-8 text-muted-foreground/60" />
-              <span>No costing snapshots found. Go to the Calculator to save a run.</span>
+              <span>
+                No costing snapshots found. Go to the Calculator to save a run.
+              </span>
             </div>
           ) : (
             <Table>
               <TableHeader className="bg-muted/40">
                 <TableRow>
-                  <TableHead className="font-semibold text-foreground w-40">Cost Sheet ID</TableHead>
-                  <TableHead className="font-semibold text-foreground">Scenario Name</TableHead>
-                  <TableHead className="font-semibold text-foreground">Style ID & Name</TableHead>
-                  <TableHead className="font-semibold text-foreground">Customer</TableHead>
-                  <TableHead className="font-semibold text-foreground">Order Qty</TableHead>
-                  <TableHead className="font-semibold text-foreground">Order FOB</TableHead>
-                  <TableHead className="font-semibold text-foreground">Stage</TableHead>
-                  <TableHead className="font-semibold text-foreground text-right">EBITDA / Min</TableHead>
-                  <TableHead className="font-semibold text-foreground text-right">Net Profit/Pc</TableHead>
-                  <TableHead className="font-semibold text-foreground text-right">Net Profit %</TableHead>
-                  <TableHead className="font-semibold text-foreground text-right w-24">Actions</TableHead>
+                  <TableHead className="font-semibold text-foreground w-40">
+                    Cost Sheet ID
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Scenario Name
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Style ID & Name
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Customer
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Order Qty
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Order FOB
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Stage
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground text-right">
+                    EBITDA / Min
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground text-right">
+                    Net Profit/Pc
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground text-right">
+                    Net Profit %
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground text-right w-24">
+                    Actions
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -183,7 +239,13 @@ export default function SavedCostSheetsPage() {
                   const profitPct = sheet.calculations.netProfitPct * 100;
                   const isProfitPositive = profitPct >= 0;
                   return (
-                    <TableRow key={sheet.id} className="hover:bg-muted/20 cursor-pointer" onClick={() => router.push(`/cost-sheet?costSheetId=${sheet.id}`)}>
+                    <TableRow
+                      key={sheet.id}
+                      className="hover:bg-muted/20 cursor-pointer"
+                      onClick={() =>
+                        router.push(`/cost-sheet?costSheetId=${sheet.id}`)
+                      }
+                    >
                       <TableCell className="font-mono text-xs font-semibold text-primary">
                         {sheet.id}
                       </TableCell>
@@ -191,8 +253,12 @@ export default function SavedCostSheetsPage() {
                         {sheet.referenceName}
                       </TableCell>
                       <TableCell className="text-xs">
-                        <span className="font-semibold text-primary block">{sheet.styleId}</span>
-                        <span className="text-muted-foreground">{sheet.styleName}</span>
+                        <span className="font-semibold text-primary block">
+                          {sheet.styleId}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {sheet.styleName}
+                        </span>
                       </TableCell>
                       <TableCell className="text-xs font-medium">
                         {sheet.customerName}
@@ -204,26 +270,42 @@ export default function SavedCostSheetsPage() {
                         ${sheet.orderFOB.toFixed(2)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={sheet.costingStage === "Final" ? "secondary" : "outline"} className="text-[10px] font-bold">
+                        <Badge
+                          variant={
+                            sheet.costingStage === "Final"
+                              ? "secondary"
+                              : "outline"
+                          }
+                          className="text-[10px] font-bold"
+                        >
                           {sheet.costingStage}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right text-xs font-semibold">
                         {sheet.calculations.ebitdaMinCents.toFixed(2)}¢
                       </TableCell>
-                      <TableCell className={`text-right text-xs font-bold ${isProfitPositive ? "text-emerald-700" : "text-red-600"}`}>
+                      <TableCell
+                        className={`text-right text-xs font-bold ${isProfitPositive ? "text-emerald-700" : "text-red-600"}`}
+                      >
                         ${sheet.calculations.netProfitUSD.toFixed(2)}
                       </TableCell>
-                      <TableCell className={`text-right text-xs font-extrabold ${isProfitPositive ? "text-emerald-700" : "text-red-600"}`}>
+                      <TableCell
+                        className={`text-right text-xs font-extrabold ${isProfitPositive ? "text-emerald-700" : "text-red-600"}`}
+                      >
                         {profitPct.toFixed(2)}%
                       </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                      <TableCell
+                        className="text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <div className="flex justify-end gap-1">
                           <Button
                             variant="outline"
                             size="icon"
                             className="size-7 text-blue-600 border-blue-200 bg-blue-50/50 hover:bg-blue-50"
-                            onClick={() => router.push(`/cost-sheet?costSheetId=${sheet.id}`)}
+                            onClick={() =>
+                              router.push(`/cost-sheet?costSheetId=${sheet.id}`)
+                            }
                             title="Load in Calculator"
                           >
                             <ArrowRight className="size-3.5" />
@@ -233,7 +315,7 @@ export default function SavedCostSheetsPage() {
                             size="icon"
                             className="size-7 text-destructive border-destructive/20 hover:bg-destructive/5"
                             onClick={(e) => handleDelete(sheet.id, e)}
-                            title="Delete Snapshot"
+                            title="Delete"
                           >
                             <Trash2 className="size-3.5" />
                           </Button>

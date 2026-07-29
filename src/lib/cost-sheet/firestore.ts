@@ -4,6 +4,19 @@ import type { SavedCostSheetItem } from "./types";
 
 const COLLECTION = "pre_order_cost_sheets";
 
+// Next sequential cost sheet ID for a style, e.g. PCS-STY-001-0001, -0002, ...
+export async function getNextCostSheetId(styleId: string): Promise<string> {
+  const prefix = `PCS-${styleId}-`;
+  const snap = await getDocs(collection(db, COLLECTION));
+  let maxSeq = 0;
+  snap.forEach((d) => {
+    if (!d.id.startsWith(prefix)) return;
+    const seq = parseInt(d.id.slice(prefix.length), 10);
+    if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+  });
+  return `${prefix}${String(maxSeq + 1).padStart(4, "0")}`;
+}
+
 // Subscribe to real-time updates for saved cost sheets
 export function subscribeToCostSheets(callback: (items: SavedCostSheetItem[]) => void) {
   const colRef = collection(db, COLLECTION);

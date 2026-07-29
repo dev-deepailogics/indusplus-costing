@@ -7,9 +7,10 @@ import {
   Save,
   RefreshCw,
   Layers,
-  Calculator, Info,
+  Calculator,
+  Info,
   Copy,
-  Printer
+  Printer,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,7 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-import { getCostSheetById, saveCostSheet } from "@/lib/cost-sheet/firestore";
+import { getCostSheetById, getNextCostSheetId, saveCostSheet } from "@/lib/cost-sheet/firestore";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 import {
   Table,
@@ -52,9 +53,7 @@ import type {
   GridCardListData,
 } from "@/lib/parameters/types";
 import { getActiveCard } from "@/lib/parameters/types";
-import {
-  runFormulaEngine
-} from "@/lib/cost-sheet/formula-engine";
+import { runFormulaEngine } from "@/lib/cost-sheet/formula-engine";
 
 export default function CostSheetPage() {
   return (
@@ -68,11 +67,6 @@ export default function CostSheetPage() {
       <CostSheetContent />
     </Suspense>
   );
-}
-
-// Helper to generate a unique cost sheet ID. Placed outside component to prevent purity rules violation in React Compiler.
-function generateCostSheetId(styleId: string): string {
-  return `PCS-${styleId}-${Date.now().toString().slice(-4)}`;
 }
 
 const CUSTOM_STYLE: StyleMasterItem = {
@@ -188,6 +182,7 @@ function CostSheetContent() {
     useState<SavedCostSheetItem | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [newSnapshotName, setNewSnapshotName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   // Subscribed Database Data
   const [styles, setStyles] = useState<StyleMasterItem[]>([]);
@@ -230,6 +225,7 @@ function CostSheetContent() {
   const [smvSewingInput, setSmvSewingInput] = useState<string>("");
   const [noOfColors, setNoOfColors] = useState<number>(1);
   const [merchGroup, setMerchGroup] = useState<string>("Ayaz");
+  const [workOrderNumber, setWorkOrderNumber] = useState<string>("");
   const [deliveryDestination, setDeliveryDestination] =
     useState<string>("EURO");
   const [exFactoryDate, setExFactoryDate] = useState<string>(() => {
@@ -536,9 +532,14 @@ function CostSheetContent() {
           setWashType(sheet.washType || "Rinse");
           setOrderQuantity(sheet.orderQuantity || 1000);
           setOrderType((sheet.orderType || "Denim") as "Denim" | "Non Denim");
-          setSmvSewingInput(sheet.smvSewing !== undefined ? sheet.smvSewing.toString() : (styleFromSheet.smvSewing?.toString() || "15"));
+          setSmvSewingInput(
+            sheet.smvSewing !== undefined
+              ? sheet.smvSewing.toString()
+              : styleFromSheet.smvSewing?.toString() || "15",
+          );
           setNoOfColors(sheet.noOfColors !== undefined ? sheet.noOfColors : 1);
           setMerchGroup(sheet.merchGroup || "Ayaz");
+          setWorkOrderNumber(sheet.workOrderNumber || "");
           setDeliveryDestination(sheet.deliveryDestination || "EURO");
           setExFactoryDate(
             sheet.exFactoryDate || new Date().toISOString().split("T")[0],
@@ -577,6 +578,7 @@ function CostSheetContent() {
         setSmvSewingInput(activeStyle.smvSewing?.toString() || "15");
         setNoOfColors(1);
         setMerchGroup("Ayaz");
+        setWorkOrderNumber("");
         setDeliveryDestination("EURO");
         setExFactoryDate(() => {
           const d = new Date();
@@ -834,7 +836,8 @@ function CostSheetContent() {
       return;
     }
 
-    const nextId = generateCostSheetId(activeStyle.id);
+    setIsSaving(true);
+    const nextId = await getNextCostSheetId(activeStyle.id);
     const snapshot: SavedCostSheetItem = {
       id: nextId,
       referenceName: name,
@@ -848,6 +851,7 @@ function CostSheetContent() {
       washType,
       noOfColors,
       merchGroup,
+      workOrderNumber,
       deliveryDestination,
       exFactoryDate,
       inhouseOrSubcontract,
@@ -925,7 +929,9 @@ function CostSheetContent() {
       toast.success(`Cost Sheet snapshot "${name}" saved successfully`);
       router.push(`/cost-sheet?costSheetId=${nextId}`);
     } catch (e) {
-      toast.error("Failed to save cost sheet snapshot");
+      toast.error("Failed to save cost sheet");
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -933,6 +939,7 @@ function CostSheetContent() {
   async function handleUpdateExisting() {
     if (!activeStyle || !calcs || !loadedCostSheet) return;
 
+    setIsSaving(true);
     const snapshot: SavedCostSheetItem = {
       ...loadedCostSheet,
       customerName,
@@ -943,6 +950,7 @@ function CostSheetContent() {
       washType,
       noOfColors,
       merchGroup,
+      workOrderNumber,
       deliveryDestination,
       exFactoryDate,
       inhouseOrSubcontract,
@@ -1017,6 +1025,8 @@ function CostSheetContent() {
       toast.success("Saved Cost Sheet updated successfully");
     } catch (e) {
       toast.error("Failed to update cost sheet");
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -1424,6 +1434,17 @@ function CostSheetContent() {
                 className="h-8 text-xs border-blue-200"
                 value={merchGroup}
                 onChange={(e) => setMerchGroup(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Work Order No.
+              </label>
+              <Input
+                type="text"
+                className="h-8 text-xs border-blue-200"
+                value={workOrderNumber}
+                onChange={(e) => setWorkOrderNumber(e.target.value)}
               />
             </div>
             <div className="space-y-1">
@@ -2891,9 +2912,15 @@ function CostSheetContent() {
                 <Button
                   size="sm"
                   onClick={handleUpdateExisting}
+                  disabled={isSaving}
                   className="h-9"
                 >
-                  <Save className="mr-1.5 size-4" /> Update Cost Sheet
+                  {isSaving ? (
+                    <RefreshCw className="mr-1.5 size-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-1.5 size-4" />
+                  )}
+                  {isSaving ? "Updating…" : "Update Cost Sheet"}
                 </Button>
               </>
             ) : (
@@ -2902,7 +2929,7 @@ function CostSheetContent() {
                 onClick={() => setSaveDialogOpen(true)}
                 className="h-9"
               >
-                <Save className="mr-1.5 size-4" /> Save Cost Sheet Snapshot
+                <Save className="mr-1.5 size-4" /> Save Cost Sheet
               </Button>
             )}
           </div>
@@ -2911,7 +2938,7 @@ function CostSheetContent() {
           <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>Save Cost Sheet Snapshot</DialogTitle>
+                <DialogTitle>Save Cost Sheet</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 py-3">
                 <p className="text-xs text-muted-foreground">
@@ -2935,14 +2962,19 @@ function CostSheetContent() {
                   variant="outline"
                   size="sm"
                   onClick={() => setSaveDialogOpen(false)}
+                  disabled={isSaving}
                 >
                   Cancel
                 </Button>
                 <Button
                   size="sm"
                   onClick={() => handleSaveNew(newSnapshotName)}
+                  disabled={isSaving}
                 >
-                  Save Snapshot
+                  {isSaving ? (
+                    <RefreshCw className="mr-1.5 size-4 animate-spin" />
+                  ) : null}
+                  {isSaving ? "Saving…" : "Save"}
                 </Button>
               </div>
             </DialogContent>

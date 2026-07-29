@@ -46,6 +46,7 @@ export interface SavedCostSheetItem {
   intlInsurance?: number;
   noOfColors?: number;
   merchGroup?: string;
+  workOrderNumber?: string;
   deliveryDestination?: string;
   exFactoryDate?: string;
   inhouseOrSubcontract?: string;
