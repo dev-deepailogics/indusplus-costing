@@ -76,6 +76,16 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
+              {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={pathname === "/work-orders"}
+                    render={<Link href="/work-orders" />}
+                  >
+                    <span>Work Orders</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={pathname === "/cost-sheet"}

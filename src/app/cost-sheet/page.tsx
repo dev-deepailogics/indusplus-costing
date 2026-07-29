@@ -24,7 +24,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-import { getCostSheetById, getNextCostSheetId, saveCostSheet } from "@/lib/cost-sheet/firestore";
+import {
+  getCostSheetById,
+  getNextCostSheetId,
+  saveCostSheet,
+} from "@/lib/cost-sheet/firestore";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 import {
   Table,
@@ -36,6 +40,9 @@ import {
 } from "@/components/ui/table";
 
 import { subscribeToStyles } from "@/lib/style-master/firestore";
+import { subscribeToWorkOrders } from "@/lib/work-orders/firestore";
+import type { WorkOrderItem } from "@/lib/work-orders/types";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { subscribeToTable } from "@/lib/parameters/firestore";
 import type {
   StyleMasterItem,
@@ -187,6 +194,7 @@ function CostSheetContent() {
   // Subscribed Database Data
   const [styles, setStyles] = useState<StyleMasterItem[]>([]);
   const [activeStyle, setActiveStyle] = useState<StyleMasterItem | null>(null);
+  const [workOrders, setWorkOrders] = useState<WorkOrderItem[]>([]);
 
   const [directLabourFoh, setDirectLabourFoh] = useState<
     SimpleTableData | undefined
@@ -325,6 +333,9 @@ function CostSheetContent() {
       }
     });
 
+    // Subscribe to Work Orders
+    const unsubWorkOrders = subscribeToWorkOrders(setWorkOrders);
+
     // Subscribe to POC Parameters
     const unsubDLF = subscribeToTable<SimpleTableData>(
       "direct-labour-foh",
@@ -439,6 +450,7 @@ function CostSheetContent() {
 
     return () => {
       unsubStyles();
+      unsubWorkOrders();
       unsubDLF();
       unsubCTS();
       unsubRej();
@@ -1143,7 +1155,12 @@ function CostSheetContent() {
   // Helper formatting classes
   const isProfitPositive = calcs.netProfitUSD >= 0;
   const isEbitdaPositive = calcs.ebitdaUSD >= 0;
-  const bomCostUSD = calcs.fabricCostUSD + calcs.liningCostUSD + calcs.accessoriesCostUSD + calcs.chemicalsCostUSD + calcs.specialChargesCostUSD;
+  const bomCostUSD =
+    calcs.fabricCostUSD +
+    calcs.liningCostUSD +
+    calcs.accessoriesCostUSD +
+    calcs.chemicalsCostUSD +
+    calcs.specialChargesCostUSD;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -1190,7 +1207,8 @@ function CostSheetContent() {
             </Button>
           )}
         </div>
-      </div>      {/* ZONE 1: 4-COLUMN PARAMETERS SPREADSHEET LAYOUT */}
+      </div>{" "}
+      {/* ZONE 1: 4-COLUMN PARAMETERS SPREADSHEET LAYOUT */}
       <Card className="shadow-sm border-slate-200/85 bg-white dark:bg-slate-900 overflow-hidden">
         <div className="bg-blue-50/50 dark:bg-slate-800/45 px-4 py-2.5 border-b border-slate-200/80">
           <h2 className="text-xs font-bold text-blue-900/85 dark:text-blue-300 uppercase tracking-wider">
@@ -1199,15 +1217,16 @@ function CostSheetContent() {
         </div>
         <CardContent className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 text-xs">
-            
             {/* COLUMN 1: Basic Style & Quantity Specs */}
             <div className="space-y-2.5">
               <div className="font-bold text-blue-900/80 dark:text-blue-300 uppercase tracking-wide border-b border-slate-100 pb-1 mb-1">
                 Style &amp; Qty Specs
               </div>
-              
+
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Costing Date</span>
+                <span className="font-semibold text-muted-foreground">
+                  Costing Date
+                </span>
                 <input
                   type="date"
                   className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
@@ -1217,53 +1236,103 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Customer Name:</span>
+                <span className="font-semibold text-muted-foreground">
+                  Customer Name:
+                </span>
                 <select
                   className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                 >
                   {customersList.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Order Type</span>
+                <span className="font-semibold text-muted-foreground">
+                  Order Type
+                </span>
                 <select
                   className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={orderType}
-                  onChange={(e) => setOrderType(e.target.value as "Denim" | "Non Denim")}
+                  onChange={(e) =>
+                    setOrderType(e.target.value as "Denim" | "Non Denim")
+                  }
                 >
                   {orderTypesList.map((t) => (
-                    <option key={t} value={t}>{t}</option>
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="flex flex-col gap-1.5 bg-slate-50/50 dark:bg-slate-950/20 p-1.5 rounded border border-slate-100">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-blue-900/80 dark:text-blue-300">Style Select</span>
+                  <span className="font-semibold text-blue-900/80 dark:text-blue-300">
+                    Work Order No.
+                  </span>
+                  <SearchableSelect
+                    className="w-32 h-7 px-1.5 text-xs border-slate-200 bg-white dark:bg-slate-900 font-semibold"
+                    placeholder="Search..."
+                    value={workOrderNumber}
+                    onChange={(id) => {
+                      const wo = workOrders.find((w) => w.id === id);
+                      setWorkOrderNumber(id);
+                      if (wo && wo.styleId !== activeStyle.id) {
+                        handleStyleChange(wo.styleId);
+                      }
+                    }}
+                    options={(activeStyle.id === "custom"
+                      ? workOrders
+                      : workOrders.filter((w) => w.styleId === activeStyle.id)
+                    ).map((w) => ({ value: w.id, label: w.id }))}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-blue-900/80 dark:text-blue-300">
+                    Style Select
+                  </span>
                   <select
                     className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-white dark:bg-slate-900 font-semibold rounded focus:outline-none"
                     value={activeStyle.id}
-                    onChange={(e) => handleStyleChange(e.target.value)}
+                    onChange={(e) => {
+                      handleStyleChange(e.target.value);
+                      const currentWO = workOrders.find(
+                        (w) => w.id === workOrderNumber,
+                      );
+                      if (currentWO && currentWO.styleId !== e.target.value) {
+                        setWorkOrderNumber("");
+                      }
+                    }}
                   >
                     <option value="custom">-- Custom Style --</option>
                     {styles.map((s) => (
-                      <option key={s.id} value={s.id}>{s.id}</option>
+                      <option key={s.id} value={s.id}>
+                        {s.id}
+                      </option>
                     ))}
                   </select>
                 </div>
                 {activeStyle.id === "custom" && (
                   <div className="flex items-center justify-between gap-2 pl-2">
-                    <span className="text-[10px] text-muted-foreground font-semibold">Custom Name *</span>
+                    <span className="text-[10px] text-muted-foreground font-semibold">
+                      Custom Name *
+                    </span>
                     <input
                       type="text"
                       className="w-32 h-7 px-2 text-xs border border-slate-200 bg-white dark:bg-slate-900 font-semibold rounded text-right focus:outline-none"
                       value={activeStyle.styleName || ""}
-                      onChange={(e) => setActiveStyle({ ...activeStyle, styleName: e.target.value })}
+                      onChange={(e) =>
+                        setActiveStyle({
+                          ...activeStyle,
+                          styleName: e.target.value,
+                        })
+                      }
                       placeholder="Enter Style Name"
                     />
                   </div>
@@ -1271,25 +1340,35 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Style Category</span>
+                <span className="font-semibold text-muted-foreground">
+                  Style Category
+                </span>
                 <select
                   className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={styleCategory}
                   onChange={(e) => setStyleCategory(e.target.value)}
                 >
                   {categoriesList.map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Order Size</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">{calcs.sizeBracket}</span>
+                <span className="font-semibold text-muted-foreground">
+                  Order Size
+                </span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
+                  {calcs.sizeBracket}
+                </span>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Order Quantity pcs</span>
+                <span className="font-semibold text-muted-foreground">
+                  Order Quantity pcs
+                </span>
                 <input
                   type="number"
                   className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
@@ -1299,36 +1378,50 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Per Color Quantity pcs</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">{Math.round(orderQuantity / noOfColors)}</span>
+                <span className="font-semibold text-muted-foreground">
+                  Per Color Quantity pcs
+                </span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
+                  {Math.round(orderQuantity / noOfColors)}
+                </span>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">No of Color</span>
+                <span className="font-semibold text-muted-foreground">
+                  No of Color
+                </span>
                 <input
                   type="number"
                   min="1"
                   className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
                   value={noOfColors}
-                  onChange={(e) => setNoOfColors(Math.max(1, Number(e.target.value)))}
+                  onChange={(e) =>
+                    setNoOfColors(Math.max(1, Number(e.target.value)))
+                  }
                 />
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Wash Type:</span>
+                <span className="font-semibold text-muted-foreground">
+                  Wash Type:
+                </span>
                 <select
                   className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={washType}
                   onChange={(e) => setWashType(e.target.value)}
                 >
                   {washTypesList.map((w) => (
-                    <option key={w} value={w}>{w}</option>
+                    <option key={w} value={w}>
+                      {w}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Rejection %</span>
+                <span className="font-semibold text-muted-foreground">
+                  Rejection %
+                </span>
                 <input
                   type="number"
                   step="0.01"
@@ -1340,7 +1433,9 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Ex fty Date(mm/dd/yy)</span>
+                <span className="font-semibold text-muted-foreground">
+                  Ex fty Date(mm/dd/yy)
+                </span>
                 <input
                   type="date"
                   className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
@@ -1357,14 +1452,22 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Current Date</span>
+                <span className="font-semibold text-muted-foreground">
+                  Current Date
+                </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  {new Date().toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
                 </span>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Costing Stage</span>
+                <span className="font-semibold text-muted-foreground">
+                  Costing Stage
+                </span>
                 <select
                   className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={costingStage}
@@ -1376,33 +1479,43 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Country</span>
+                <span className="font-semibold text-muted-foreground">
+                  Country
+                </span>
                 <select
                   className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
                 >
                   {countriesList.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Payment Terms</span>
+                <span className="font-semibold text-muted-foreground">
+                  Payment Terms
+                </span>
                 <select
                   className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={paymentTerms}
                   onChange={(e) => setPaymentTerms(e.target.value)}
                 >
                   {paymentTermsList.map((t) => (
-                    <option key={t} value={t}>{t}</option>
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Shipment mode</span>
+                <span className="font-semibold text-muted-foreground">
+                  Shipment mode
+                </span>
                 <select
                   className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={shipmentMode}
@@ -1414,20 +1527,26 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Delivery terms</span>
+                <span className="font-semibold text-muted-foreground">
+                  Delivery terms
+                </span>
                 <select
                   className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={deliveryTerms}
                   onChange={(e) => setDeliveryTerms(e.target.value)}
                 >
                   {deliveryTermsList.map((t) => (
-                    <option key={t} value={t}>{t}</option>
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
                   ))}
                 </select>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Merch_Group</span>
+                <span className="font-semibold text-muted-foreground">
+                  Merch_Group
+                </span>
                 <input
                   type="text"
                   className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
@@ -1437,7 +1556,9 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Delv. Destination</span>
+                <span className="font-semibold text-muted-foreground">
+                  Delv. Destination
+                </span>
                 <select
                   className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={deliveryDestination}
@@ -1449,7 +1570,9 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Parity-Sale</span>
+                <span className="font-semibold text-muted-foreground">
+                  Parity-Sale
+                </span>
                 <input
                   type="number"
                   className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
@@ -1459,7 +1582,9 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Parity-Procurement</span>
+                <span className="font-semibold text-muted-foreground">
+                  Parity-Procurement
+                </span>
                 <input
                   type="number"
                   className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
@@ -1469,7 +1594,9 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Inhouse/Sub-contract</span>
+                <span className="font-semibold text-muted-foreground">
+                  Inhouse/Sub-contract
+                </span>
                 <select
                   className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
                   value={inhouseOrSubcontract}
@@ -1479,31 +1606,42 @@ function CostSheetContent() {
                   <option value="CMT">CMT (Sub-contract)</option>
                 </select>
               </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Work Order No.</span>
-                <input
-                  type="text"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
-                  value={workOrderNumber}
-                  onChange={(e) => setWorkOrderNumber(e.target.value)}
-                />
-              </div>
             </div>
 
-            {/* COLUMN 3: FOB/CM Targets & Labor Metrics */}
-            <div className="space-y-2.5">
+            {/* COLUMNS 3+4: FOB/CM Targets & Profitability. A single 2-col grid so each row is
+                shared by both columns and rows (incl. the divider) align by construction. */}
+            <div className="xl:col-span-2 grid grid-cols-2 gap-x-6 gap-y-2.5 items-center xl:border-l xl:border-slate-700 xl:pl-6 dark:xl:border-slate-700">
               <div className="font-bold text-blue-900/80 dark:text-blue-300 uppercase tracking-wide border-b border-slate-100 pb-1 mb-1">
                 FOB / CM &amp; Labor Metrics
               </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Target FOB/PC</span>
-                <span className="font-extrabold text-slate-800 dark:text-slate-200 pr-2">US$ {calcs.targetFobUSD.toFixed(2)}</span>
+              <div className="font-bold text-blue-900/80 dark:text-blue-300 uppercase tracking-wide border-b border-slate-100 pb-1 mb-1">
+                Profitability &amp; Financial Rates
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Order FOB/PC</span>
+                <span className="font-semibold text-muted-foreground">
+                  Target FOB/PC
+                </span>
+                <span className="font-extrabold text-slate-800 dark:text-slate-200 pr-2">
+                  US$ {calcs.targetFobUSD.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  EBITDA/Min-Cents
+                </span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
+                  {(
+                    (calcs.ebitdaUSD * 100) /
+                    (parseFloat(smvSewingInput) || 1)
+                  ).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Order FOB/PC
+                </span>
                 <div className="flex items-center gap-1">
                   <span className="text-slate-400 font-semibold">US$</span>
                   <input
@@ -1515,27 +1653,81 @@ function CostSheetContent() {
                   />
                 </div>
               </div>
-
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Order CM/PC</span>
-                <span className="font-extrabold text-slate-800 dark:text-slate-200 pr-2">US$ {calcs.cmUSD.toFixed(2)}</span>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Target CM/SMV-Cents</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {((calcs.targetFobUSD - bomCostUSD) * 100 / (parseFloat(smvSewingInput) || 1)).toFixed(2)}
+                <span className="font-semibold text-muted-foreground">
+                  EBITDA/PC
+                </span>
+                <span className="font-extrabold text-slate-800 dark:text-slate-200 pr-2">
+                  US$ {calcs.ebitdaUSD.toFixed(2)}
                 </span>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Order CM-SMV-Cents</span>
+                <span className="font-semibold text-muted-foreground">
+                  Order CM/PC
+                </span>
+                <span className="font-extrabold text-slate-800 dark:text-slate-200 pr-2">
+                  US$ {calcs.cmUSD.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Net Profit/Min-Cents
+                </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {(calcs.cmUSD * 100 / (parseFloat(smvSewingInput) || 1)).toFixed(2)}
+                  {(
+                    (calcs.netProfitUSD * 100) /
+                    (parseFloat(smvSewingInput) || 1)
+                  ).toFixed(2)}
                 </span>
               </div>
 
-              <div className="border-t border-slate-200/60 my-2 pt-2.5" />
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Target CM/SMV-Cents
+                </span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
+                  {(
+                    ((calcs.targetFobUSD - bomCostUSD) * 100) /
+                    (parseFloat(smvSewingInput) || 1)
+                  ).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Net Profit/PC
+                </span>
+                <span
+                  className={`font-extrabold pr-2 ${isProfitPositive ? "text-green-600 dark:text-green-400" : "text-red-600"}`}
+                >
+                  US$ {calcs.netProfitUSD.toFixed(2)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Order CM-SMV-Cents
+                </span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
+                  {(
+                    (calcs.cmUSD * 100) /
+                    (parseFloat(smvSewingInput) || 1)
+                  ).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Net Profit % on FOB
+                </span>
+                <span
+                  className={`font-extrabold pr-2 ${isProfitPositive ? "text-green-600 dark:text-green-400" : "text-red-600"}`}
+                >
+                  {(calcs.netProfitPct * 100).toFixed(2)}%
+                </span>
+              </div>
+
+              <div className="border-t border-slate-700 self-end" />
+              <div className="border-t border-slate-700 self-end" />
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">SMV</span>
@@ -1547,9 +1739,30 @@ function CostSheetContent() {
                   onChange={(e) => setSmvSewingInput(e.target.value)}
                 />
               </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Commission %
+                </span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
+                    value={
+                      commissionPct ? (commissionPct * 100).toFixed(2) : ""
+                    }
+                    onChange={(e) =>
+                      setCommissionPct(Number(e.target.value) / 100)
+                    }
+                  />
+                  <span className="text-yellow-750 font-bold">%</span>
+                </div>
+              </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Manpower Per Line</span>
+                <span className="font-semibold text-muted-foreground">
+                  Manpower Per Line
+                </span>
                 <input
                   type="number"
                   className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
@@ -1557,91 +1770,10 @@ function CostSheetContent() {
                   onChange={(e) => setManpower(Number(e.target.value))}
                 />
               </div>
-
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Avg. Efficiency</span>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    step="0.1"
-                    className="w-28 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
-                    placeholder={`${(calcs.efficiency * 100).toFixed(1)}%`}
-                    value={efficiencyOverride}
-                    onChange={(e) => setEfficiencyOverride(e.target.value)}
-                  />
-                  <span className="text-yellow-700 font-bold">%</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Avg. Line Target</span>
-                <input
-                  type="number"
-                  className="w-32 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
-                  placeholder={`${calcs.lineTarget.toFixed(0)}`}
-                  value={lineTargetOverride}
-                  onChange={(e) => setLineTargetOverride(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* COLUMN 4: EBITDA, Net Profit & Financial Variables */}
-            <div className="space-y-2.5">
-              <div className="font-bold text-blue-900/80 dark:text-blue-300 uppercase tracking-wide border-b border-slate-100 pb-1 mb-1">
-                Profitability &amp; Financial Rates
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">EBITDA/Min-Cents</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {(calcs.ebitdaUSD * 100 / (parseFloat(smvSewingInput) || 1)).toFixed(2)}
+                <span className="font-semibold text-muted-foreground">
+                  Tax &amp; EDS
                 </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">EBITDA/PC</span>
-                <span className="font-extrabold text-slate-800 dark:text-slate-200 pr-2">US$ {calcs.ebitdaUSD.toFixed(2)}</span>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Net Profit/Min-Cents</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {(calcs.netProfitUSD * 100 / (parseFloat(smvSewingInput) || 1)).toFixed(2)}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Net Profit/PC</span>
-                <span className={`font-extrabold pr-2 ${isProfitPositive ? "text-green-600 dark:text-green-400" : "text-red-600"}`}>
-                  US$ {calcs.netProfitUSD.toFixed(2)}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Net Profit % on FOB</span>
-                <span className={`font-extrabold pr-2 ${isProfitPositive ? "text-green-600 dark:text-green-400" : "text-red-600"}`}>
-                  {(calcs.netProfitPct * 100).toFixed(2)}%
-                </span>
-              </div>
-
-              <div className="border-t border-slate-200/60 my-2 pt-2.5" />
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Commission %</span>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={commissionPct ? (commissionPct * 100).toFixed(2) : ""}
-                    onChange={(e) => setCommissionPct(Number(e.target.value) / 100)}
-                  />
-                  <span className="text-yellow-750 font-bold">%</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Tax &amp; EDS</span>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
@@ -1655,52 +1787,99 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Inland Freight &amp; Clearing</span>
+                <span className="font-semibold text-muted-foreground">
+                  Avg. Efficiency
+                </span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.1"
+                    className="w-28 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
+                    placeholder={`${(calcs.efficiency * 100).toFixed(1)}%`}
+                    value={efficiencyOverride}
+                    onChange={(e) => setEfficiencyOverride(e.target.value)}
+                  />
+                  <span className="text-yellow-700 font-bold">%</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Inland Freight &amp; Clearing
+                </span>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={inlandFreightPct ? (inlandFreightPct * 100).toFixed(2) : ""}
-                    onChange={(e) => setInlandFreightPct(Number(e.target.value) / 100)}
+                    value={
+                      inlandFreightPct
+                        ? (inlandFreightPct * 100).toFixed(2)
+                        : ""
+                    }
+                    onChange={(e) =>
+                      setInlandFreightPct(Number(e.target.value) / 100)
+                    }
                   />
                   <span className="text-yellow-750 font-bold">%</span>
                 </div>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">Local Bank Charges</span>
+                <span className="font-semibold text-muted-foreground">
+                  Avg. Line Target
+                </span>
+                <input
+                  type="number"
+                  className="w-32 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
+                  placeholder={`${calcs.lineTarget.toFixed(0)}`}
+                  value={lineTargetOverride}
+                  onChange={(e) => setLineTargetOverride(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Local Bank Charges
+                </span>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={localBankChargesPct ? (localBankChargesPct * 100).toFixed(2) : ""}
-                    onChange={(e) => setLocalBankChargesPct(Number(e.target.value) / 100)}
+                    value={
+                      localBankChargesPct
+                        ? (localBankChargesPct * 100).toFixed(2)
+                        : ""
+                    }
+                    onChange={(e) =>
+                      setLocalBankChargesPct(Number(e.target.value) / 100)
+                    }
                   />
                   <span className="text-yellow-750 font-bold">%</span>
                 </div>
               </div>
 
+              <div />
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground font-bold text-yellow-950">Discount Rate</span>
+                <span className="font-semibold text-muted-foreground font-bold text-yellow-950">
+                  Discount Rate
+                </span>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-300 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
                     value={discountRate ? (discountRate * 100).toFixed(0) : ""}
-                    onChange={(e) => setDiscountRate(Number(e.target.value) / 100)}
+                    onChange={(e) =>
+                      setDiscountRate(Number(e.target.value) / 100)
+                    }
                   />
                   <span className="text-yellow-700 font-bold">%</span>
                 </div>
               </div>
             </div>
-
           </div>
         </CardContent>
       </Card>
-
       {/* ZONE 2: KPI PROFITABILITY HEADER CARDS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 xl:grid-cols-10 gap-3">
         <Card className="shadow-sm border-muted/50">
@@ -1876,105 +2055,6 @@ function CostSheetContent() {
           </CardContent>
         </Card>
       </div>
-
-      {/* ZONE 2.5: FINANCIAL PARAMETERS SUMMARY ROW */}
-      <div className="rounded-xl border bg-card shadow-sm px-4 py-3">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">
-            Financial Params:
-          </span>
-
-          {/* Commission % */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground font-medium">
-              Commission %
-            </span>
-            <input
-              type="number"
-              step="0.01"
-              className="w-14 h-6 text-[11px] bg-yellow-50 border border-yellow-300 text-center rounded focus:outline-none focus:border-yellow-500 font-semibold text-yellow-900 transition-colors duration-150"
-              value={commissionPct || ""}
-              onChange={(e) => setCommissionPct(Number(e.target.value))}
-            />
-            <span className="text-muted-foreground">
-              {commissionPct.toFixed(2)}%
-            </span>
-          </div>
-
-          <div className="h-4 w-px bg-border" />
-
-          {/* Tax & EDS */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground font-medium">
-              Tax &amp; EDS
-            </span>
-            <input
-              type="number"
-              step="0.01"
-              className="w-14 h-6 text-[11px] bg-yellow-50 border border-yellow-300 text-center rounded focus:outline-none focus:border-yellow-500 font-semibold text-yellow-900 transition-colors duration-150"
-              value={(taxEdsPct * 100).toFixed(2)}
-              onChange={(e) => setTaxEdsPct(Number(e.target.value) / 100)}
-            />
-            <span className="text-muted-foreground">%</span>
-          </div>
-
-          <div className="h-4 w-px bg-border" />
-
-          {/* Inland Freight & Clearing */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground font-medium">
-              Inland Freight &amp; Clearing
-            </span>
-            <input
-              type="number"
-              step="0.01"
-              className="w-14 h-6 text-[11px] bg-yellow-50 border border-yellow-300 text-center rounded focus:outline-none focus:border-yellow-500 font-semibold text-yellow-900 transition-colors duration-150"
-              value={(inlandFreightPct * 100).toFixed(2)}
-              onChange={(e) =>
-                setInlandFreightPct(Number(e.target.value) / 100)
-              }
-            />
-            <span className="text-muted-foreground">%</span>
-          </div>
-
-          <div className="h-4 w-px bg-border" />
-
-          {/* Local Bank Charges */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground font-medium">
-              Local Bank Charges
-            </span>
-            <input
-              type="number"
-              step="0.01"
-              className="w-14 h-6 text-[11px] bg-yellow-50 border border-yellow-300 text-center rounded focus:outline-none focus:border-yellow-500 font-semibold text-yellow-900 transition-colors duration-150"
-              value={(localBankChargesPct * 100).toFixed(2)}
-              onChange={(e) =>
-                setLocalBankChargesPct(Number(e.target.value) / 100)
-              }
-            />
-            <span className="text-muted-foreground">%</span>
-          </div>
-
-          <div className="h-4 w-px bg-border" />
-
-          {/* Discount Rate */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground font-medium font-bold">
-              Discount Rate
-            </span>
-            <input
-              type="number"
-              step="0.01"
-              className="w-14 h-6 text-[11px] bg-yellow-50 border border-yellow-300 text-center rounded focus:outline-none focus:border-yellow-500 font-bold text-yellow-900"
-              value={(discountRate * 100).toFixed(0)}
-              onChange={(e) => setDiscountRate(Number(e.target.value) / 100)}
-            />
-            <span className="text-yellow-700 font-bold">%</span>
-          </div>
-        </div>
-      </div>
-
       {/* ZONE 3: SPLIT PANEL VIEW */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* LEFT PANEL: FINANCIAL SUMMARY TABLE */}
