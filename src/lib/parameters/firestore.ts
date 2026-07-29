@@ -13,27 +13,25 @@ import type {
   ProcessMatrixTableData,
   SimpleTableData,
 } from "./types";
+import { getActiveCard } from "./types";
 
 const COLLECTION = "parameters";
 
-// Slugs whose doc holds multiple named/active cards instead of one table.
-const CARD_LIST_SLUGS = ["cut-to-ship-grid", "rejection-grid"];
-
 function seedFor(slug: string): unknown {
-  if (slug === "cut-to-ship-grid") return asCardList(SEED_CUT_TO_SHIP);
-  if (slug === "rejection-grid") return asCardList(SEED_REJECTION_GRID);
+  if (slug === "cut-to-ship-grid") return SEED_CUT_TO_SHIP;
+  if (slug === "rejection-grid") return SEED_REJECTION_GRID;
   if (slug === "dropdown-lists") return SEED_DROPDOWN_LISTS;
   return SEED_SIMPLE[slug] ?? null;
 }
 
-function asCardList<T>(seed: T): GridCardListData<T> {
-  return { cards: [{ id: "1", serialNo: 1, name: "Default", isActive: true, data: seed }] };
-}
-
-// Old docs stored the table directly (no `cards` array) — wrap them in place on first read.
-function migrateToCardList(slug: string, raw: Record<string, unknown>): Record<string, unknown> {
-  if (!CARD_LIST_SLUGS.includes(slug) || Array.isArray(raw.cards)) return raw;
-  return asCardList(raw) as unknown as Record<string, unknown>;
+// Old docs stored multiple named/active cards. Collapse back to a single table
+// (the active card, or the first one) so there is only ever one grid per slug.
+function unwrapCardList(slug: string, raw: Record<string, unknown>): Record<string, unknown> {
+  if (slug !== "cut-to-ship-grid" && slug !== "rejection-grid") return raw;
+  if (!Array.isArray(raw.cards)) return raw;
+  const list = raw as unknown as GridCardListData<unknown>;
+  const active = getActiveCard(list);
+  return (active?.data ?? {}) as Record<string, unknown>;
 }
 
 async function ensureSeeded(slug: string) {
@@ -44,7 +42,7 @@ async function ensureSeeded(slug: string) {
   if (!snap.exists()) {
     needsSeeding = true;
   } else {
-    const data = snap.data();
+    const data = unwrapCardList(slug, snap.data());
     if (!data || Object.keys(data).length === 0) {
       needsSeeding = true;
     } else if (slug === "cut-to-ship-grid" && (!data.columnLabels || !data.rowLabels)) {
@@ -53,7 +51,7 @@ async function ensureSeeded(slug: string) {
       needsSeeding = true;
     } else if (slug === "rejection-grid") {
       // If rejection-grid exists and does NOT have WIP in processes, force re-seeding to add it
-      const processGrid = data as ProcessMatrixTableData;
+      const processGrid = data as unknown as ProcessMatrixTableData;
       if (processGrid.processes && !processGrid.processes.includes("WIP")) {
         needsSeeding = true;
       }
@@ -68,23 +66,9 @@ async function ensureSeeded(slug: string) {
 
   const data = snap.data();
   if (!data) return;
-  const migrated = migrateToCardList(slug, data);
-  if (migrated !== data) {
-    await setDoc(ref, migrated);
-    return;
-  }
-
-  if (slug === "rejection-grid") {
-    // If any rejection-grid card is missing the WIP process, force re-seed that card's table shape.
-    const list = migrated as unknown as GridCardListData<ProcessMatrixTableData>;
-    const needsMigration = list.cards?.some((c) => c.data.processes && !c.data.processes.includes("WIP"));
-    if (needsMigration) {
-      const seed = seedFor(slug) as GridCardListData<ProcessMatrixTableData>;
-      const nextCards = list.cards.map((c) =>
-        c.data.processes && !c.data.processes.includes("WIP") ? { ...c, data: seed.cards[0].data } : c
-      );
-      await setDoc(ref, { cards: nextCards });
-    }
+  const unwrapped = unwrapCardList(slug, data);
+  if (unwrapped !== data) {
+    await setDoc(ref, unwrapped);
   }
 }
 export function subscribeToTable<T>(
@@ -95,7 +79,7 @@ export function subscribeToTable<T>(
   let unsub = () => {};
   ensureSeeded(slug).finally(() => {
     unsub = onSnapshot(ref, (snap) => {
-      if (snap.exists()) onData(snap.data() as T);
+      if (snap.exists()) onData(unwrapCardList(slug, snap.data()) as T);
     });
   });
   return () => unsub();

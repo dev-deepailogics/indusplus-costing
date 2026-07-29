@@ -44,7 +44,6 @@ import {
 import { subscribeToStyles } from "@/lib/style-master/firestore";
 import { subscribeToWorkOrders } from "@/lib/work-orders/firestore";
 import type { WorkOrderItem } from "@/lib/work-orders/types";
-import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   FABRIC_COLLECTION,
   LINING_COLLECTION,
@@ -65,9 +64,7 @@ import type {
   MatrixTableData,
   ProcessMatrixTableData,
   DropdownListsData,
-  GridCardListData,
 } from "@/lib/parameters/types";
-import { getActiveCard } from "@/lib/parameters/types";
 import { runFormulaEngine } from "@/lib/cost-sheet/formula-engine";
 
 export default function CostSheetPage() {
@@ -357,13 +354,13 @@ function CostSheetContent() {
       "direct-labour-foh",
       setDirectLabourFoh,
     );
-    const unsubCTS = subscribeToTable<GridCardListData<MatrixTableData>>(
+    const unsubCTS = subscribeToTable<MatrixTableData>(
       "cut-to-ship-grid",
-      (list) => setCutToShipGrid(getActiveCard(list)?.data),
+      setCutToShipGrid,
     );
-    const unsubRej = subscribeToTable<GridCardListData<ProcessMatrixTableData>>(
+    const unsubRej = subscribeToTable<ProcessMatrixTableData>(
       "rejection-grid",
-      (list) => setRejectionGrid(getActiveCard(list)?.data),
+      setRejectionGrid,
     );
     const unsubStylesGrid = subscribeToTable<SimpleTableData>(
       "styles",
@@ -1296,27 +1293,6 @@ function CostSheetContent() {
               <div className="flex flex-col gap-1.5 bg-slate-50/50 dark:bg-slate-950/20 p-1.5 rounded border border-slate-100">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-blue-900/80 dark:text-blue-300">
-                    Work Order No.
-                  </span>
-                  <SearchableSelect
-                    className="w-32 h-7 px-1.5 text-xs border-slate-200 bg-white dark:bg-slate-900 font-semibold"
-                    placeholder="Search..."
-                    value={workOrderNumber}
-                    onChange={(id) => {
-                      const wo = workOrders.find((w) => w.id === id);
-                      setWorkOrderNumber(id);
-                      if (wo && wo.styleId !== activeStyle.id) {
-                        handleStyleChange(wo.styleId);
-                      }
-                    }}
-                    options={(activeStyle.id === "custom"
-                      ? workOrders
-                      : workOrders.filter((w) => w.styleId === activeStyle.id)
-                    ).map((w) => ({ value: w.id, label: w.id }))}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-blue-900/80 dark:text-blue-300">
                     Style Select
                   </span>
                   <select
@@ -1336,6 +1312,33 @@ function CostSheetContent() {
                     {styles.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-blue-900/80 dark:text-blue-300">
+                    Work Order No.
+                  </span>
+                  <select
+                    className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-white dark:bg-slate-900 font-semibold rounded focus:outline-none"
+                    value={workOrderNumber}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const wo = workOrders.find((w) => w.id === id);
+                      setWorkOrderNumber(id);
+                      if (wo && wo.styleId !== activeStyle.id) {
+                        handleStyleChange(wo.styleId);
+                      }
+                    }}
+                  >
+                    <option value="">-- Select --</option>
+                    {(activeStyle.id === "custom"
+                      ? workOrders
+                      : workOrders.filter((w) => w.styleId === activeStyle.id)
+                    ).map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.id}
                       </option>
                     ))}
                   </select>
