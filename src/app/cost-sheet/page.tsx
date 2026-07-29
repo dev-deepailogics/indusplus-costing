@@ -7,11 +7,9 @@ import {
   Save,
   RefreshCw,
   Layers,
-  Calculator,
-  TrendingUp,
-  Info,
+  Calculator, Info,
   Copy,
-  Printer,
+  Printer
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,7 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { subscribeToStyles, saveStyle } from "@/lib/style-master/firestore";
+import { subscribeToStyles } from "@/lib/style-master/firestore";
 import { subscribeToTable } from "@/lib/parameters/firestore";
 import type {
   StyleMasterItem,
@@ -55,10 +53,7 @@ import type {
 } from "@/lib/parameters/types";
 import { getActiveCard } from "@/lib/parameters/types";
 import {
-  runFormulaEngine,
-  calculateSizeBracket,
-  mapSMVToCategory,
-  getWashingRejection,
+  runFormulaEngine
 } from "@/lib/cost-sheet/formula-engine";
 
 export default function CostSheetPage() {
@@ -232,6 +227,7 @@ function CostSheetContent() {
   const [washType, setWashType] = useState("Rinse");
   const [orderQuantity, setOrderQuantity] = useState(1000);
   const [orderType, setOrderType] = useState<"Denim" | "Non Denim">("Denim");
+  const [smvSewingInput, setSmvSewingInput] = useState<string>("");
   const [noOfColors, setNoOfColors] = useState<number>(1);
   const [merchGroup, setMerchGroup] = useState<string>("Ayaz");
   const [deliveryDestination, setDeliveryDestination] =
@@ -540,6 +536,7 @@ function CostSheetContent() {
           setWashType(sheet.washType || "Rinse");
           setOrderQuantity(sheet.orderQuantity || 1000);
           setOrderType((sheet.orderType || "Denim") as "Denim" | "Non Denim");
+          setSmvSewingInput(sheet.smvSewing !== undefined ? sheet.smvSewing.toString() : (styleFromSheet.smvSewing?.toString() || "15"));
           setNoOfColors(sheet.noOfColors !== undefined ? sheet.noOfColors : 1);
           setMerchGroup(sheet.merchGroup || "Ayaz");
           setDeliveryDestination(sheet.deliveryDestination || "EURO");
@@ -577,6 +574,7 @@ function CostSheetContent() {
         setOrderType(
           (activeStyle.orderType || "Denim") as "Denim" | "Non Denim",
         );
+        setSmvSewingInput(activeStyle.smvSewing?.toString() || "15");
         setNoOfColors(1);
         setMerchGroup("Ayaz");
         setDeliveryDestination("EURO");
@@ -845,7 +843,7 @@ function CostSheetContent() {
       customerName,
       styleCategory,
       orderQuantity,
-      smvSewing: activeStyle.smvSewing,
+      smvSewing: parseFloat(smvSewingInput) || activeStyle.smvSewing,
       orderType,
       washType,
       noOfColors,
@@ -940,6 +938,7 @@ function CostSheetContent() {
       customerName,
       styleCategory,
       orderQuantity,
+      smvSewing: parseFloat(smvSewingInput) || loadedCostSheet.smvSewing,
       orderType,
       washType,
       noOfColors,
@@ -1054,6 +1053,7 @@ function CostSheetContent() {
       washType,
       orderQuantity,
       orderType,
+      smvSewing: parseFloat(smvSewingInput) || activeStyle.smvSewing,
     };
 
     return runFormulaEngine(
@@ -1119,6 +1119,7 @@ function CostSheetContent() {
     cutToShipGrid,
     rejectionGrid,
     stylesCategoryGrid,
+    smvSewingInput,
   ]);
 
   if (loadingStyles || !activeStyle || !calcs) {
@@ -1292,11 +1293,20 @@ function CostSheetContent() {
                   {calcs.sizeBracket}
                 </p>
               </div>
-              <div>
-                <span className="text-xs text-muted-foreground">
+              <div className="space-y-0.5">
+                <span className="text-xs text-muted-foreground font-semibold">
                   SMV (Sewing):
                 </span>
-                <p className="font-semibold">{activeStyle.smvSewing} min</p>
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    className="h-7 text-xs border-blue-200 px-2 font-semibold"
+                    value={smvSewingInput}
+                    onChange={(e) => setSmvSewingInput(e.target.value)}
+                  />
+                  <span className="text-xs text-muted-foreground">min</span>
+                </div>
               </div>
               <div>
                 <span className="text-xs text-muted-foreground">

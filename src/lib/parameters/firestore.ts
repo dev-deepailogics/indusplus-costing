@@ -67,6 +67,7 @@ async function ensureSeeded(slug: string) {
   }
 
   const data = snap.data();
+  if (!data) return;
   const migrated = migrateToCardList(slug, data);
   if (migrated !== data) {
     await setDoc(ref, migrated);
