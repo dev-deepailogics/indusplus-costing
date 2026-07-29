@@ -11,6 +11,8 @@ import {
   Info,
   Copy,
   Printer,
+  Plus,
+  X,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -43,6 +45,12 @@ import { subscribeToStyles } from "@/lib/style-master/firestore";
 import { subscribeToWorkOrders } from "@/lib/work-orders/firestore";
 import type { WorkOrderItem } from "@/lib/work-orders/types";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  FABRIC_COLLECTION,
+  LINING_COLLECTION,
+  subscribeToCatalog,
+} from "@/lib/item-catalog/firestore";
+import type { CatalogItem } from "@/lib/item-catalog/types";
 import { subscribeToTable } from "@/lib/parameters/firestore";
 import type {
   StyleMasterItem,
@@ -195,6 +203,10 @@ function CostSheetContent() {
   const [styles, setStyles] = useState<StyleMasterItem[]>([]);
   const [activeStyle, setActiveStyle] = useState<StyleMasterItem | null>(null);
   const [workOrders, setWorkOrders] = useState<WorkOrderItem[]>([]);
+  const [fabricCatalog, setFabricCatalog] = useState<CatalogItem[]>([]);
+  const [liningCatalog, setLiningCatalog] = useState<CatalogItem[]>([]);
+  const [newFabricRows, setNewFabricRows] = useState<Set<number>>(new Set());
+  const [newLiningRows, setNewLiningRows] = useState<Set<number>>(new Set());
 
   const [directLabourFoh, setDirectLabourFoh] = useState<
     SimpleTableData | undefined
@@ -336,6 +348,10 @@ function CostSheetContent() {
     // Subscribe to Work Orders
     const unsubWorkOrders = subscribeToWorkOrders(setWorkOrders);
 
+    // Subscribe to Item Catalog
+    const unsubFabricCatalog = subscribeToCatalog(FABRIC_COLLECTION, setFabricCatalog);
+    const unsubLiningCatalog = subscribeToCatalog(LINING_COLLECTION, setLiningCatalog);
+
     // Subscribe to POC Parameters
     const unsubDLF = subscribeToTable<SimpleTableData>(
       "direct-labour-foh",
@@ -451,6 +467,8 @@ function CostSheetContent() {
     return () => {
       unsubStyles();
       unsubWorkOrders();
+      unsubFabricCatalog();
+      unsubLiningCatalog();
       unsubDLF();
       unsubCTS();
       unsubRej();
@@ -492,6 +510,8 @@ function CostSheetContent() {
             bomSpecialCharges: sheet.bomSpecialCharges || [],
           };
           setActiveStyle(ensureStyleBOMDefaults(styleFromSheet));
+          setNewFabricRows(new Set());
+          setNewLiningRows(new Set());
 
           // Set state inputs
           setCostingDate(sheet.costingDate);
@@ -642,6 +662,8 @@ function CostSheetContent() {
 
   // Handle active style change from dropdown
   function handleStyleChange(id: string) {
+    setNewFabricRows(new Set());
+    setNewLiningRows(new Set());
     if (id === "custom") {
       setLoadedCostSheet(null);
       setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
@@ -2575,7 +2597,30 @@ function CostSheetContent() {
                 <Layers className="size-4 text-primary" /> Fabric Details (USD
                 input)
               </h2>
-           
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  const newIdx = activeStyle.bomFabric.length;
+                  setActiveStyle({
+                    ...activeStyle,
+                    bomFabric: [
+                      ...activeStyle.bomFabric,
+                      {
+                        itemName: "",
+                        consumptionPerPc: 0,
+                        rateUSD: 0,
+                        ratePKR: 0,
+                        fabricCostPKR: 0,
+                      },
+                    ],
+                  });
+                  setNewFabricRows((prev) => new Set(prev).add(newIdx));
+                }}
+              >
+                <Plus className="mr-1 size-3.5" /> Add Fabric
+              </Button>
             </div>
             <CardContent className="p-0 text-xs">
               <Table>
@@ -2586,10 +2631,13 @@ function CostSheetContent() {
                     <TableHead className="w-24">Rate ($)</TableHead>
                     <TableHead className="w-24 text-right">Rate (Rs)</TableHead>
                     <TableHead className="w-28 text-right">Cost (Rs)</TableHead>
+                    <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {Array.from({ length: 5 }).map((_, idx) => {
+                  {Array.from({
+                    length: Math.max(activeStyle.bomFabric.length, 1),
+                  }).map((_, idx) => {
                     const rawItem = activeStyle.bomFabric[idx];
                     const item = {
                       itemName: rawItem?.itemName ?? `Fabric ${idx + 1}`,
@@ -2598,24 +2646,43 @@ function CostSheetContent() {
                       ratePKR: rawItem?.ratePKR ?? 0,
                       fabricCostPKR: rawItem?.fabricCostPKR ?? 0,
                     };
+                    const isEditable =
+                      activeStyle.id === "custom" || newFabricRows.has(idx);
                     return (
                       <TableRow key={idx}>
                         <TableCell className="p-1.5">
-                          <input
-                            type="text"
-                            disabled={activeStyle.id !== "custom"}
-                            placeholder={`Fabric ${idx + 1}`}
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.itemName}
-                            onChange={(e) =>
-                              updateFabricBOM(idx, "itemName", e.target.value)
-                            }
-                          />
+                          {isEditable ? (
+                            <select
+                              className="w-full h-7 px-2 border bg-background text-xs rounded focus:outline-none"
+                              value={item.itemName}
+                              onChange={(e) =>
+                                updateFabricBOM(idx, "itemName", e.target.value)
+                              }
+                            >
+                              <option value="">-- Select Fabric --</option>
+                              {fabricCatalog.map((c) => (
+                                <option key={c.id} value={c.name}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              disabled
+                              placeholder={`Fabric ${idx + 1}`}
+                              className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              value={item.itemName}
+                              onChange={(e) =>
+                                updateFabricBOM(idx, "itemName", e.target.value)
+                              }
+                            />
+                          )}
                         </TableCell>
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
+                            disabled={!isEditable}
                             step="0.01"
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
@@ -2632,7 +2699,7 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
+                            disabled={!isEditable}
                             step="0.01"
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
@@ -2649,7 +2716,7 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
+                            disabled={!isEditable}
                             step="0.01"
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
@@ -2666,6 +2733,33 @@ function CostSheetContent() {
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
                           Rs. {item.fabricCostPKR.toFixed(1)}
                         </TableCell>
+                        <TableCell className="p-1.5">
+                          {isEditable && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-6 text-destructive"
+                              onClick={() => {
+                                setActiveStyle({
+                                  ...activeStyle,
+                                  bomFabric: activeStyle.bomFabric.filter(
+                                    (_, i) => i !== idx,
+                                  ),
+                                });
+                                setNewFabricRows((prev) => {
+                                  const next = new Set<number>();
+                                  prev.forEach((i) => {
+                                    if (i < idx) next.add(i);
+                                    else if (i > idx) next.add(i - 1);
+                                  });
+                                  return next;
+                                });
+                              }}
+                            >
+                              <X className="size-3.5" />
+                            </Button>
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -2676,6 +2770,7 @@ function CostSheetContent() {
                     <TableCell className="text-right text-primary pr-4">
                       Rs. {calcs.fabricCostPKR.toFixed(1)}
                     </TableCell>
+                    <TableCell />
                   </TableRow>
                 </TableBody>
               </Table>
@@ -2689,7 +2784,30 @@ function CostSheetContent() {
                 <Layers className="size-4 text-primary" /> Pocket Lining Details
                 (USD input)
               </h2>
-           
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  const newIdx = activeStyle.bomLining.length;
+                  setActiveStyle({
+                    ...activeStyle,
+                    bomLining: [
+                      ...activeStyle.bomLining,
+                      {
+                        itemName: "",
+                        consumptionPerPc: 0,
+                        rateUSD: 0,
+                        ratePKR: 0,
+                        liningCostPKR: 0,
+                      },
+                    ],
+                  });
+                  setNewLiningRows((prev) => new Set(prev).add(newIdx));
+                }}
+              >
+                <Plus className="mr-1 size-3.5" /> Add Lining
+              </Button>
             </div>
             <CardContent className="p-0 text-xs">
               <Table>
@@ -2700,10 +2818,13 @@ function CostSheetContent() {
                     <TableHead className="w-24">Rate ($)</TableHead>
                     <TableHead className="w-24 text-right">Rate (Rs)</TableHead>
                     <TableHead className="w-28 text-right">Cost (Rs)</TableHead>
+                    <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {Array.from({ length: 5 }).map((_, idx) => {
+                  {Array.from({
+                    length: Math.max(activeStyle.bomLining.length, 1),
+                  }).map((_, idx) => {
                     const rawItem = activeStyle.bomLining[idx];
                     const item = {
                       itemName: rawItem?.itemName ?? `Lining ${idx + 1}`,
@@ -2712,24 +2833,43 @@ function CostSheetContent() {
                       ratePKR: rawItem?.ratePKR ?? 0,
                       liningCostPKR: rawItem?.liningCostPKR ?? 0,
                     };
+                    const isEditable =
+                      activeStyle.id === "custom" || newLiningRows.has(idx);
                     return (
                       <TableRow key={idx}>
                         <TableCell className="p-1.5">
-                          <input
-                            type="text"
-                            disabled={activeStyle.id !== "custom"}
-                            placeholder={`Lining ${idx + 1}`}
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.itemName}
-                            onChange={(e) =>
-                              updateLiningBOM(idx, "itemName", e.target.value)
-                            }
-                          />
+                          {isEditable ? (
+                            <select
+                              className="w-full h-7 px-2 border bg-background text-xs rounded focus:outline-none"
+                              value={item.itemName}
+                              onChange={(e) =>
+                                updateLiningBOM(idx, "itemName", e.target.value)
+                              }
+                            >
+                              <option value="">-- Select Lining --</option>
+                              {liningCatalog.map((c) => (
+                                <option key={c.id} value={c.name}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              disabled
+                              placeholder={`Lining ${idx + 1}`}
+                              className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              value={item.itemName}
+                              onChange={(e) =>
+                                updateLiningBOM(idx, "itemName", e.target.value)
+                              }
+                            />
+                          )}
                         </TableCell>
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
+                            disabled={!isEditable}
                             step="0.01"
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
@@ -2746,7 +2886,7 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
+                            disabled={!isEditable}
                             step="0.01"
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
@@ -2763,7 +2903,7 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
+                            disabled={!isEditable}
                             step="0.01"
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
@@ -2780,6 +2920,33 @@ function CostSheetContent() {
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
                           Rs. {item.liningCostPKR.toFixed(1)}
                         </TableCell>
+                        <TableCell className="p-1.5">
+                          {isEditable && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-6 text-destructive"
+                              onClick={() => {
+                                setActiveStyle({
+                                  ...activeStyle,
+                                  bomLining: activeStyle.bomLining.filter(
+                                    (_, i) => i !== idx,
+                                  ),
+                                });
+                                setNewLiningRows((prev) => {
+                                  const next = new Set<number>();
+                                  prev.forEach((i) => {
+                                    if (i < idx) next.add(i);
+                                    else if (i > idx) next.add(i - 1);
+                                  });
+                                  return next;
+                                });
+                              }}
+                            >
+                              <X className="size-3.5" />
+                            </Button>
+                          )}
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -2790,6 +2957,7 @@ function CostSheetContent() {
                     <TableCell className="text-right text-primary pr-4">
                       Rs. {calcs.liningCostPKR.toFixed(1)}
                     </TableCell>
+                    <TableCell />
                   </TableRow>
                 </TableBody>
               </Table>

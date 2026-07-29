@@ -218,31 +218,29 @@ export default function StyleMasterPage() {
         rejectionPct: style.rejectionPct || 0.0415,
         baseSellingPrice: style.baseSellingPrice || 0,
       });
-      // Ensure Fabric has at least 5 template rows
-      const initialFabric = [...(style.bomFabric || [])];
-      while (initialFabric.length < 5) {
-        initialFabric.push({
-          itemName: `Fabric ${initialFabric.length + 1}`,
-          consumptionPerPc: 0,
-          rateUSD: 0,
-          ratePKR: 0,
-          fabricCostPKR: 0,
-        });
-      }
-      setFormFabric(initialFabric);
+      setFormFabric(
+        style.bomFabric && style.bomFabric.length > 0
+          ? style.bomFabric
+          : Array.from({ length: 5 }, (_, i) => ({
+              itemName: `Fabric ${i + 1}`,
+              consumptionPerPc: 0,
+              rateUSD: 0,
+              ratePKR: 0,
+              fabricCostPKR: 0,
+            })),
+      );
 
-      // Ensure Lining has at least 5 template rows
-      const initialLining = [...(style.bomLining || [])];
-      while (initialLining.length < 5) {
-        initialLining.push({
-          itemName: `Lining ${initialLining.length + 1}`,
-          consumptionPerPc: 0,
-          rateUSD: 0,
-          ratePKR: 0,
-          liningCostPKR: 0,
-        });
-      }
-      setFormLining(initialLining);
+      setFormLining(
+        style.bomLining && style.bomLining.length > 0
+          ? style.bomLining
+          : Array.from({ length: 5 }, (_, i) => ({
+              itemName: `Lining ${i + 1}`,
+              consumptionPerPc: 0,
+              rateUSD: 0,
+              ratePKR: 0,
+              liningCostPKR: 0,
+            })),
+      );
 
       // Ensure Accessories defaults are loaded
       setFormAccessories(mergeAccessories(style.bomAccessories));
@@ -712,6 +710,7 @@ export default function StyleMasterPage() {
                         <TableHead className="w-32">
                           Fabric Cost (PKR)
                         </TableHead>
+                        <TableHead className="w-12"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -777,11 +776,43 @@ export default function StyleMasterPage() {
                           <TableCell className="p-2 align-middle font-medium text-right pr-4">
                             Rs. {item.fabricCostPKR.toFixed(1)}
                           </TableCell>
+                          <TableCell className="p-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-6 text-destructive"
+                              onClick={() =>
+                                setFormFabric(
+                                  formFabric.filter((_, i) => i !== idx),
+                                )
+                              }
+                            >
+                              <X className="size-3.5" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setFormFabric([
+                      ...formFabric,
+                      {
+                        itemName: `Fabric ${formFabric.length + 1}`,
+                        consumptionPerPc: 0,
+                        rateUSD: 0,
+                        ratePKR: 0,
+                        fabricCostPKR: 0,
+                      },
+                    ])
+                  }
+                >
+                  <Plus className="mr-1.5 size-3.5" /> Add Fabric Row
+                </Button>
               </TabsContent>
 
               {/* LINING TAB */}
@@ -801,6 +832,7 @@ export default function StyleMasterPage() {
                         <TableHead className="w-28">Rate (USD)</TableHead>
                         <TableHead className="w-32">Rate (PKR)</TableHead>
                         <TableHead className="w-32">Cost (PKR)</TableHead>
+                        <TableHead className="w-12"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -866,11 +898,43 @@ export default function StyleMasterPage() {
                           <TableCell className="p-2 align-middle font-medium text-right pr-4">
                             Rs. {item.liningCostPKR.toFixed(1)}
                           </TableCell>
+                          <TableCell className="p-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-6 text-destructive"
+                              onClick={() =>
+                                setFormLining(
+                                  formLining.filter((_, i) => i !== idx),
+                                )
+                              }
+                            >
+                              <X className="size-3.5" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setFormLining([
+                      ...formLining,
+                      {
+                        itemName: `Lining ${formLining.length + 1}`,
+                        consumptionPerPc: 0,
+                        rateUSD: 0,
+                        ratePKR: 0,
+                        liningCostPKR: 0,
+                      },
+                    ])
+                  }
+                >
+                  <Plus className="mr-1.5 size-3.5" /> Add Lining Row
+                </Button>
               </TabsContent>
 
               {/* ACCESSORIES TAB */}

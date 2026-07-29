@@ -43,7 +43,10 @@ export default function SavedCostSheetsPage() {
   const [customerFilter, setCustomerFilter] = useState("all");
   const [stageFilter, setStageFilter] = useState("all");
 
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   useEffect(() => {
     const handleGlobalContextMenu = (e: MouseEvent) => {
@@ -57,7 +60,7 @@ export default function SavedCostSheetsPage() {
 
     window.addEventListener("contextmenu", handleGlobalContextMenu);
     window.addEventListener("click", closeMenu);
-    
+
     return () => {
       window.removeEventListener("contextmenu", handleGlobalContextMenu);
       window.removeEventListener("click", closeMenu);
@@ -164,7 +167,7 @@ export default function SavedCostSheetsPage() {
             onClick={() => router.push("/cost-sheet")}
             className="h-9 bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-1.5"
           >
-            New Cost Sheet Calculator
+            New Cost Sheet
           </Button>
         </div>
       </div>

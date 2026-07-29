@@ -66,7 +66,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Pre-Order Costing</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {isAdmin && (
+              {/* {isAdmin && (
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     isActive={pathname === "/style-master"}
@@ -75,8 +75,8 @@ export function AppSidebar() {
                     <span>Style Master</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              )}
-              {isAdmin && (
+              )} */}
+              {/* {isAdmin && (
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     isActive={pathname === "/work-orders"}
@@ -85,165 +85,202 @@ export function AppSidebar() {
                     <span>Work Orders</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              )}
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={pathname === "/cost-sheet"}
-                  render={<Link href="/cost-sheet" />}
-                >
-                  <span>Cost Sheet Calculator</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              )} */}
+              {/* {isAdmin && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={pathname === "/item-catalog"}
+                    render={<Link href="/item-catalog" />}
+                  >
+                    <span>Item Catalog</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )} */}
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={pathname === "/cost-sheets"}
                   render={<Link href="/cost-sheets" />}
                 >
-                  <span>Saved Cost Sheets</span>
+                  <span>Cost Sheets</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    isActive={pathname === "/users"}
-                    render={<Link href="/users" />}
-                  >
-                    <span>Manage Users</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
         {isAdmin && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="flex items-center gap-2">
-              <ListTree className="size-4" />
-              <span>POC Parameters</span>
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                
-                {/* Grid Item and Dropdown */}
-                <SidebarMenuItem>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger className="w-full text-left outline-none">
-                      <SidebarMenuButton
-                        isActive={pathname.startsWith("/parameters/styles") || pathname.startsWith("/parameters/cut-to-ship-grid") || pathname.startsWith("/parameters/rejection-grid")}
-                        className="w-full justify-between"
+          <>
+            <SidebarGroup>
+              <SidebarGroupLabel className="flex items-center gap-2">
+                <ListTree className="size-4" />
+                <span>POC Parameters</span>
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {/* Grid Item and Dropdown */}
+                  <SidebarMenuItem>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger className="w-full text-left outline-none">
+                        <SidebarMenuButton
+                          isActive={
+                            pathname.startsWith("/parameters/styles") ||
+                            pathname.startsWith(
+                              "/parameters/cut-to-ship-grid",
+                            ) ||
+                            pathname.startsWith("/parameters/rejection-grid")
+                          }
+                          className="w-full justify-between"
+                        >
+                          <span>Grid</span>
+                          <ChevronRight className="size-4 text-muted-foreground" />
+                        </SidebarMenuButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        className="w-52 animate-none"
+                        side="right"
+                        align="start"
                       >
-                        <span>Grid</span>
-                        <ChevronRight className="size-4 text-muted-foreground" />
-                      </SidebarMenuButton>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-52 animate-none" side="right" align="start">
-                      {["styles", "cut-to-ship-grid", "rejection-grid"].map((slug) => {
-                        const table = PARAMETER_TABLES.find((t) => t.slug === slug);
-                        if (!table) return null;
-                        const href = `/parameters/${table.slug}`;
-                        return (
-                          <DropdownMenuItem key={table.slug} className="p-0">
-                            <Link
-                              href={href}
-                              className={cn(
-                                "w-full cursor-pointer px-2 py-1.5 text-xs rounded block",
-                                pathname === href && "bg-accent font-semibold text-accent-foreground"
-                              )}
-                            >
-                              {table.title}
-                            </Link>
-                          </DropdownMenuItem>
-                        );
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </SidebarMenuItem>
+                        {["styles", "cut-to-ship-grid", "rejection-grid"].map(
+                          (slug) => {
+                            const table = PARAMETER_TABLES.find(
+                              (t) => t.slug === slug,
+                            );
+                            if (!table) return null;
+                            const href = `/parameters/${table.slug}`;
+                            return (
+                              <DropdownMenuItem
+                                key={table.slug}
+                                className="p-0"
+                              >
+                                <Link
+                                  href={href}
+                                  className={cn(
+                                    "w-full cursor-pointer px-2 py-1.5 text-xs rounded block",
+                                    pathname === href &&
+                                      "bg-accent font-semibold text-accent-foreground",
+                                  )}
+                                >
+                                  {table.title}
+                                </Link>
+                              </DropdownMenuItem>
+                            );
+                          },
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </SidebarMenuItem>
 
-                {/* Value Item and Dropdown */}
-                <SidebarMenuItem>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger className="w-full text-left outline-none">
-                      <SidebarMenuButton
-                        isActive={[
+                  {/* Value Item and Dropdown */}
+                  <SidebarMenuItem>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger className="w-full text-left outline-none">
+                        <SidebarMenuButton
+                          isActive={[
+                            "customer-commission",
+                            "cost-as-percent-of-sales",
+                            "direct-labour-foh",
+                            "admin-selling",
+                            "other-expenses",
+                          ].some((slug) =>
+                            pathname.startsWith(`/parameters/${slug}`),
+                          )}
+                          className="w-full justify-between"
+                        >
+                          <span>Value</span>
+                          <ChevronRight className="size-4 text-muted-foreground" />
+                        </SidebarMenuButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        className="w-52 animate-none"
+                        side="right"
+                        align="start"
+                      >
+                        {[
                           "customer-commission",
                           "cost-as-percent-of-sales",
                           "direct-labour-foh",
                           "admin-selling",
                           "other-expenses",
-                        ].some((slug) => pathname.startsWith(`/parameters/${slug}`))}
-                        className="w-full justify-between"
-                      >
-                        <span>Value</span>
-                        <ChevronRight className="size-4 text-muted-foreground" />
-                      </SidebarMenuButton>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-52 animate-none" side="right" align="start">
-                      {[
-                        "customer-commission",
-                        "cost-as-percent-of-sales",
-                        "direct-labour-foh",
-                        "admin-selling",
-                        "other-expenses",
-                      ].map((slug) => {
-                        const table = PARAMETER_TABLES.find((t) => t.slug === slug);
-                        if (!table) return null;
-                        const href = `/parameters/${table.slug}`;
-                        return (
-                          <DropdownMenuItem key={table.slug} className="p-0">
-                            <Link
-                              href={href}
-                              className={cn(
-                                "w-full cursor-pointer px-2 py-1.5 text-xs rounded block",
-                                pathname === href && "bg-accent font-semibold text-accent-foreground"
-                              )}
-                            >
-                              {table.title}
-                            </Link>
-                          </DropdownMenuItem>
-                        );
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </SidebarMenuItem>
+                        ].map((slug) => {
+                          const table = PARAMETER_TABLES.find(
+                            (t) => t.slug === slug,
+                          );
+                          if (!table) return null;
+                          const href = `/parameters/${table.slug}`;
+                          return (
+                            <DropdownMenuItem key={table.slug} className="p-0">
+                              <Link
+                                href={href}
+                                className={cn(
+                                  "w-full cursor-pointer px-2 py-1.5 text-xs rounded block",
+                                  pathname === href &&
+                                    "bg-accent font-semibold text-accent-foreground",
+                                )}
+                              >
+                                {table.title}
+                              </Link>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </SidebarMenuItem>
 
-                {/* Type Item and Dropdown */}
-                <SidebarMenuItem>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger className="w-full text-left outline-none">
-                      <SidebarMenuButton
-                        isActive={pathname.startsWith("/parameters/order-type") || pathname.startsWith("/parameters/dropdown-lists")}
-                        className="w-full justify-between"
+                  {/* Type Item and Dropdown */}
+                  <SidebarMenuItem>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger className="w-full text-left outline-none">
+                        <SidebarMenuButton
+                          isActive={
+                            pathname.startsWith("/parameters/order-type") ||
+                            pathname.startsWith("/parameters/dropdown-lists")
+                          }
+                          className="w-full justify-between"
+                        >
+                          <span>Type</span>
+                          <ChevronRight className="size-4 text-muted-foreground" />
+                        </SidebarMenuButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        className="w-52 animate-none"
+                        side="right"
+                        align="start"
                       >
-                        <span>Type</span>
-                        <ChevronRight className="size-4 text-muted-foreground" />
-                      </SidebarMenuButton>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-52 animate-none" side="right" align="start">
-                      {["order-type", "dropdown-lists"].map((slug) => {
-                        const table = PARAMETER_TABLES.find((t) => t.slug === slug);
-                        if (!table) return null;
-                        const href = `/parameters/${table.slug}`;
-                        return (
-                          <DropdownMenuItem key={table.slug} className="p-0">
-                            <Link
-                              href={href}
-                              className={cn(
-                                "w-full cursor-pointer px-2 py-1.5 text-xs rounded block",
-                                pathname === href && "bg-accent font-semibold text-accent-foreground"
-                              )}
-                            >
-                              {table.title}
-                            </Link>
-                          </DropdownMenuItem>
-                        );
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </SidebarMenuItem>
-
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+                        {["order-type", "dropdown-lists"].map((slug) => {
+                          const table = PARAMETER_TABLES.find(
+                            (t) => t.slug === slug,
+                          );
+                          if (!table) return null;
+                          const href = `/parameters/${table.slug}`;
+                          return (
+                            <DropdownMenuItem key={table.slug} className="p-0">
+                              <Link
+                                href={href}
+                                className={cn(
+                                  "w-full cursor-pointer px-2 py-1.5 text-xs rounded block",
+                                  pathname === href &&
+                                    "bg-accent font-semibold text-accent-foreground",
+                                )}
+                              >
+                                {table.title}
+                              </Link>
+                            </DropdownMenuItem>
+                          );
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <SidebarMenuItem className="mx-2">
+              <SidebarMenuButton
+                isActive={pathname === "/users"}
+                render={<Link href="/users" />}
+              >
+                <span>Manage Users</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </>
         )}
       </SidebarContent>
       <UserMenu />
