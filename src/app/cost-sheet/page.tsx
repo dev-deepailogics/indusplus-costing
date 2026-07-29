@@ -3,7 +3,16 @@
 import { useEffect, useState, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Save, RefreshCw, Layers, Calculator, TrendingUp, Info, Copy } from "lucide-react";
+import {
+  Save,
+  RefreshCw,
+  Layers,
+  Calculator,
+  TrendingUp,
+  Info,
+  Copy,
+  Printer,
+} from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -37,13 +46,30 @@ import type {
   BOMChemicalsItem,
   BOMSpecialChargesItem,
 } from "@/lib/style-master/types";
-import type { SimpleTableData, MatrixTableData, ProcessMatrixTableData, DropdownListsData, GridCardListData } from "@/lib/parameters/types";
+import type {
+  SimpleTableData,
+  MatrixTableData,
+  ProcessMatrixTableData,
+  DropdownListsData,
+  GridCardListData,
+} from "@/lib/parameters/types";
 import { getActiveCard } from "@/lib/parameters/types";
-import { runFormulaEngine, calculateSizeBracket, mapSMVToCategory, getWashingRejection } from "@/lib/cost-sheet/formula-engine";
+import {
+  runFormulaEngine,
+  calculateSizeBracket,
+  mapSMVToCategory,
+  getWashingRejection,
+} from "@/lib/cost-sheet/formula-engine";
 
 export default function CostSheetPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">Loading Cost Sheet...</div>}>
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-sm text-muted-foreground">
+          Loading Cost Sheet...
+        </div>
+      }
+    >
       <CostSheetContent />
     </Suspense>
   );
@@ -87,9 +113,7 @@ const DEFAULT_ACCESSORIES_TEMPLATES = [
   { category: "Sticker", itemName: "Sticker" },
 ];
 
-const DEFAULT_CHEMICALS_TEMPLATES = [
-  { washItem: "Rinse" },
-];
+const DEFAULT_CHEMICALS_TEMPLATES = [{ washItem: "Rinse" }];
 
 const DEFAULT_SPECIAL_TEMPLATES = [
   { itemName: "Embroidery" },
@@ -100,18 +124,20 @@ const DEFAULT_SPECIAL_TEMPLATES = [
 
 function ensureStyleBOMDefaults(style: StyleMasterItem): StyleMasterItem {
   const merged = { ...style };
-  
+
   // Accessories
   const accList = [...(style.bomAccessories || [])];
-  DEFAULT_ACCESSORIES_TEMPLATES.forEach(tmpl => {
-    const hasCategory = accList.some(item => item.category?.toLowerCase() === tmpl.category.toLowerCase());
+  DEFAULT_ACCESSORIES_TEMPLATES.forEach((tmpl) => {
+    const hasCategory = accList.some(
+      (item) => item.category?.toLowerCase() === tmpl.category.toLowerCase(),
+    );
     if (!hasCategory) {
       accList.push({
         category: tmpl.category,
         itemName: tmpl.itemName,
         consPerPc: 0,
         ratePKR: 0,
-        totalCostPKR: 0
+        totalCostPKR: 0,
       });
     }
   });
@@ -119,14 +145,16 @@ function ensureStyleBOMDefaults(style: StyleMasterItem): StyleMasterItem {
 
   // Chemicals
   const chemList = [...(style.bomChemicals || [])];
-  DEFAULT_CHEMICALS_TEMPLATES.forEach(tmpl => {
-    const hasItem = chemList.some(item => item.washItem?.toLowerCase() === tmpl.washItem.toLowerCase());
+  DEFAULT_CHEMICALS_TEMPLATES.forEach((tmpl) => {
+    const hasItem = chemList.some(
+      (item) => item.washItem?.toLowerCase() === tmpl.washItem.toLowerCase(),
+    );
     if (!hasItem) {
       chemList.push({
         washItem: tmpl.washItem,
         consPerPc: 0,
         ratePKR: 0,
-        totalCostPKR: 0
+        totalCostPKR: 0,
       });
     }
   });
@@ -134,14 +162,18 @@ function ensureStyleBOMDefaults(style: StyleMasterItem): StyleMasterItem {
 
   // Special Charges
   const specialList = [...(style.bomSpecialCharges || [])];
-  DEFAULT_SPECIAL_TEMPLATES.forEach(tmpl => {
-    const hasItem = specialList.some(item => item.itemName?.toLowerCase().replace(/\s+/g, "") === tmpl.itemName.toLowerCase().replace(/\s+/g, ""));
+  DEFAULT_SPECIAL_TEMPLATES.forEach((tmpl) => {
+    const hasItem = specialList.some(
+      (item) =>
+        item.itemName?.toLowerCase().replace(/\s+/g, "") ===
+        tmpl.itemName.toLowerCase().replace(/\s+/g, ""),
+    );
     if (!hasItem) {
       specialList.push({
         itemName: tmpl.itemName,
         consPerPc: 0,
         ratePKR: 0,
-        totalCostPKR: 0
+        totalCostPKR: 0,
       });
     }
   });
@@ -157,24 +189,35 @@ function CostSheetContent() {
   const costSheetIdParam = searchParams.get("costSheetId");
 
   // Snapshot States
-  const [loadedCostSheet, setLoadedCostSheet] = useState<SavedCostSheetItem | null>(null);
+  const [loadedCostSheet, setLoadedCostSheet] =
+    useState<SavedCostSheetItem | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [newSnapshotName, setNewSnapshotName] = useState("");
 
   // Subscribed Database Data
   const [styles, setStyles] = useState<StyleMasterItem[]>([]);
   const [activeStyle, setActiveStyle] = useState<StyleMasterItem | null>(null);
-  
-  const [directLabourFoh, setDirectLabourFoh] = useState<SimpleTableData | undefined>(undefined);
-  const [cutToShipGrid, setCutToShipGrid] = useState<MatrixTableData | undefined>(undefined);
-  const [rejectionGrid, setRejectionGrid] = useState<ProcessMatrixTableData | undefined>(undefined);
-  const [stylesCategoryGrid, setStylesCategoryGrid] = useState<SimpleTableData | undefined>(undefined);
+
+  const [directLabourFoh, setDirectLabourFoh] = useState<
+    SimpleTableData | undefined
+  >(undefined);
+  const [cutToShipGrid, setCutToShipGrid] = useState<
+    MatrixTableData | undefined
+  >(undefined);
+  const [rejectionGrid, setRejectionGrid] = useState<
+    ProcessMatrixTableData | undefined
+  >(undefined);
+  const [stylesCategoryGrid, setStylesCategoryGrid] = useState<
+    SimpleTableData | undefined
+  >(undefined);
 
   // Loading States
   const [loadingStyles, setLoadingStyles] = useState(true);
 
   // 1. Control & Input Parameters State
-  const [costingDate, setCostingDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [costingDate, setCostingDate] = useState(
+    () => new Date().toISOString().split("T")[0],
+  );
   const [costingStage, setCostingStage] = useState("Quote");
   const [country, setCountry] = useState("SPAIN");
   const [paymentTerms, setPaymentTerms] = useState("LC-60 days");
@@ -191,13 +234,15 @@ function CostSheetContent() {
   const [orderType, setOrderType] = useState<"Denim" | "Non Denim">("Denim");
   const [noOfColors, setNoOfColors] = useState<number>(1);
   const [merchGroup, setMerchGroup] = useState<string>("Ayaz");
-  const [deliveryDestination, setDeliveryDestination] = useState<string>("EURO");
+  const [deliveryDestination, setDeliveryDestination] =
+    useState<string>("EURO");
   const [exFactoryDate, setExFactoryDate] = useState<string>(() => {
     const d = new Date();
     d.setMonth(d.getMonth() + 3);
     return d.toISOString().split("T")[0];
   });
-  const [inhouseOrSubcontract, setInhouseOrSubcontract] = useState<string>("INHOUSE");
+  const [inhouseOrSubcontract, setInhouseOrSubcontract] =
+    useState<string>("INHOUSE");
   const [rebatePct, setRebatePct] = useState<number>(0);
 
   // Operational Inputs
@@ -222,12 +267,52 @@ function CostSheetContent() {
   const [intlInsurance, setIntlInsurance] = useState<string>("0");
 
   // Options lists (will subscribe to parameter dropdown-lists if exists)
-  const [paymentTermsList, setPaymentTermsList] = useState(["LC at Sight", "LC-30 days", "LC-45 days", "LC-60 days", "LC-75 days", "DA", "Advance"]);
-  const [deliveryTermsList, setDeliveryTermsList] = useState(["FOB", "CIF", "CFR", "DDP/LDP"]);
-  const [countriesList, setCountriesList] = useState(["SPAIN", "GERMANY", "USA", "UK", "FRANCE", "ITALY"]);
-  const [customersList, setCustomersList] = useState(["Duer", "Zara", "Mustang", "Miniconf", "Mohito", "Retrojeans"]);
-  const [categoriesList, setCategoriesList] = useState(["Top Ware", "Men's Pant", "Ladies Pant", "Shorts", "Shirt"]);
-  const [washTypesList, setWashTypesList] = useState(["Rinse", "Dyeing", "Softner", "Stone Wash", "EW/Biopolish", "Silicon Ball"]);
+  const [paymentTermsList, setPaymentTermsList] = useState([
+    "LC at Sight",
+    "LC-30 days",
+    "LC-45 days",
+    "LC-60 days",
+    "LC-75 days",
+    "DA",
+    "Advance",
+  ]);
+  const [deliveryTermsList, setDeliveryTermsList] = useState([
+    "FOB",
+    "CIF",
+    "CFR",
+    "DDP/LDP",
+  ]);
+  const [countriesList, setCountriesList] = useState([
+    "SPAIN",
+    "GERMANY",
+    "USA",
+    "UK",
+    "FRANCE",
+    "ITALY",
+  ]);
+  const [customersList, setCustomersList] = useState([
+    "Duer",
+    "Zara",
+    "Mustang",
+    "Miniconf",
+    "Mohito",
+    "Retrojeans",
+  ]);
+  const [categoriesList, setCategoriesList] = useState([
+    "Top Ware",
+    "Men's Pant",
+    "Ladies Pant",
+    "Shorts",
+    "Shirt",
+  ]);
+  const [washTypesList, setWashTypesList] = useState([
+    "Rinse",
+    "Dyeing",
+    "Softner",
+    "Stone Wash",
+    "EW/Biopolish",
+    "Silicon Ball",
+  ]);
   const [orderTypesList, setOrderTypesList] = useState(["Denim", "Non Denim"]);
 
   useEffect(() => {
@@ -249,80 +334,116 @@ function CostSheetContent() {
     });
 
     // Subscribe to POC Parameters
-    const unsubDLF = subscribeToTable<SimpleTableData>("direct-labour-foh", setDirectLabourFoh);
-    const unsubCTS = subscribeToTable<GridCardListData<MatrixTableData>>("cut-to-ship-grid", (list) =>
-      setCutToShipGrid(getActiveCard(list)?.data)
+    const unsubDLF = subscribeToTable<SimpleTableData>(
+      "direct-labour-foh",
+      setDirectLabourFoh,
     );
-    const unsubRej = subscribeToTable<GridCardListData<ProcessMatrixTableData>>("rejection-grid", (list) =>
-      setRejectionGrid(getActiveCard(list)?.data)
+    const unsubCTS = subscribeToTable<GridCardListData<MatrixTableData>>(
+      "cut-to-ship-grid",
+      (list) => setCutToShipGrid(getActiveCard(list)?.data),
     );
-    const unsubStylesGrid = subscribeToTable<SimpleTableData>("styles", setStylesCategoryGrid);
-    const unsubOrderTypes = subscribeToTable<SimpleTableData>("order-type", (data) => {
-      if (data?.rows?.length) {
-        const types = data.rows.map((r) => r.values?.orderType).filter(Boolean) as string[];
-        if (types.length > 0) setOrderTypesList(types);
-      }
-    });
+    const unsubRej = subscribeToTable<GridCardListData<ProcessMatrixTableData>>(
+      "rejection-grid",
+      (list) => setRejectionGrid(getActiveCard(list)?.data),
+    );
+    const unsubStylesGrid = subscribeToTable<SimpleTableData>(
+      "styles",
+      setStylesCategoryGrid,
+    );
+    const unsubOrderTypes = subscribeToTable<SimpleTableData>(
+      "order-type",
+      (data) => {
+        if (data?.rows?.length) {
+          const types = data.rows
+            .map((r) => r.values?.orderType)
+            .filter(Boolean) as string[];
+          if (types.length > 0) setOrderTypesList(types);
+        }
+      },
+    );
 
-    const unsubDropdowns = subscribeToTable<DropdownListsData>("dropdown-lists", (data) => {
-      if (data?.lists) {
-        const pTerms = data.lists.find((l) => l.key === "paymentTerms")?.items;
-        const dTerms = data.lists.find((l) => l.key === "deliveryTerms")?.items;
-        const countrs = data.lists.find((l) => l.key === "countries" || l.key === "country")?.items;
-        const custs = data.lists.find((l) => l.key === "customerName" || l.key === "customer")?.items;
-        const cats = data.lists.find((l) => l.key === "styleCategory")?.items;
-        const washes = data.lists.find((l) => l.key === "washType")?.items;
+    const unsubDropdowns = subscribeToTable<DropdownListsData>(
+      "dropdown-lists",
+      (data) => {
+        if (data?.lists) {
+          const pTerms = data.lists.find(
+            (l) => l.key === "paymentTerms",
+          )?.items;
+          const dTerms = data.lists.find(
+            (l) => l.key === "deliveryTerms",
+          )?.items;
+          const countrs = data.lists.find(
+            (l) => l.key === "countries" || l.key === "country",
+          )?.items;
+          const custs = data.lists.find(
+            (l) => l.key === "customerName" || l.key === "customer",
+          )?.items;
+          const cats = data.lists.find((l) => l.key === "styleCategory")?.items;
+          const washes = data.lists.find((l) => l.key === "washType")?.items;
 
-        if (pTerms) setPaymentTermsList(pTerms);
-        if (dTerms) setDeliveryTermsList(dTerms);
-        if (countrs) setCountriesList(countrs);
-        if (custs) setCustomersList(custs);
-        if (cats) setCategoriesList(cats);
-        if (washes) setWashTypesList(washes);
-        const orderTypes = data.lists.find((l) => l.key === "orderType" || l.key === "Order Type")?.items;
-        if (orderTypes && orderTypes.length > 0) setOrderTypesList(orderTypes);
-      }
-    });
+          if (pTerms) setPaymentTermsList(pTerms);
+          if (dTerms) setDeliveryTermsList(dTerms);
+          if (countrs) setCountriesList(countrs);
+          if (custs) setCustomersList(custs);
+          if (cats) setCategoriesList(cats);
+          if (washes) setWashTypesList(washes);
+          const orderTypes = data.lists.find(
+            (l) => l.key === "orderType" || l.key === "Order Type",
+          )?.items;
+          if (orderTypes && orderTypes.length > 0)
+            setOrderTypesList(orderTypes);
+        }
+      },
+    );
 
-    const unsubCostOfSales = subscribeToTable<SimpleTableData>("cost-as-percent-of-sales", (data) => {
-      if (data?.rows?.length) {
-        const getVal = (desc: string) => {
-          const row = data.rows.find(r => r.values.description?.toLowerCase().trim() === desc.toLowerCase().trim());
-          return row?.values.percentOfSales ? parseFloat(row.values.percentOfSales) : null;
-        };
+    const unsubCostOfSales = subscribeToTable<SimpleTableData>(
+      "cost-as-percent-of-sales",
+      (data) => {
+        if (data?.rows?.length) {
+          const getVal = (desc: string) => {
+            const row = data.rows.find(
+              (r) =>
+                r.values.description?.toLowerCase().trim() ===
+                desc.toLowerCase().trim(),
+            );
+            return row?.values.percentOfSales
+              ? parseFloat(row.values.percentOfSales)
+              : null;
+          };
 
-        const eds = getVal("EDS");
-        const taxes = getVal("Taxes");
-        const rebate = getVal("Rebate");
-        const exchangeRate = getVal("Exchange Rate");
-        const inlandFreight = getVal("Inland Freight");
-        const localBankCharges = getVal("Local Bank Charges");
-        const discountRateVal = getVal("Discount Rate");
+          const eds = getVal("EDS");
+          const taxes = getVal("Taxes");
+          const rebate = getVal("Rebate");
+          const exchangeRate = getVal("Exchange Rate");
+          const inlandFreight = getVal("Inland Freight");
+          const localBankCharges = getVal("Local Bank Charges");
+          const discountRateVal = getVal("Discount Rate");
 
-        if (!costSheetIdParam) {
-          if (eds !== null || taxes !== null) {
-            const totalTaxEds = (taxes || 0) + (eds || 0);
-            if (totalTaxEds > 0) setTaxEdsPct(totalTaxEds / 100);
-          }
-          if (exchangeRate !== null && exchangeRate > 0) {
-            setParitySale(exchangeRate);
-            setParityProcurement(exchangeRate);
-          }
-          if (rebate !== null && rebate > 0) {
-            setRebatePct(rebate);
-          }
-          if (inlandFreight !== null && inlandFreight > 0) {
-            setInlandFreightPct(inlandFreight / 100);
-          }
-          if (localBankCharges !== null && localBankCharges > 0) {
-            setLocalBankChargesPct(localBankCharges / 100);
-          }
-          if (discountRateVal !== null && discountRateVal > 0) {
-            setDiscountRate(discountRateVal / 100);
+          if (!costSheetIdParam) {
+            if (eds !== null || taxes !== null) {
+              const totalTaxEds = (taxes || 0) + (eds || 0);
+              if (totalTaxEds > 0) setTaxEdsPct(totalTaxEds / 100);
+            }
+            if (exchangeRate !== null && exchangeRate > 0) {
+              setParitySale(exchangeRate);
+              setParityProcurement(exchangeRate);
+            }
+            if (rebate !== null && rebate > 0) {
+              setRebatePct(rebate);
+            }
+            if (inlandFreight !== null && inlandFreight > 0) {
+              setInlandFreightPct(inlandFreight / 100);
+            }
+            if (localBankCharges !== null && localBankCharges > 0) {
+              setLocalBankChargesPct(localBankCharges / 100);
+            }
+            if (discountRateVal !== null && discountRateVal > 0) {
+              setDiscountRate(discountRateVal / 100);
+            }
           }
         }
-      }
-    });
+      },
+    );
 
     return () => {
       unsubStyles();
@@ -345,7 +466,7 @@ function CostSheetContent() {
       getCostSheetById(costSheetIdParam).then((sheet) => {
         if (sheet) {
           setLoadedCostSheet(sheet);
-          
+
           // Reconstruct activeStyle from snapshot
           const styleFromSheet: StyleMasterItem = {
             id: sheet.styleId,
@@ -367,7 +488,7 @@ function CostSheetContent() {
             bomSpecialCharges: sheet.bomSpecialCharges || [],
           };
           setActiveStyle(ensureStyleBOMDefaults(styleFromSheet));
-          
+
           // Set state inputs
           setCostingDate(sheet.costingDate);
           setCostingStage(sheet.costingStage);
@@ -378,20 +499,37 @@ function CostSheetContent() {
           setParitySale(sheet.paritySale);
           setParityProcurement(sheet.parityProcurement);
           setManpower(sheet.manpower);
-          
-          setEfficiencyOverride(sheet.efficiencyOverride !== null ? (sheet.efficiencyOverride * 100).toString() : "");
-          setRejectionOverride(sheet.rejectionOverride !== null ? (sheet.rejectionOverride * 100).toString() : "");
-          setLineTargetOverride(sheet.lineTargetOverride !== null ? sheet.lineTargetOverride.toString() : "");
-          
+
+          setEfficiencyOverride(
+            sheet.efficiencyOverride !== null
+              ? (sheet.efficiencyOverride * 100).toString()
+              : "",
+          );
+          setRejectionOverride(
+            sheet.rejectionOverride !== null
+              ? (sheet.rejectionOverride * 100).toString()
+              : "",
+          );
+          setLineTargetOverride(
+            sheet.lineTargetOverride !== null
+              ? sheet.lineTargetOverride.toString()
+              : "",
+          );
+
           setDiscountRate(sheet.discountRate);
           setPaymentTermsDays(sheet.paymentTermsDays);
           setFactoringDays(sheet.factoringDays);
-           setCommissionPct(sheet.commissionPct * 100);
+          setCommissionPct(sheet.commissionPct * 100);
           setForeignBankCharges(sheet.foreignBankCharges);
-          
-          const qPrice = sheet.quotedPrice !== undefined ? sheet.quotedPrice : sheet.orderFOB;
-          const iFreight = sheet.intlFreight !== undefined ? sheet.intlFreight : 0;
-          const iInsurance = sheet.intlInsurance !== undefined ? sheet.intlInsurance : 0;
+
+          const qPrice =
+            sheet.quotedPrice !== undefined
+              ? sheet.quotedPrice
+              : sheet.orderFOB;
+          const iFreight =
+            sheet.intlFreight !== undefined ? sheet.intlFreight : 0;
+          const iInsurance =
+            sheet.intlInsurance !== undefined ? sheet.intlInsurance : 0;
           setQuotedPriceInput(qPrice.toString());
           setIntlFreight(iFreight.toString());
           setIntlInsurance(iInsurance.toString());
@@ -405,9 +543,13 @@ function CostSheetContent() {
           setNoOfColors(sheet.noOfColors !== undefined ? sheet.noOfColors : 1);
           setMerchGroup(sheet.merchGroup || "Ayaz");
           setDeliveryDestination(sheet.deliveryDestination || "EURO");
-          setExFactoryDate(sheet.exFactoryDate || new Date().toISOString().split("T")[0]);
+          setExFactoryDate(
+            sheet.exFactoryDate || new Date().toISOString().split("T")[0],
+          );
           setInhouseOrSubcontract(sheet.inhouseOrSubcontract || "INHOUSE");
-          setRebatePct(sheet.rebatePct !== undefined ? sheet.rebatePct * 100 : 0);
+          setRebatePct(
+            sheet.rebatePct !== undefined ? sheet.rebatePct * 100 : 0,
+          );
         } else {
           toast.error("Saved Cost Sheet not found");
         }
@@ -432,7 +574,9 @@ function CostSheetContent() {
         setStyleCategory(activeStyle.styleCategory || "Top Ware");
         setWashType(activeStyle.washType || "Rinse");
         setOrderQuantity(activeStyle.orderQuantity || 1000);
-        setOrderType((activeStyle.orderType || "Denim") as "Denim" | "Non Denim");
+        setOrderType(
+          (activeStyle.orderType || "Denim") as "Denim" | "Non Denim",
+        );
         setNoOfColors(1);
         setMerchGroup("Ayaz");
         setDeliveryDestination("EURO");
@@ -463,17 +607,21 @@ function CostSheetContent() {
 
   // Keep activeStyle.bomChemicals[0].washItem in sync with washType
   useEffect(() => {
-    if (activeStyle && activeStyle.bomChemicals && activeStyle.bomChemicals.length > 0) {
+    if (
+      activeStyle &&
+      activeStyle.bomChemicals &&
+      activeStyle.bomChemicals.length > 0
+    ) {
       if (activeStyle.bomChemicals[0].washItem !== washType) {
         const nextChem = [...activeStyle.bomChemicals];
         nextChem[0] = {
           ...nextChem[0],
-          washItem: washType
+          washItem: washType,
         };
         Promise.resolve().then(() => {
           setActiveStyle({
             ...activeStyle,
-            bomChemicals: nextChem
+            bomChemicals: nextChem,
           });
         });
       }
@@ -522,7 +670,8 @@ function CostSheetContent() {
       } else if (key === "ratePKR") {
         nextFab[idx].rateUSD = Number(val) / parityProcurement;
       }
-      nextFab[idx].fabricCostPKR = (nextFab[idx].consumptionPerPc || 0) * (nextFab[idx].ratePKR || 0);
+      nextFab[idx].fabricCostPKR =
+        (nextFab[idx].consumptionPerPc || 0) * (nextFab[idx].ratePKR || 0);
     }
     setActiveStyle({
       ...activeStyle,
@@ -556,7 +705,8 @@ function CostSheetContent() {
       } else if (key === "ratePKR") {
         nextLin[idx].rateUSD = Number(val) / parityProcurement;
       }
-      nextLin[idx].liningCostPKR = (nextLin[idx].consumptionPerPc || 0) * (nextLin[idx].ratePKR || 0);
+      nextLin[idx].liningCostPKR =
+        (nextLin[idx].consumptionPerPc || 0) * (nextLin[idx].ratePKR || 0);
     }
     setActiveStyle({
       ...activeStyle,
@@ -564,7 +714,11 @@ function CostSheetContent() {
     });
   }
 
-  function updateAccessoriesBOM(idx: number, key: string, val: string | number) {
+  function updateAccessoriesBOM(
+    idx: number,
+    key: string,
+    val: string | number,
+  ) {
     if (!activeStyle) return;
     const nextAcc = [...(activeStyle.bomAccessories || [])];
     for (let i = 0; i <= idx; i++) {
@@ -591,7 +745,8 @@ function CostSheetContent() {
     }
 
     if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
-      nextAcc[idx].totalCostPKR = (nextAcc[idx].consPerPc || 0) * (nextAcc[idx].ratePKR || 0);
+      nextAcc[idx].totalCostPKR =
+        (nextAcc[idx].consPerPc || 0) * (nextAcc[idx].ratePKR || 0);
     }
     setActiveStyle({
       ...activeStyle,
@@ -625,7 +780,8 @@ function CostSheetContent() {
     }
 
     if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
-      nextChem[idx].totalCostPKR = (nextChem[idx].consPerPc || 0) * (nextChem[idx].ratePKR || 0);
+      nextChem[idx].totalCostPKR =
+        (nextChem[idx].consPerPc || 0) * (nextChem[idx].ratePKR || 0);
     }
     setActiveStyle({
       ...activeStyle,
@@ -633,7 +789,11 @@ function CostSheetContent() {
     });
   }
 
-  function updateSpecialChargesBOM(idx: number, key: string, val: string | number) {
+  function updateSpecialChargesBOM(
+    idx: number,
+    key: string,
+    val: string | number,
+  ) {
     if (!activeStyle) return;
     const nextChg = [...(activeStyle.bomSpecialCharges || [])];
     for (let i = 0; i <= idx; i++) {
@@ -659,7 +819,8 @@ function CostSheetContent() {
     }
 
     if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
-      nextChg[idx].totalCostPKR = (nextChg[idx].consPerPc || 0) * (nextChg[idx].ratePKR || 0);
+      nextChg[idx].totalCostPKR =
+        (nextChg[idx].consPerPc || 0) * (nextChg[idx].ratePKR || 0);
     }
     setActiveStyle({
       ...activeStyle,
@@ -674,7 +835,7 @@ function CostSheetContent() {
       toast.error("Please enter a scenario reference name");
       return;
     }
-    
+
     const nextId = generateCostSheetId(activeStyle.id);
     const snapshot: SavedCostSheetItem = {
       id: nextId,
@@ -693,7 +854,7 @@ function CostSheetContent() {
       exFactoryDate,
       inhouseOrSubcontract,
       rebatePct: rebatePct / 100,
-      
+
       costingDate,
       costingStage,
       country,
@@ -703,33 +864,43 @@ function CostSheetContent() {
       paritySale,
       parityProcurement,
       manpower,
-      efficiencyOverride: efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
-      rejectionOverride: rejectionOverride !== "" ? parseFloat(rejectionOverride) / 100 : null,
-      lineTargetOverride: lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
-      
+      efficiencyOverride:
+        efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
+      rejectionOverride:
+        rejectionOverride !== "" ? parseFloat(rejectionOverride) / 100 : null,
+      lineTargetOverride:
+        lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
+
       discountRate,
       paymentTermsDays,
       factoringDays,
       commissionPct: commissionPct / 100,
       foreignBankCharges,
       orderFOB: (() => {
-        const q = quotedPriceInput !== "" ? parseFloat(quotedPriceInput) : activeStyle.baseSellingPrice;
+        const q =
+          quotedPriceInput !== ""
+            ? parseFloat(quotedPriceInput)
+            : activeStyle.baseSellingPrice;
         const f = parseFloat(intlFreight) || 0;
         const i = parseFloat(intlInsurance) || 0;
         if (deliveryTerms === "CFR") return q - f;
-        if (deliveryTerms === "CIF" || deliveryTerms === "DDP/LDP") return q - f - i;
+        if (deliveryTerms === "CIF" || deliveryTerms === "DDP/LDP")
+          return q - f - i;
         return q;
       })(),
-      quotedPrice: quotedPriceInput !== "" ? parseFloat(quotedPriceInput) : activeStyle.baseSellingPrice,
+      quotedPrice:
+        quotedPriceInput !== ""
+          ? parseFloat(quotedPriceInput)
+          : activeStyle.baseSellingPrice,
       intlFreight: parseFloat(intlFreight) || 0,
       intlInsurance: parseFloat(intlInsurance) || 0,
-      
+
       bomFabric: activeStyle.bomFabric,
       bomLining: activeStyle.bomLining,
       bomAccessories: activeStyle.bomAccessories,
       bomChemicals: activeStyle.bomChemicals,
       bomSpecialCharges: activeStyle.bomSpecialCharges,
-      
+
       calculations: {
         targetFobUSD: calcs.targetFobUSD,
         orderFobUSD: calcs.sellingPriceUSD,
@@ -747,7 +918,7 @@ function CostSheetContent() {
       },
       savedAt: new Date().toISOString(),
     };
-    
+
     try {
       await saveCostSheet(snapshot);
       setLoadedCostSheet(snapshot);
@@ -763,7 +934,7 @@ function CostSheetContent() {
   // Update existing snapshot
   async function handleUpdateExisting() {
     if (!activeStyle || !calcs || !loadedCostSheet) return;
-    
+
     const snapshot: SavedCostSheetItem = {
       ...loadedCostSheet,
       customerName,
@@ -786,33 +957,43 @@ function CostSheetContent() {
       paritySale,
       parityProcurement,
       manpower,
-      efficiencyOverride: efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
-      rejectionOverride: rejectionOverride !== "" ? parseFloat(rejectionOverride) / 100 : null,
-      lineTargetOverride: lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
-      
+      efficiencyOverride:
+        efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
+      rejectionOverride:
+        rejectionOverride !== "" ? parseFloat(rejectionOverride) / 100 : null,
+      lineTargetOverride:
+        lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
+
       discountRate,
       paymentTermsDays,
       factoringDays,
       commissionPct: commissionPct / 100,
       foreignBankCharges,
       orderFOB: (() => {
-        const q = quotedPriceInput !== "" ? parseFloat(quotedPriceInput) : activeStyle.baseSellingPrice;
+        const q =
+          quotedPriceInput !== ""
+            ? parseFloat(quotedPriceInput)
+            : activeStyle.baseSellingPrice;
         const f = parseFloat(intlFreight) || 0;
         const i = parseFloat(intlInsurance) || 0;
         if (deliveryTerms === "CFR") return q - f;
-        if (deliveryTerms === "CIF" || deliveryTerms === "DDP/LDP") return q - f - i;
+        if (deliveryTerms === "CIF" || deliveryTerms === "DDP/LDP")
+          return q - f - i;
         return q;
       })(),
-      quotedPrice: quotedPriceInput !== "" ? parseFloat(quotedPriceInput) : activeStyle.baseSellingPrice,
+      quotedPrice:
+        quotedPriceInput !== ""
+          ? parseFloat(quotedPriceInput)
+          : activeStyle.baseSellingPrice,
       intlFreight: parseFloat(intlFreight) || 0,
       intlInsurance: parseFloat(intlInsurance) || 0,
-      
+
       bomFabric: activeStyle.bomFabric,
       bomLining: activeStyle.bomLining,
       bomAccessories: activeStyle.bomAccessories,
       bomChemicals: activeStyle.bomChemicals,
       bomSpecialCharges: activeStyle.bomSpecialCharges,
-      
+
       calculations: {
         targetFobUSD: calcs.targetFobUSD,
         orderFobUSD: calcs.sellingPriceUSD,
@@ -830,7 +1011,7 @@ function CostSheetContent() {
       },
       savedAt: new Date().toISOString(),
     };
-    
+
     try {
       await saveCostSheet(snapshot);
       setLoadedCostSheet(snapshot);
@@ -845,11 +1026,17 @@ function CostSheetContent() {
   const calcs = useMemo(() => {
     if (!activeStyle) return null;
 
-    const effOv = efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null;
-    const rejOv = rejectionOverride !== "" ? parseFloat(rejectionOverride) / 100 : null;
-    const tgtOv = lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null;
-    
-    const qPrice = quotedPriceInput !== "" ? parseFloat(quotedPriceInput) : activeStyle.baseSellingPrice;
+    const effOv =
+      efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null;
+    const rejOv =
+      rejectionOverride !== "" ? parseFloat(rejectionOverride) / 100 : null;
+    const tgtOv =
+      lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null;
+
+    const qPrice =
+      quotedPriceInput !== ""
+        ? parseFloat(quotedPriceInput)
+        : activeStyle.baseSellingPrice;
     const fVal = parseFloat(intlFreight) || 0;
     const iVal = parseFloat(intlInsurance) || 0;
     let calculatedOrderFOB = qPrice;
@@ -897,7 +1084,7 @@ function CostSheetContent() {
         cutToShipGrid,
         rejectionGrid,
         stylesCategoryGrid,
-      }
+      },
     );
   }, [
     activeStyle,
@@ -935,7 +1122,11 @@ function CostSheetContent() {
   ]);
 
   if (loadingStyles || !activeStyle || !calcs) {
-    return <div className="p-8 text-center text-sm text-muted-foreground">Loading Cost Sheet calculator…</div>;
+    return (
+      <div className="p-8 text-center text-sm text-muted-foreground">
+        Loading Cost Sheet calculator…
+      </div>
+    );
   }
 
   // Helper formatting classes
@@ -947,19 +1138,33 @@ function CostSheetContent() {
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight">Cost Sheet Calculator</h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Cost Sheet Calculator
+            </h1>
             {loadedCostSheet && (
-              <Badge variant="outline" className="text-xs border-blue-200 bg-blue-50 text-blue-800 font-semibold px-2.5 py-1 rounded-md">
+              <Badge
+                variant="outline"
+                className="text-xs border-blue-200 bg-blue-50 text-blue-800 font-semibold px-2.5 py-1 rounded-md"
+              >
                 Snapshot: {loadedCostSheet.id} ({loadedCostSheet.referenceName})
               </Badge>
             )}
           </div>
           <p className="text-sm text-muted-foreground">
-            Real-time interactive order costing dashboard connected directly with style specifications and factory overheads.
+            Real-time interactive order costing dashboard connected directly
+            with style specifications and factory overheads.
           </p>
         </div>
-        {loadedCostSheet && (
-          <div>
+        <div className="flex gap-2 print:hidden">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.print()}
+            className="h-9"
+          >
+            <Printer className="mr-1.5 size-4" /> Print
+          </Button>
+          {loadedCostSheet && (
             <Button
               variant="outline"
               size="sm"
@@ -971,8 +1176,8 @@ function CostSheetContent() {
             >
               Exit Snapshot Mode
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ZONE 1: HEADER CONTROLS & INPUTS (Soft blue background) */}
@@ -980,13 +1185,17 @@ function CostSheetContent() {
         <CardContent className="p-5 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-blue-100/50 pb-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-blue-900/80 dark:text-blue-200">Select Apparel Style</label>
+              <label className="text-xs font-semibold text-blue-900/80 dark:text-blue-200">
+                Select Apparel Style
+              </label>
               <select
                 className="w-full h-9 rounded-md border border-blue-200 bg-background px-3 py-1.5 text-sm shadow-sm focus-visible:outline-none focus:ring-1 focus:ring-blue-400 font-semibold"
                 value={activeStyle.id}
                 onChange={(e) => handleStyleChange(e.target.value)}
               >
-                <option value="custom">-- Custom Style / Manual Input --</option>
+                <option value="custom">
+                  -- Custom Style / Manual Input --
+                </option>
                 {styles.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.id} - {s.styleName} ({s.customerName})
@@ -995,7 +1204,9 @@ function CostSheetContent() {
               </select>
               {activeStyle.id === "custom" && (
                 <div className="space-y-1 pt-1.5">
-                  <label className="text-xs font-semibold text-blue-900/80 dark:text-blue-200">Style Name *</label>
+                  <label className="text-xs font-semibold text-blue-900/80 dark:text-blue-200">
+                    Style Name *
+                  </label>
                   <Input
                     type="text"
                     className="h-7 text-xs border-blue-200 px-2 font-semibold"
@@ -1013,43 +1224,57 @@ function CostSheetContent() {
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm bg-white/50 dark:bg-slate-950/30 p-2.5 rounded-md border border-blue-100/50">
               <div className="space-y-0.5">
-                <span className="text-xs text-muted-foreground font-semibold">Customer:</span>
+                <span className="text-xs text-muted-foreground font-semibold">
+                  Customer:
+                </span>
                 <select
                   className="w-full h-7 rounded border border-blue-200 bg-background px-2 py-0.5 text-xs focus-visible:outline-none focus:ring-1 focus:ring-blue-400 font-semibold"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                 >
                   {customersList.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="space-y-0.5">
-                <span className="text-xs text-muted-foreground font-semibold">Style Category:</span>
+                <span className="text-xs text-muted-foreground font-semibold">
+                  Style Category:
+                </span>
                 <select
                   className="w-full h-7 rounded border border-blue-200 bg-background px-2 py-0.5 text-xs focus-visible:outline-none focus:ring-1 focus:ring-blue-400 font-semibold"
                   value={styleCategory}
                   onChange={(e) => setStyleCategory(e.target.value)}
                 >
                   {categoriesList.map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="space-y-0.5">
-                <span className="text-xs text-muted-foreground font-semibold">Wash Type:</span>
+                <span className="text-xs text-muted-foreground font-semibold">
+                  Wash Type:
+                </span>
                 <select
                   className="w-full h-7 rounded border border-blue-200 bg-background px-2 py-0.5 text-xs focus-visible:outline-none focus:ring-1 focus:ring-blue-400 font-semibold"
                   value={washType}
                   onChange={(e) => setWashType(e.target.value)}
                 >
                   {washTypesList.map((w) => (
-                    <option key={w} value={w}>{w}</option>
+                    <option key={w} value={w}>
+                      {w}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="space-y-0.5">
-                <span className="text-xs text-muted-foreground font-semibold">Order Qty:</span>
+                <span className="text-xs text-muted-foreground font-semibold">
+                  Order Qty:
+                </span>
                 <Input
                   type="number"
                   className="h-7 text-xs border-blue-200 px-2 font-semibold"
@@ -1060,27 +1285,39 @@ function CostSheetContent() {
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm bg-white/50 dark:bg-slate-950/30 p-2.5 rounded-md border border-blue-100/50">
               <div>
-                <span className="text-xs text-muted-foreground">Size Bracket:</span>
-                <p className="font-semibold text-primary">{calcs.sizeBracket}</p>
+                <span className="text-xs text-muted-foreground">
+                  Size Bracket:
+                </span>
+                <p className="font-semibold text-primary">
+                  {calcs.sizeBracket}
+                </p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">SMV (Sewing):</span>
+                <span className="text-xs text-muted-foreground">
+                  SMV (Sewing):
+                </span>
                 <p className="font-semibold">{activeStyle.smvSewing} min</p>
               </div>
               <div>
-                <span className="text-xs text-muted-foreground">Style Class:</span>
+                <span className="text-xs text-muted-foreground">
+                  Style Class:
+                </span>
                 <p className="font-semibold">{calcs.styleCategory}</p>
               </div>
               <div>
                 <span className="text-xs text-muted-foreground">Base FOB:</span>
-                <p className="font-semibold">${activeStyle.baseSellingPrice.toFixed(2)}</p>
+                <p className="font-semibold">
+                  ${activeStyle.baseSellingPrice.toFixed(2)}
+                </p>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Costing Date</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Costing Date
+              </label>
               <Input
                 type="date"
                 className="h-8 text-xs border-blue-200"
@@ -1089,7 +1326,9 @@ function CostSheetContent() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Ex-Factory Date</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Ex-Factory Date
+              </label>
               <Input
                 type="date"
                 className="h-8 text-xs border-blue-200"
@@ -1098,7 +1337,9 @@ function CostSheetContent() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Costing Stage</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Costing Stage
+              </label>
               <select
                 className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none"
                 value={costingStage}
@@ -1109,19 +1350,27 @@ function CostSheetContent() {
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Order Type</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Order Type
+              </label>
               <select
                 className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none font-semibold"
                 value={orderType}
-                onChange={(e) => setOrderType(e.target.value as "Denim" | "Non Denim")}
+                onChange={(e) =>
+                  setOrderType(e.target.value as "Denim" | "Non Denim")
+                }
               >
                 {orderTypesList.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
                 ))}
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Inhouse / CMT</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Inhouse / CMT
+              </label>
               <select
                 className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none font-semibold"
                 value={inhouseOrSubcontract}
@@ -1132,17 +1381,23 @@ function CostSheetContent() {
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">No. of Colors</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                No. of Colors
+              </label>
               <Input
                 type="number"
                 min="1"
                 className="h-8 text-xs border-blue-200"
                 value={noOfColors}
-                onChange={(e) => setNoOfColors(Math.max(1, Number(e.target.value)))}
+                onChange={(e) =>
+                  setNoOfColors(Math.max(1, Number(e.target.value)))
+                }
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Per Color Qty</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Per Color Qty
+              </label>
               <Input
                 type="text"
                 disabled
@@ -1151,7 +1406,9 @@ function CostSheetContent() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Merch Group</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Merch Group
+              </label>
               <Input
                 type="text"
                 className="h-8 text-xs border-blue-200"
@@ -1160,7 +1417,9 @@ function CostSheetContent() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Delivery Dest.</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Delivery Dest.
+              </label>
               <select
                 className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none font-semibold"
                 value={deliveryDestination}
@@ -1171,31 +1430,41 @@ function CostSheetContent() {
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Country</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Country
+              </label>
               <select
                 className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
               >
                 {countriesList.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
                 ))}
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Payment Terms</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Payment Terms
+              </label>
               <select
                 className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none"
                 value={paymentTerms}
                 onChange={(e) => setPaymentTerms(e.target.value)}
               >
                 {paymentTermsList.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
                 ))}
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Shipment Mode</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Shipment Mode
+              </label>
               <select
                 className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none"
                 value={shipmentMode}
@@ -1206,20 +1475,26 @@ function CostSheetContent() {
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Delivery Terms</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Delivery Terms
+              </label>
               <select
                 className="w-full h-8 rounded-md border border-blue-200 bg-background px-2 text-xs focus-visible:outline-none"
                 value={deliveryTerms}
                 onChange={(e) => setDeliveryTerms(e.target.value)}
               >
                 {deliveryTermsList.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Parity - Sale (Rs/$)</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Parity - Sale (Rs/$)
+              </label>
               <Input
                 type="number"
                 className="h-8 text-xs border-blue-200"
@@ -1228,7 +1503,9 @@ function CostSheetContent() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Parity - Proc. (Rs/$)</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Parity - Proc. (Rs/$)
+              </label>
               <Input
                 type="number"
                 className="h-8 text-xs border-blue-200"
@@ -1237,7 +1514,9 @@ function CostSheetContent() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Manpower/Line</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Manpower/Line
+              </label>
               <Input
                 type="number"
                 className="h-8 text-xs border-blue-200"
@@ -1246,7 +1525,9 @@ function CostSheetContent() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Line Efficiency %</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Line Efficiency %
+              </label>
               <Input
                 type="number"
                 step="0.1"
@@ -1257,7 +1538,9 @@ function CostSheetContent() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Rejection %</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Rejection %
+              </label>
               <Input
                 type="number"
                 step="0.01"
@@ -1268,7 +1551,9 @@ function CostSheetContent() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">Line Target (Pc/Day)</label>
+              <label className="text-xs font-medium text-blue-900/80 dark:text-blue-200">
+                Line Target (Pc/Day)
+              </label>
               <Input
                 type="number"
                 className="h-8 text-xs border-blue-200"
@@ -1285,14 +1570,20 @@ function CostSheetContent() {
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 xl:grid-cols-10 gap-3">
         <Card className="shadow-sm border-muted/50">
           <CardContent className="p-3 text-center">
-            <span className="text-[10px] uppercase font-bold text-muted-foreground">Target FOB</span>
-            <p className="text-lg font-extrabold text-foreground mt-0.5">${calcs.targetFobUSD.toFixed(2)}</p>
+            <span className="text-[10px] uppercase font-bold text-muted-foreground">
+              Target FOB
+            </span>
+            <p className="text-lg font-extrabold text-foreground mt-0.5">
+              ${calcs.targetFobUSD.toFixed(2)}
+            </p>
           </CardContent>
         </Card>
         <Card className="shadow-sm border-muted/50 bg-blue-50/10 border-blue-100">
           <CardContent className="p-3 text-center">
             <span className="text-[10px] uppercase font-bold text-blue-800 dark:text-blue-300">
-              {deliveryTerms === "FOB" ? "Order FOB" : `Quoted Price (${deliveryTerms})`}
+              {deliveryTerms === "FOB"
+                ? "Order FOB"
+                : `Quoted Price (${deliveryTerms})`}
             </span>
             <div className="flex items-center justify-center gap-1 mt-0.5">
               <span className="text-xs font-bold text-muted-foreground">$</span>
@@ -1309,9 +1600,13 @@ function CostSheetContent() {
         {deliveryTerms !== "FOB" && (
           <Card className="shadow-sm border-muted/50 bg-blue-50/10 border-blue-100 animate-in fade-in duration-200">
             <CardContent className="p-3 text-center">
-              <span className="text-[10px] uppercase font-bold text-blue-800 dark:text-blue-300">Intl. Freight/Pc</span>
+              <span className="text-[10px] uppercase font-bold text-blue-800 dark:text-blue-300">
+                Intl. Freight/Pc
+              </span>
               <div className="flex items-center justify-center gap-1 mt-0.5">
-                <span className="text-xs font-bold text-muted-foreground">$</span>
+                <span className="text-xs font-bold text-muted-foreground">
+                  $
+                </span>
                 <input
                   type="number"
                   step="0.01"
@@ -1326,9 +1621,13 @@ function CostSheetContent() {
         {(deliveryTerms === "CIF" || deliveryTerms === "DDP/LDP") && (
           <Card className="shadow-sm border-muted/50 bg-blue-50/10 border-blue-100 animate-in fade-in duration-200">
             <CardContent className="p-3 text-center">
-              <span className="text-[10px] uppercase font-bold text-blue-800 dark:text-blue-300">Intl. Insurance/Pc</span>
+              <span className="text-[10px] uppercase font-bold text-blue-800 dark:text-blue-300">
+                Intl. Insurance/Pc
+              </span>
               <div className="flex items-center justify-center gap-1 mt-0.5">
-                <span className="text-xs font-bold text-muted-foreground">$</span>
+                <span className="text-xs font-bold text-muted-foreground">
+                  $
+                </span>
                 <input
                   type="number"
                   step="0.01"
@@ -1343,48 +1642,101 @@ function CostSheetContent() {
         {deliveryTerms !== "FOB" && (
           <Card className="shadow-sm border-muted/50 bg-slate-50 border-slate-200">
             <CardContent className="p-3 text-center">
-              <span className="text-[10px] uppercase font-bold text-slate-500">Net Order FOB</span>
-              <p className="text-lg font-extrabold text-slate-800 mt-0.5">${calcs.sellingPriceUSD.toFixed(2)}</p>
+              <span className="text-[10px] uppercase font-bold text-slate-500">
+                Net Order FOB
+              </span>
+              <p className="text-lg font-extrabold text-slate-800 mt-0.5">
+                ${calcs.sellingPriceUSD.toFixed(2)}
+              </p>
             </CardContent>
           </Card>
         )}
         <Card className="shadow-sm border-muted/50">
           <CardContent className="p-3 text-center">
-            <span className="text-[10px] uppercase font-bold text-muted-foreground">Order CM/PC</span>
+            <span className="text-[10px] uppercase font-bold text-muted-foreground">
+              Order CM/PC
+            </span>
             <p className="text-lg font-extrabold text-foreground mt-0.5">
-              ${((quotedPriceInput === "" || parseFloat(quotedPriceInput) === 0) ? 0 : calcs.cmUSD).toFixed(2)}
+              $
+              {(quotedPriceInput === "" || parseFloat(quotedPriceInput) === 0
+                ? 0
+                : calcs.cmUSD
+              ).toFixed(2)}
             </p>
           </CardContent>
         </Card>
         <Card className="shadow-sm border-muted/50">
           <CardContent className="p-3 text-center">
-            <span className="text-[10px] uppercase font-bold text-muted-foreground">Order CM/SMV</span>
+            <span className="text-[10px] uppercase font-bold text-muted-foreground">
+              Order CM/SMV
+            </span>
             <p className="text-lg font-extrabold text-foreground mt-0.5">
-              {((quotedPriceInput === "" || parseFloat(quotedPriceInput) === 0) ? 0 : calcs.cmMinuteUSD).toFixed(2)}¢
+              {(quotedPriceInput === "" || parseFloat(quotedPriceInput) === 0
+                ? 0
+                : calcs.cmMinuteUSD
+              ).toFixed(2)}
+              ¢
             </p>
           </CardContent>
         </Card>
-        <Card className={`shadow-sm transition-colors border-muted/50 ${isEbitdaPositive ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200" : "bg-red-50/50 dark:bg-red-950/20 border-red-200"}`}>
+        <Card
+          className={`shadow-sm transition-colors border-muted/50 ${isEbitdaPositive ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200" : "bg-red-50/50 dark:bg-red-950/20 border-red-200"}`}
+        >
           <CardContent className="p-3 text-center">
-            <span className={`text-[10px] uppercase font-bold ${isEbitdaPositive ? "text-emerald-800 dark:text-emerald-300" : "text-red-800 dark:text-red-300"}`}>EBITDA / Min</span>
-            <p className={`text-lg font-extrabold mt-0.5 ${isEbitdaPositive ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
-              {((quotedPriceInput === "" || parseFloat(quotedPriceInput) === 0) ? 0 : calcs.ebitdaMinCents).toFixed(2)}¢
+            <span
+              className={`text-[10px] uppercase font-bold ${isEbitdaPositive ? "text-emerald-800 dark:text-emerald-300" : "text-red-800 dark:text-red-300"}`}
+            >
+              EBITDA / Min
+            </span>
+            <p
+              className={`text-lg font-extrabold mt-0.5 ${isEbitdaPositive ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}
+            >
+              {(quotedPriceInput === "" || parseFloat(quotedPriceInput) === 0
+                ? 0
+                : calcs.ebitdaMinCents
+              ).toFixed(2)}
+              ¢
             </p>
           </CardContent>
         </Card>
-        <Card className={`shadow-sm transition-colors border-muted/50 ${isProfitPositive ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200" : "bg-red-50/50 dark:bg-red-950/20 border-red-200"}`}>
+        <Card
+          className={`shadow-sm transition-colors border-muted/50 ${isProfitPositive ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200" : "bg-red-50/50 dark:bg-red-950/20 border-red-200"}`}
+        >
           <CardContent className="p-3 text-center">
-            <span className={`text-[10px] uppercase font-bold ${isProfitPositive ? "text-emerald-800 dark:text-emerald-300" : "text-red-800 dark:text-red-300"}`}>Net Profit/PC</span>
-            <p className={`text-lg font-extrabold mt-0.5 ${isProfitPositive ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
-              ${((quotedPriceInput === "" || parseFloat(quotedPriceInput) === 0) ? 0 : calcs.netProfitUSD).toFixed(2)}
+            <span
+              className={`text-[10px] uppercase font-bold ${isProfitPositive ? "text-emerald-800 dark:text-emerald-300" : "text-red-800 dark:text-red-300"}`}
+            >
+              Net Profit/PC
+            </span>
+            <p
+              className={`text-lg font-extrabold mt-0.5 ${isProfitPositive ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}
+            >
+              $
+              {(quotedPriceInput === "" || parseFloat(quotedPriceInput) === 0
+                ? 0
+                : calcs.netProfitUSD
+              ).toFixed(2)}
             </p>
           </CardContent>
         </Card>
-        <Card className={`shadow-sm transition-colors border-muted/50 ${isProfitPositive ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200" : "bg-red-50/50 dark:bg-red-950/20 border-red-200"}`}>
+        <Card
+          className={`shadow-sm transition-colors border-muted/50 ${isProfitPositive ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200" : "bg-red-50/50 dark:bg-red-950/20 border-red-200"}`}
+        >
           <CardContent className="p-3 text-center">
-            <span className={`text-[10px] uppercase font-bold ${isProfitPositive ? "text-emerald-800 dark:text-emerald-300" : "text-red-800 dark:text-red-300"}`}>Net Profit %</span>
-            <p className={`text-lg font-extrabold mt-0.5 ${isProfitPositive ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
-              {(((quotedPriceInput === "" || parseFloat(quotedPriceInput) === 0) ? 0 : calcs.netProfitPct) * 100).toFixed(2)}%
+            <span
+              className={`text-[10px] uppercase font-bold ${isProfitPositive ? "text-emerald-800 dark:text-emerald-300" : "text-red-800 dark:text-red-300"}`}
+            >
+              Net Profit %
+            </span>
+            <p
+              className={`text-lg font-extrabold mt-0.5 ${isProfitPositive ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}
+            >
+              {(
+                (quotedPriceInput === "" || parseFloat(quotedPriceInput) === 0
+                  ? 0
+                  : calcs.netProfitPct) * 100
+              ).toFixed(2)}
+              %
             </p>
           </CardContent>
         </Card>
@@ -1393,11 +1745,15 @@ function CostSheetContent() {
       {/* ZONE 2.5: FINANCIAL PARAMETERS SUMMARY ROW */}
       <div className="rounded-xl border bg-card shadow-sm px-4 py-3">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">Financial Params:</span>
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">
+            Financial Params:
+          </span>
 
           {/* Commission % */}
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground font-medium">Commission %</span>
+            <span className="text-muted-foreground font-medium">
+              Commission %
+            </span>
             <input
               type="number"
               step="0.01"
@@ -1405,14 +1761,18 @@ function CostSheetContent() {
               value={commissionPct}
               onChange={(e) => setCommissionPct(Number(e.target.value))}
             />
-            <span className="text-muted-foreground">{commissionPct.toFixed(2)}%</span>
+            <span className="text-muted-foreground">
+              {commissionPct.toFixed(2)}%
+            </span>
           </div>
 
           <div className="h-4 w-px bg-border" />
 
           {/* Tax & EDS */}
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground font-medium">Tax &amp; EDS</span>
+            <span className="text-muted-foreground font-medium">
+              Tax &amp; EDS
+            </span>
             <input
               type="number"
               step="0.01"
@@ -1427,13 +1787,17 @@ function CostSheetContent() {
 
           {/* Inland Freight & Clearing */}
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground font-medium">Inland Freight &amp; Clearing</span>
+            <span className="text-muted-foreground font-medium">
+              Inland Freight &amp; Clearing
+            </span>
             <input
               type="number"
               step="0.01"
               className="w-14 h-6 text-[11px] bg-muted/30 border border-border text-center rounded focus:outline-none focus:border-primary font-semibold"
               value={(inlandFreightPct * 100).toFixed(2)}
-              onChange={(e) => setInlandFreightPct(Number(e.target.value) / 100)}
+              onChange={(e) =>
+                setInlandFreightPct(Number(e.target.value) / 100)
+              }
             />
             <span className="text-muted-foreground">%</span>
           </div>
@@ -1442,13 +1806,17 @@ function CostSheetContent() {
 
           {/* Local Bank Charges */}
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground font-medium">Local Bank Charges</span>
+            <span className="text-muted-foreground font-medium">
+              Local Bank Charges
+            </span>
             <input
               type="number"
               step="0.01"
               className="w-14 h-6 text-[11px] bg-muted/30 border border-border text-center rounded focus:outline-none focus:border-primary font-semibold"
               value={(localBankChargesPct * 100).toFixed(2)}
-              onChange={(e) => setLocalBankChargesPct(Number(e.target.value) / 100)}
+              onChange={(e) =>
+                setLocalBankChargesPct(Number(e.target.value) / 100)
+              }
             />
             <span className="text-muted-foreground">%</span>
           </div>
@@ -1457,7 +1825,9 @@ function CostSheetContent() {
 
           {/* Discount Rate */}
           <div className="flex items-center gap-1.5">
-            <span className="text-muted-foreground font-medium font-bold">Discount Rate</span>
+            <span className="text-muted-foreground font-medium font-bold">
+              Discount Rate
+            </span>
             <input
               type="number"
               step="0.01"
@@ -1472,40 +1842,62 @@ function CostSheetContent() {
 
       {/* ZONE 3: SPLIT PANEL VIEW */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        
         {/* LEFT PANEL: FINANCIAL SUMMARY TABLE */}
         <Card className="lg:col-span-5 shadow-md border-muted/60 bg-card overflow-hidden">
           <div className="bg-muted/40 p-4 border-b flex justify-between items-center">
             <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
-              <Calculator className="size-4 text-primary" /> Cost & Profitability Summary
+              <Calculator className="size-4 text-primary" /> Cost &
+              Profitability Summary
             </h2>
-            <span className="text-[10px] bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 font-semibold px-2 py-0.5 rounded-full">Per Pc Calculations</span>
+            <span className="text-[10px] bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 font-semibold px-2 py-0.5 rounded-full">
+              Per Pc Calculations
+            </span>
           </div>
           <CardContent className="p-0 text-xs">
             <Table>
               <TableHeader className="bg-muted/30">
                 <TableRow>
-                  <TableHead className="font-semibold text-foreground">Cost Element</TableHead>
-                  <TableHead className="text-right font-semibold text-foreground w-20">PKR</TableHead>
-                  <TableHead className="text-right font-semibold text-foreground w-20">USD</TableHead>
-                  <TableHead className="text-right font-semibold text-foreground w-16">% Sales</TableHead>
+                  <TableHead className="font-semibold text-foreground">
+                    Cost Element
+                  </TableHead>
+                  <TableHead className="text-right font-semibold text-foreground w-20">
+                    PKR
+                  </TableHead>
+                  <TableHead className="text-right font-semibold text-foreground w-20">
+                    USD
+                  </TableHead>
+                  <TableHead className="text-right font-semibold text-foreground w-16">
+                    % Sales
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {/* REVENUE */}
                 <TableRow className="bg-muted/10 font-semibold">
                   <TableCell>Selling Price (FOB)</TableCell>
-                  <TableCell className="text-right">Rs. {calcs.sellingPricePKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right">${calcs.sellingPriceUSD.toFixed(3)}</TableCell>
+                  <TableCell className="text-right">
+                    Rs. {calcs.sellingPricePKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    ${calcs.sellingPriceUSD.toFixed(3)}
+                  </TableCell>
                   <TableCell className="text-right">100.0%</TableCell>
                 </TableRow>
 
                 {/* DEDUCTIONS */}
                 <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">Tax &amp; EDS ({(taxEdsPct * 100).toFixed(2)}%)</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{calcs.taxEDS_PKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.taxEDS_USD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.taxEDS_Pct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">
+                    Tax &amp; EDS ({(taxEdsPct * 100).toFixed(2)}%)
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {calcs.taxEDS_PKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.taxEDS_USD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.taxEDS_Pct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
@@ -1513,7 +1905,9 @@ function CostSheetContent() {
                   </TableCell>
                   <TableCell className="p-2 text-right">
                     <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">%:</span>
+                      <span className="text-[10px] text-muted-foreground align-middle">
+                        %:
+                      </span>
                       <input
                         type="number"
                         step="0.01"
@@ -1523,62 +1917,105 @@ function CostSheetContent() {
                       />
                     </div>
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.rebateUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.rebatePct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.rebateUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.rebatePct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">Inland Freight & Clearing</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{calcs.freightPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.freightUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.freightPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">
+                    Inland Freight & Clearing
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {calcs.freightPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.freightUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.freightPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">Local Bank Charges ({(localBankChargesPct * 100).toFixed(2)}%)</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{calcs.bankChargesPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.bankChargesUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.bankChargesPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">
+                    Local Bank Charges ({(localBankChargesPct * 100).toFixed(2)}
+                    %)
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {calcs.bankChargesPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.bankChargesUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.bankChargesPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
                     Markup & Discounting
-                    <span className="cursor-help" title="Rs Selling Price * (Discount Rate / 365) * Discount Days">
+                    <span
+                      className="cursor-help"
+                      title="Rs Selling Price * (Discount Rate / 365) * Discount Days"
+                    >
                       <Info className="size-3 text-muted-foreground" />
                     </span>
                   </TableCell>
                   <TableCell className="p-2 text-right">
                     <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">Days:</span>
+                      <span className="text-[10px] text-muted-foreground align-middle">
+                        Days:
+                      </span>
                       <input
                         type="number"
                         className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
                         value={paymentTermsDays}
-                        onChange={(e) => setPaymentTermsDays(Number(e.target.value))}
+                        onChange={(e) =>
+                          setPaymentTermsDays(Number(e.target.value))
+                        }
                       />
                     </div>
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.markupDiscountUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.markupDiscountPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.markupDiscountUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.markupDiscountPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
                     Factoring Cost
-                    <span className="cursor-help" title="Rs Selling Price * (Discount Rate / 365) * Factoring Days">
+                    <span
+                      className="cursor-help"
+                      title="Rs Selling Price * (Discount Rate / 365) * Factoring Days"
+                    >
                       <Info className="size-3 text-muted-foreground" />
                     </span>
                   </TableCell>
                   <TableCell className="p-2 text-right">
                     <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">Days:</span>
+                      <span className="text-[10px] text-muted-foreground align-middle">
+                        Days:
+                      </span>
                       <input
                         type="number"
                         className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
                         value={factoringDays}
-                        onChange={(e) => setFactoringDays(Number(e.target.value))}
+                        onChange={(e) =>
+                          setFactoringDays(Number(e.target.value))
+                        }
                       />
                     </div>
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.factoringUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.factoringPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.factoringUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.factoringPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
@@ -1586,166 +2023,328 @@ function CostSheetContent() {
                   </TableCell>
                   <TableCell className="p-2 text-right">
                     <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">%:</span>
+                      <span className="text-[10px] text-muted-foreground align-middle">
+                        %:
+                      </span>
                       <input
                         type="number"
                         className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
                         value={commissionPct}
-                        onChange={(e) => setCommissionPct(Number(e.target.value))}
+                        onChange={(e) =>
+                          setCommissionPct(Number(e.target.value))
+                        }
                       />
                     </div>
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.commissionUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.commissionPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.commissionUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.commissionPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">Foreign Bank Charges ($)</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">
+                    Foreign Bank Charges ($)
+                  </TableCell>
                   <TableCell className="p-2 text-right">
                     <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">$</span>
+                      <span className="text-[10px] text-muted-foreground align-middle">
+                        $
+                      </span>
                       <input
                         type="number"
                         step="0.01"
                         className="w-12 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
                         value={foreignBankCharges}
-                        onChange={(e) => setForeignBankCharges(Number(e.target.value))}
+                        onChange={(e) =>
+                          setForeignBankCharges(Number(e.target.value))
+                        }
                       />
                     </div>
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.foreignBankChargesUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.foreignBankChargesPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.foreignBankChargesUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.foreignBankChargesPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
 
                 {/* NET SELLING PRICE */}
                 <TableRow className="bg-blue-50/30 font-semibold border-t border-b">
                   <TableCell>Net Selling Price</TableCell>
-                  <TableCell className="text-right">Rs. {calcs.netPricePKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right">${calcs.netPriceUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right">{(calcs.netPricePct * 100).toFixed(1)}%</TableCell>
+                  <TableCell className="text-right">
+                    Rs. {calcs.netPricePKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    ${calcs.netPriceUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(calcs.netPricePct * 100).toFixed(1)}%
+                  </TableCell>
                 </TableRow>
 
                 {/* VARIABLE COSTS */}
                 <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">Fabric Cost</TableCell>
-                  <TableCell className="text-right font-medium">Rs. {calcs.fabricCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right font-medium">${calcs.fabricCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.fabricCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-4 font-medium text-foreground">
+                    Fabric Cost
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    Rs. {calcs.fabricCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    ${calcs.fabricCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.fabricCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">Lining Cost</TableCell>
-                  <TableCell className="text-right font-medium">Rs. {calcs.liningCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right font-medium">${calcs.liningCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.liningCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-4 font-medium text-foreground">
+                    Lining Cost
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    Rs. {calcs.liningCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    ${calcs.liningCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.liningCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">Accessories Cost</TableCell>
-                  <TableCell className="text-right font-medium">Rs. {calcs.accessoriesCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right font-medium">${calcs.accessoriesCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.accessoriesCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-4 font-medium text-foreground">
+                    Accessories Cost
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    Rs. {calcs.accessoriesCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    ${calcs.accessoriesCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.accessoriesCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">Chemical & Washing Cost</TableCell>
-                  <TableCell className="text-right font-medium">Rs. {calcs.chemicalsCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right font-medium">${calcs.chemicalsCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.chemicalsCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-4 font-medium text-foreground">
+                    Chemical & Washing Cost
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    Rs. {calcs.chemicalsCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    ${calcs.chemicalsCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.chemicalsCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">Special Charges Cost</TableCell>
-                  <TableCell className="text-right font-medium">Rs. {calcs.specialChargesCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right font-medium">${calcs.specialChargesCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.specialChargesCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-4 font-medium text-foreground">
+                    Special Charges Cost
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    Rs. {calcs.specialChargesCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    ${calcs.specialChargesCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.specialChargesCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">Direct Labor Cost (CPM-linked)</TableCell>
-                  <TableCell className="text-right font-medium">Rs. {calcs.directLaborCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right font-medium">${calcs.directLaborCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.directLaborCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-4 font-medium text-foreground">
+                    Direct Labor Cost (CPM-linked)
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    Rs. {calcs.directLaborCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    ${calcs.directLaborCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.directLaborCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">Utilities Cost (CPM-linked)</TableCell>
-                  <TableCell className="text-right font-medium">Rs. {calcs.utilitiesCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right font-medium">${calcs.utilitiesCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.utilitiesCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-4 font-medium text-foreground">
+                    Utilities Cost (CPM-linked)
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    Rs. {calcs.utilitiesCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    ${calcs.utilitiesCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.utilitiesCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">Leftover Factor Cost</TableCell>
-                  <TableCell className="text-right font-medium">Rs. {calcs.leftoverCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right font-medium">${calcs.leftoverCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.leftoverCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-4 font-medium text-foreground">
+                    Leftover Factor Cost
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    Rs. {calcs.leftoverCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    ${calcs.leftoverCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.leftoverCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
 
                 {/* TOTAL VARIABLE COST */}
                 <TableRow className="bg-[#fcf5e3]/60 dark:bg-amber-950/20 font-semibold border-t border-b">
                   <TableCell>Total Variable Cost</TableCell>
-                  <TableCell className="text-right">Rs. {calcs.totalVariableCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right">${calcs.totalVariableCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right">{(calcs.totalVariableCostPct * 100).toFixed(1)}%</TableCell>
+                  <TableCell className="text-right">
+                    Rs. {calcs.totalVariableCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    ${calcs.totalVariableCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(calcs.totalVariableCostPct * 100).toFixed(1)}%
+                  </TableCell>
                 </TableRow>
 
                 {/* CM / PC */}
                 <TableRow className="bg-emerald-50/30 dark:bg-emerald-950/10 font-bold text-emerald-800 dark:text-emerald-400">
                   <TableCell>Gross CM / PC</TableCell>
-                  <TableCell className="text-right">Rs. {calcs.cmPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right">${calcs.cmUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right">{(calcs.cmPct * 100).toFixed(1)}%</TableCell>
+                  <TableCell className="text-right">
+                    Rs. {calcs.cmPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    ${calcs.cmUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(calcs.cmPct * 100).toFixed(1)}%
+                  </TableCell>
                 </TableRow>
 
                 {/* OVERHEADS */}
                 <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">Salaries Cost (CPM-linked)</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{calcs.salariesCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.salariesCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.salariesCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">
+                    Salaries Cost (CPM-linked)
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {calcs.salariesCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.salariesCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.salariesCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">FOH/Admin Cost (CPM-linked)</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{calcs.fohAdminCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.fohAdminCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.fohAdminCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">
+                    FOH/Admin Cost (CPM-linked)
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {calcs.fohAdminCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.fohAdminCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.fohAdminCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">Repair & Maintenance (CPM-linked)</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{calcs.repairMtcCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.repairMtcCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.repairMtcCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">
+                    Repair & Maintenance (CPM-linked)
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {calcs.repairMtcCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.repairMtcCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.repairMtcCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
 
                 {/* TOTAL COST */}
                 <TableRow className="font-semibold border-t">
                   <TableCell>Total Cost</TableCell>
-                  <TableCell className="text-right">Rs. {calcs.totalCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right">${calcs.totalCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right">{(calcs.totalCostPct * 100).toFixed(1)}%</TableCell>
+                  <TableCell className="text-right">
+                    Rs. {calcs.totalCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    ${calcs.totalCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(calcs.totalCostPct * 100).toFixed(1)}%
+                  </TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">Conversion Cost per Minute</TableCell>
-                  <TableCell className="text-right text-muted-foreground">Rs. {calcs.conversionCostPerMinPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{calcs.conversionCostPerMinUSD.toFixed(2)}¢</TableCell>
-                  <TableCell className="text-right text-muted-foreground">-</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">
+                    Conversion Cost per Minute
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    Rs. {calcs.conversionCostPerMinPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {calcs.conversionCostPerMinUSD.toFixed(2)}¢
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    -
+                  </TableCell>
                 </TableRow>
 
                 {/* EBITDA */}
-                <TableRow className={`font-extrabold border-t border-b ${isEbitdaPositive ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50/10" : "text-red-700 dark:text-red-400 bg-red-50/10"}`}>
+                <TableRow
+                  className={`font-extrabold border-t border-b ${isEbitdaPositive ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50/10" : "text-red-700 dark:text-red-400 bg-red-50/10"}`}
+                >
                   <TableCell>EBITDA / PC</TableCell>
-                  <TableCell className="text-right">Rs. {calcs.ebitdaPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right">${calcs.ebitdaUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right">{(calcs.ebitdaPct * 100).toFixed(1)}%</TableCell>
+                  <TableCell className="text-right">
+                    Rs. {calcs.ebitdaPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    ${calcs.ebitdaUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(calcs.ebitdaPct * 100).toFixed(1)}%
+                  </TableCell>
                 </TableRow>
 
                 {/* DEPRECIATION */}
                 <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">Depreciation Cost (CPM-linked)</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{calcs.depreciationCostPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">${calcs.depreciationCostUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{(calcs.depreciationCostPct * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="pl-6 text-muted-foreground">
+                    Depreciation Cost (CPM-linked)
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {calcs.depreciationCostPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    ${calcs.depreciationCostUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right text-muted-foreground">
+                    {(calcs.depreciationCostPct * 100).toFixed(2)}%
+                  </TableCell>
                 </TableRow>
 
                 {/* NET PROFIT */}
-                <TableRow className={`font-black border-t-2 text-sm ${isProfitPositive ? "text-emerald-800 dark:text-emerald-400 bg-emerald-50/40" : "text-red-800 dark:text-red-400 bg-red-50/40"}`}>
+                <TableRow
+                  className={`font-black border-t-2 text-sm ${isProfitPositive ? "text-emerald-800 dark:text-emerald-400 bg-emerald-50/40" : "text-red-800 dark:text-red-400 bg-red-50/40"}`}
+                >
                   <TableCell>Net Profit / PC</TableCell>
-                  <TableCell className="text-right">Rs. {calcs.netProfitPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-right">${calcs.netProfitUSD.toFixed(3)}</TableCell>
-                  <TableCell className="text-right">{(calcs.netProfitPct * 100).toFixed(1)}%</TableCell>
+                  <TableCell className="text-right">
+                    Rs. {calcs.netProfitPKR.toFixed(1)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    ${calcs.netProfitUSD.toFixed(3)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {(calcs.netProfitPct * 100).toFixed(1)}%
+                  </TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -1754,14 +2353,16 @@ function CostSheetContent() {
 
         {/* RIGHT PANEL: DETAILED INTERACTIVE BOM & EXPENSE TABLES */}
         <div className="lg:col-span-7 space-y-6">
-          
           {/* FABRIC BOM */}
           <Card className="shadow-md border-muted/60 bg-card overflow-hidden">
             <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center">
               <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
-                <Layers className="size-4 text-primary" /> Fabric Details (USD input)
+                <Layers className="size-4 text-primary" /> Fabric Details (USD
+                input)
               </h2>
-              <span className="text-[10px] text-muted-foreground">Rates edit in USD</span>
+              <span className="text-[10px] text-muted-foreground">
+                Rates edit in USD
+              </span>
             </div>
             <CardContent className="p-0 text-xs">
               <Table>
@@ -1778,7 +2379,7 @@ function CostSheetContent() {
                   {Array.from({ length: 5 }).map((_, idx) => {
                     const rawItem = activeStyle.bomFabric[idx];
                     const item = {
-                      itemName: rawItem?.itemName ?? `Fabric ${idx+1}`,
+                      itemName: rawItem?.itemName ?? `Fabric ${idx + 1}`,
                       consumptionPerPc: rawItem?.consumptionPerPc ?? 0,
                       rateUSD: rawItem?.rateUSD ?? 0,
                       ratePKR: rawItem?.ratePKR ?? 0,
@@ -1790,10 +2391,12 @@ function CostSheetContent() {
                           <input
                             type="text"
                             disabled={activeStyle.id !== "custom"}
-                            placeholder={`Fabric ${idx+1}`}
+                            placeholder={`Fabric ${idx + 1}`}
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.itemName}
-                            onChange={(e) => updateFabricBOM(idx, "itemName", e.target.value)}
+                            onChange={(e) =>
+                              updateFabricBOM(idx, "itemName", e.target.value)
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -1804,7 +2407,13 @@ function CostSheetContent() {
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.consumptionPerPc || ""}
-                            onChange={(e) => updateFabricBOM(idx, "consumptionPerPc", Number(e.target.value))}
+                            onChange={(e) =>
+                              updateFabricBOM(
+                                idx,
+                                "consumptionPerPc",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -1815,7 +2424,13 @@ function CostSheetContent() {
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.rateUSD || ""}
-                            onChange={(e) => updateFabricBOM(idx, "rateUSD", Number(e.target.value))}
+                            onChange={(e) =>
+                              updateFabricBOM(
+                                idx,
+                                "rateUSD",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-medium text-muted-foreground align-middle">
@@ -1828,8 +2443,12 @@ function CostSheetContent() {
                     );
                   })}
                   <TableRow className="bg-muted/10 font-bold">
-                    <TableCell colSpan={4} className="text-right">Total Fabric Cost:</TableCell>
-                    <TableCell className="text-right text-primary pr-4">Rs. {calcs.fabricCostPKR.toFixed(1)}</TableCell>
+                    <TableCell colSpan={4} className="text-right">
+                      Total Fabric Cost:
+                    </TableCell>
+                    <TableCell className="text-right text-primary pr-4">
+                      Rs. {calcs.fabricCostPKR.toFixed(1)}
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -1840,9 +2459,12 @@ function CostSheetContent() {
           <Card className="shadow-md border-muted/60 bg-card overflow-hidden">
             <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center">
               <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
-                <Layers className="size-4 text-primary" /> Pocket Lining Details (USD input)
+                <Layers className="size-4 text-primary" /> Pocket Lining Details
+                (USD input)
               </h2>
-              <span className="text-[10px] text-muted-foreground">Rates edit in USD</span>
+              <span className="text-[10px] text-muted-foreground">
+                Rates edit in USD
+              </span>
             </div>
             <CardContent className="p-0 text-xs">
               <Table>
@@ -1859,7 +2481,7 @@ function CostSheetContent() {
                   {Array.from({ length: 5 }).map((_, idx) => {
                     const rawItem = activeStyle.bomLining[idx];
                     const item = {
-                      itemName: rawItem?.itemName ?? `Lining ${idx+1}`,
+                      itemName: rawItem?.itemName ?? `Lining ${idx + 1}`,
                       consumptionPerPc: rawItem?.consumptionPerPc ?? 0,
                       rateUSD: rawItem?.rateUSD ?? 0,
                       ratePKR: rawItem?.ratePKR ?? 0,
@@ -1871,10 +2493,12 @@ function CostSheetContent() {
                           <input
                             type="text"
                             disabled={activeStyle.id !== "custom"}
-                            placeholder={`Lining ${idx+1}`}
+                            placeholder={`Lining ${idx + 1}`}
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.itemName}
-                            onChange={(e) => updateLiningBOM(idx, "itemName", e.target.value)}
+                            onChange={(e) =>
+                              updateLiningBOM(idx, "itemName", e.target.value)
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -1885,7 +2509,13 @@ function CostSheetContent() {
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.consumptionPerPc || ""}
-                            onChange={(e) => updateLiningBOM(idx, "consumptionPerPc", Number(e.target.value))}
+                            onChange={(e) =>
+                              updateLiningBOM(
+                                idx,
+                                "consumptionPerPc",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -1896,7 +2526,13 @@ function CostSheetContent() {
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.rateUSD || ""}
-                            onChange={(e) => updateLiningBOM(idx, "rateUSD", Number(e.target.value))}
+                            onChange={(e) =>
+                              updateLiningBOM(
+                                idx,
+                                "rateUSD",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-medium text-muted-foreground align-middle">
@@ -1909,8 +2545,12 @@ function CostSheetContent() {
                     );
                   })}
                   <TableRow className="bg-muted/10 font-bold">
-                    <TableCell colSpan={4} className="text-right">Total Lining Cost:</TableCell>
-                    <TableCell className="text-right text-primary pr-4">Rs. {calcs.liningCostPKR.toFixed(1)}</TableCell>
+                    <TableCell colSpan={4} className="text-right">
+                      Total Lining Cost:
+                    </TableCell>
+                    <TableCell className="text-right text-primary pr-4">
+                      Rs. {calcs.liningCostPKR.toFixed(1)}
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -1921,9 +2561,12 @@ function CostSheetContent() {
           <Card className="shadow-md border-muted/60 bg-card overflow-hidden">
             <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center">
               <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
-                <Layers className="size-4 text-primary" /> Trims, Chemicals & Special Charges (PKR Input)
+                <Layers className="size-4 text-primary" /> Trims, Chemicals &
+                Special Charges (PKR Input)
               </h2>
-              <span className="text-[10px] text-muted-foreground">Rates edit in PKR</span>
+              <span className="text-[10px] text-muted-foreground">
+                Rates edit in PKR
+              </span>
             </div>
             <CardContent className="p-0 text-xs">
               <div className="max-h-[350px] overflow-auto">
@@ -1933,24 +2576,42 @@ function CostSheetContent() {
                       <TableHead className="w-28">Category</TableHead>
                       <TableHead>Item Name</TableHead>
                       <TableHead className="w-16">Cons.</TableHead>
-                      <TableHead className="w-24 text-center">Rate ($)</TableHead>
-                      <TableHead className="w-24 text-center">Rate (Rs)</TableHead>
-                      <TableHead className="w-28 text-right">Cost (Rs)</TableHead>
+                      <TableHead className="w-24 text-center">
+                        Rate ($)
+                      </TableHead>
+                      <TableHead className="w-24 text-center">
+                        Rate (Rs)
+                      </TableHead>
+                      <TableHead className="w-28 text-right">
+                        Cost (Rs)
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {/* ACCESSORIES */}
-                    <TableRow className="bg-muted/20 font-bold"><TableCell colSpan={6}>Accessories (Before & After Wash)</TableCell></TableRow>
+                    <TableRow className="bg-muted/20 font-bold">
+                      <TableCell colSpan={6}>
+                        Accessories (Before & After Wash)
+                      </TableCell>
+                    </TableRow>
                     {activeStyle.bomAccessories.map((item, idx) => (
                       <TableRow key={`acc-${idx}`}>
-                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">{item.category}</TableCell>
+                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
+                          {item.category}
+                        </TableCell>
                         <TableCell className="p-1.5">
                           <input
                             type="text"
                             disabled={activeStyle.id !== "custom"}
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.itemName}
-                            onChange={(e) => updateAccessoriesBOM(idx, "itemName", e.target.value)}
+                            onChange={(e) =>
+                              updateAccessoriesBOM(
+                                idx,
+                                "itemName",
+                                e.target.value,
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -1960,7 +2621,13 @@ function CostSheetContent() {
                             step="0.01"
                             className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.consPerPc || ""}
-                            onChange={(e) => updateAccessoriesBOM(idx, "consPerPc", Number(e.target.value))}
+                            onChange={(e) =>
+                              updateAccessoriesBOM(
+                                idx,
+                                "consPerPc",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -1970,8 +2637,24 @@ function CostSheetContent() {
                             step="0.0001"
                             placeholder="0.0000"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.rateUSD !== undefined ? (item.rateUSD || "") : (item.ratePKR ? Number((item.ratePKR / parityProcurement).toFixed(4)) : "")}
-                            onChange={(e) => updateAccessoriesBOM(idx, "rateUSD", Number(e.target.value))}
+                            value={
+                              item.rateUSD !== undefined
+                                ? item.rateUSD || ""
+                                : item.ratePKR
+                                  ? Number(
+                                      (
+                                        item.ratePKR / parityProcurement
+                                      ).toFixed(4),
+                                    )
+                                  : ""
+                            }
+                            onChange={(e) =>
+                              updateAccessoriesBOM(
+                                idx,
+                                "rateUSD",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -1980,7 +2663,13 @@ function CostSheetContent() {
                             disabled={activeStyle.id !== "custom"}
                             className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.ratePKR || ""}
-                            onChange={(e) => updateAccessoriesBOM(idx, "ratePKR", Number(e.target.value))}
+                            onChange={(e) =>
+                              updateAccessoriesBOM(
+                                idx,
+                                "ratePKR",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
@@ -1990,17 +2679,27 @@ function CostSheetContent() {
                     ))}
 
                     {/* CHEMICALS */}
-                    <TableRow className="bg-muted/20 font-bold"><TableCell colSpan={6}>Chemical Costs</TableCell></TableRow>
+                    <TableRow className="bg-muted/20 font-bold">
+                      <TableCell colSpan={6}>Chemical Costs</TableCell>
+                    </TableRow>
                     {activeStyle.bomChemicals.map((item, idx) => (
                       <TableRow key={`chem-${idx}`}>
-                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">Chemicals</TableCell>
+                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
+                          Chemicals
+                        </TableCell>
                         <TableCell className="p-1.5">
                           <input
                             type="text"
                             disabled={true}
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.washItem}
-                            onChange={(e) => updateChemicalsBOM(idx, "washItem", e.target.value)}
+                            onChange={(e) =>
+                              updateChemicalsBOM(
+                                idx,
+                                "washItem",
+                                e.target.value,
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -2010,7 +2709,13 @@ function CostSheetContent() {
                             step="0.01"
                             className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.consPerPc || ""}
-                            onChange={(e) => updateChemicalsBOM(idx, "consPerPc", Number(e.target.value))}
+                            onChange={(e) =>
+                              updateChemicalsBOM(
+                                idx,
+                                "consPerPc",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -2020,8 +2725,24 @@ function CostSheetContent() {
                             step="0.0001"
                             placeholder="0.0000"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.rateUSD !== undefined ? (item.rateUSD || "") : (item.ratePKR ? Number((item.ratePKR / parityProcurement).toFixed(4)) : "")}
-                            onChange={(e) => updateChemicalsBOM(idx, "rateUSD", Number(e.target.value))}
+                            value={
+                              item.rateUSD !== undefined
+                                ? item.rateUSD || ""
+                                : item.ratePKR
+                                  ? Number(
+                                      (
+                                        item.ratePKR / parityProcurement
+                                      ).toFixed(4),
+                                    )
+                                  : ""
+                            }
+                            onChange={(e) =>
+                              updateChemicalsBOM(
+                                idx,
+                                "rateUSD",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -2030,7 +2751,13 @@ function CostSheetContent() {
                             disabled={activeStyle.id !== "custom"}
                             className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.ratePKR || ""}
-                            onChange={(e) => updateChemicalsBOM(idx, "ratePKR", Number(e.target.value))}
+                            onChange={(e) =>
+                              updateChemicalsBOM(
+                                idx,
+                                "ratePKR",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
@@ -2040,10 +2767,16 @@ function CostSheetContent() {
                     ))}
 
                     {/* SPECIAL CHARGES */}
-                    <TableRow className="bg-muted/20 font-bold"><TableCell colSpan={6}>Special Charges (Embroidery, Testing, etc.)</TableCell></TableRow>
+                    <TableRow className="bg-muted/20 font-bold">
+                      <TableCell colSpan={6}>
+                        Special Charges (Embroidery, Testing, etc.)
+                      </TableCell>
+                    </TableRow>
                     {activeStyle.bomSpecialCharges.map((item, idx) => (
                       <TableRow key={`chg-${idx}`}>
-                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">{item.itemName}</TableCell>
+                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
+                          {item.itemName}
+                        </TableCell>
                         <TableCell className="p-1.5 font-medium text-xs align-middle">
                           {item.itemName} Charges
                         </TableCell>
@@ -2054,7 +2787,13 @@ function CostSheetContent() {
                             step="0.01"
                             className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.consPerPc || ""}
-                            onChange={(e) => updateSpecialChargesBOM(idx, "consPerPc", Number(e.target.value))}
+                            onChange={(e) =>
+                              updateSpecialChargesBOM(
+                                idx,
+                                "consPerPc",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -2064,8 +2803,24 @@ function CostSheetContent() {
                             step="0.0001"
                             placeholder="0.0000"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.rateUSD !== undefined ? (item.rateUSD || "") : (item.ratePKR ? Number((item.ratePKR / parityProcurement).toFixed(4)) : "")}
-                            onChange={(e) => updateSpecialChargesBOM(idx, "rateUSD", Number(e.target.value))}
+                            value={
+                              item.rateUSD !== undefined
+                                ? item.rateUSD || ""
+                                : item.ratePKR
+                                  ? Number(
+                                      (
+                                        item.ratePKR / parityProcurement
+                                      ).toFixed(4),
+                                    )
+                                  : ""
+                            }
+                            onChange={(e) =>
+                              updateSpecialChargesBOM(
+                                idx,
+                                "rateUSD",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
@@ -2074,7 +2829,13 @@ function CostSheetContent() {
                             disabled={activeStyle.id !== "custom"}
                             className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.ratePKR || ""}
-                            onChange={(e) => updateSpecialChargesBOM(idx, "ratePKR", Number(e.target.value))}
+                            onChange={(e) =>
+                              updateSpecialChargesBOM(
+                                idx,
+                                "ratePKR",
+                                Number(e.target.value),
+                              )
+                            }
                           />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
@@ -2089,30 +2850,48 @@ function CostSheetContent() {
           </Card>
 
           {/* ACTION BUTTONS PANEL */}
-          <div className="flex gap-2 justify-end">
-            <Button variant="outline" size="sm" onClick={() => {
-              if (loadedCostSheet) {
-                // Restore values of the loaded snapshot
-                router.push(`/cost-sheet?costSheetId=${loadedCostSheet.id}`);
-                toast.info("Calculator reset to snapshot defaults");
-              } else {
-                setActiveStyle({ ...activeStyle });
-                toast.info("Calculator reset to Style Master defaults");
-              }
-            }} className="h-9">
+          <div className="flex gap-2 justify-end print:hidden">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (loadedCostSheet) {
+                  // Restore values of the loaded snapshot
+                  router.push(`/cost-sheet?costSheetId=${loadedCostSheet.id}`);
+                  toast.info("Calculator reset to snapshot defaults");
+                } else {
+                  setActiveStyle({ ...activeStyle });
+                  toast.info("Calculator reset to Style Master defaults");
+                }
+              }}
+              className="h-9"
+            >
               <RefreshCw className="mr-1.5 size-4" /> Reset Calculator
             </Button>
             {loadedCostSheet ? (
               <>
-                <Button size="sm" variant="outline" onClick={() => setSaveDialogOpen(true)} className="h-9 border-primary text-primary hover:bg-primary/5">
-                  <Copy className="mr-1.5 size-4" /> Save as New Snapshot
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSaveDialogOpen(true)}
+                  className="h-9 border-primary text-primary hover:bg-primary/5"
+                >
+                  <Copy className="mr-1.5 size-4" /> Save as New Sheet
                 </Button>
-                <Button size="sm" onClick={handleUpdateExisting} className="h-9">
+                <Button
+                  size="sm"
+                  onClick={handleUpdateExisting}
+                  className="h-9"
+                >
                   <Save className="mr-1.5 size-4" /> Update Cost Sheet
                 </Button>
               </>
             ) : (
-              <Button size="sm" onClick={() => setSaveDialogOpen(true)} className="h-9">
+              <Button
+                size="sm"
+                onClick={() => setSaveDialogOpen(true)}
+                className="h-9"
+              >
                 <Save className="mr-1.5 size-4" /> Save Cost Sheet Snapshot
               </Button>
             )}
@@ -2126,10 +2905,13 @@ function CostSheetContent() {
               </DialogHeader>
               <div className="space-y-4 py-3">
                 <p className="text-xs text-muted-foreground">
-                  Enter a short description or scenario name to save this run snapshot (e.g. &quot;Scenario A - Base Quote&quot;).
+                  Enter a short description or scenario name to save this run
+                  snapshot (e.g. &quot;Scenario A - Base Quote&quot;).
                 </p>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground">Snapshot Reference Name</label>
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Snapshot Reference Name
+                  </label>
                   <Input
                     value={newSnapshotName}
                     onChange={(e) => setNewSnapshotName(e.target.value)}
@@ -2139,14 +2921,23 @@ function CostSheetContent() {
                 </div>
               </div>
               <div className="flex gap-2 justify-end border-t pt-3">
-                <Button variant="outline" size="sm" onClick={() => setSaveDialogOpen(false)}>Cancel</Button>
-                <Button size="sm" onClick={() => handleSaveNew(newSnapshotName)}>Save Snapshot</Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSaveDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => handleSaveNew(newSnapshotName)}
+                >
+                  Save Snapshot
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
-
         </div>
-
       </div>
     </div>
   );

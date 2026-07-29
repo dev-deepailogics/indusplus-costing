@@ -12,7 +12,7 @@ export default function CostSheetLayout({
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-3 border-b bg-background/80 px-6 backdrop-blur-sm supports-backdrop-filter:bg-background/60">
+        <header className="flex h-16 shrink-0 items-center gap-3 border-b bg-background/80 px-6 backdrop-blur-sm supports-backdrop-filter:bg-background/60 print:hidden">
           <SidebarTrigger className="rounded-md" />
           <Separator orientation="vertical" className="h-5" />
           <Image src="/logo-icon.png" alt="" width={22} height={22} className="hidden sm:block" />
