@@ -2495,9 +2495,7 @@ function CostSheetContent() {
                 <Layers className="size-4 text-primary" /> Fabric Details (USD
                 input)
               </h2>
-              <span className="text-[10px] text-muted-foreground">
-                Rates edit in USD
-              </span>
+           
             </div>
             <CardContent className="p-0 text-xs">
               <Table>
@@ -2568,8 +2566,22 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5 text-right font-medium text-muted-foreground align-middle">
-                          Rs. {item.ratePKR.toFixed(1)}
+                        <TableCell className="p-1.5">
+                          <input
+                            type="number"
+                            disabled={activeStyle.id !== "custom"}
+                            step="0.01"
+                            placeholder="0.00"
+                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            value={item.ratePKR || ""}
+                            onChange={(e) =>
+                              updateFabricBOM(
+                                idx,
+                                "ratePKR",
+                                Number(e.target.value),
+                              )
+                            }
+                          />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
                           Rs. {item.fabricCostPKR.toFixed(1)}
@@ -2597,9 +2609,7 @@ function CostSheetContent() {
                 <Layers className="size-4 text-primary" /> Pocket Lining Details
                 (USD input)
               </h2>
-              <span className="text-[10px] text-muted-foreground">
-                Rates edit in USD
-              </span>
+           
             </div>
             <CardContent className="p-0 text-xs">
               <Table>
@@ -2670,8 +2680,22 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5 text-right font-medium text-muted-foreground align-middle">
-                          Rs. {item.ratePKR.toFixed(1)}
+                        <TableCell className="p-1.5">
+                          <input
+                            type="number"
+                            disabled={activeStyle.id !== "custom"}
+                            step="0.01"
+                            placeholder="0.00"
+                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            value={item.ratePKR || ""}
+                            onChange={(e) =>
+                              updateLiningBOM(
+                                idx,
+                                "ratePKR",
+                                Number(e.target.value),
+                              )
+                            }
+                          />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
                           Rs. {item.liningCostPKR.toFixed(1)}
@@ -2699,9 +2723,7 @@ function CostSheetContent() {
                 <Layers className="size-4 text-primary" /> Trims, Chemicals &
                 Special Charges (PKR Input)
               </h2>
-              <span className="text-[10px] text-muted-foreground">
-                Rates edit in PKR
-              </span>
+           
             </div>
             <CardContent className="p-0 text-xs">
               <div className="max-h-[350px] overflow-auto">

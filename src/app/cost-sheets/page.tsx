@@ -43,6 +43,27 @@ export default function SavedCostSheetsPage() {
   const [customerFilter, setCustomerFilter] = useState("all");
   const [stageFilter, setStageFilter] = useState("all");
 
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const handleGlobalContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+      });
+    };
+    const closeMenu = () => setContextMenu(null);
+
+    window.addEventListener("contextmenu", handleGlobalContextMenu);
+    window.addEventListener("click", closeMenu);
+    
+    return () => {
+      window.removeEventListener("contextmenu", handleGlobalContextMenu);
+      window.removeEventListener("click", closeMenu);
+    };
+  }, []);
+
   useEffect(() => {
     const unsub = subscribeToCostSheets((data) => {
       setCostSheets(data);
@@ -129,7 +150,7 @@ export default function SavedCostSheetsPage() {
             custom scenario snapshots.
           </p>
         </div>
-        <div>
+        <div className="flex gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -138,6 +159,12 @@ export default function SavedCostSheetsPage() {
             disabled={filteredSheets.length === 0}
           >
             <FileDown className="mr-1.5 size-4" /> Export History
+          </Button>
+          <Button
+            onClick={() => router.push("/cost-sheet")}
+            className="h-9 bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-1.5"
+          >
+            New Cost Sheet Calculator
           </Button>
         </div>
       </div>
@@ -329,6 +356,19 @@ export default function SavedCostSheetsPage() {
           )}
         </CardContent>
       </Card>
+      {contextMenu && (
+        <div
+          className="fixed bg-popover text-popover-foreground border border-slate-200 dark:border-slate-800 rounded-lg shadow-md py-1 z-50 min-w-44 text-xs font-semibold"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            onClick={() => router.push("/cost-sheet")}
+            className="w-full text-left px-3 py-2 hover:bg-accent hover:text-accent-foreground flex items-center gap-2 transition-colors duration-100"
+          >
+            <span>➕ New Cost Sheet</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
