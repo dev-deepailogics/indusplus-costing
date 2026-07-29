@@ -22,6 +22,7 @@ import { authErrorMessage } from "@/lib/auth/error-message";
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -34,7 +35,7 @@ export default function LoginPage() {
       if (mode === "sign-in") {
         await signInWithEmail(email, password);
       } else {
-        await signUpWithEmail(email, password);
+        await signUpWithEmail(email, password, displayName);
       }
       router.replace("/parameters");
     } catch (error) {
@@ -85,6 +86,19 @@ export default function LoginPage() {
           </div>
 
           <form className="space-y-3" onSubmit={handleSubmit}>
+            {mode === "sign-up" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="displayName">Display name</Label>
+                <Input
+                  id="displayName"
+                  type="text"
+                  required
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  autoComplete="name"
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input
