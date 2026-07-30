@@ -202,8 +202,6 @@ function CostSheetContent() {
   const [workOrders, setWorkOrders] = useState<WorkOrderItem[]>([]);
   const [fabricCatalog, setFabricCatalog] = useState<CatalogItem[]>([]);
   const [liningCatalog, setLiningCatalog] = useState<CatalogItem[]>([]);
-  const [newFabricRows, setNewFabricRows] = useState<Set<number>>(new Set());
-  const [newLiningRows, setNewLiningRows] = useState<Set<number>>(new Set());
 
   const [directLabourFoh, setDirectLabourFoh] = useState<
     SimpleTableData | undefined
@@ -346,8 +344,14 @@ function CostSheetContent() {
     const unsubWorkOrders = subscribeToWorkOrders(setWorkOrders);
 
     // Subscribe to Item Catalog
-    const unsubFabricCatalog = subscribeToCatalog(FABRIC_COLLECTION, setFabricCatalog);
-    const unsubLiningCatalog = subscribeToCatalog(LINING_COLLECTION, setLiningCatalog);
+    const unsubFabricCatalog = subscribeToCatalog(
+      FABRIC_COLLECTION,
+      setFabricCatalog,
+    );
+    const unsubLiningCatalog = subscribeToCatalog(
+      LINING_COLLECTION,
+      setLiningCatalog,
+    );
 
     // Subscribe to POC Parameters
     const unsubDLF = subscribeToTable<SimpleTableData>(
@@ -507,8 +511,6 @@ function CostSheetContent() {
             bomSpecialCharges: sheet.bomSpecialCharges || [],
           };
           setActiveStyle(ensureStyleBOMDefaults(styleFromSheet));
-          setNewFabricRows(new Set());
-          setNewLiningRows(new Set());
 
           // Set state inputs
           setCostingDate(sheet.costingDate);
@@ -659,8 +661,6 @@ function CostSheetContent() {
 
   // Handle active style change from dropdown
   function handleStyleChange(id: string) {
-    setNewFabricRows(new Set());
-    setNewLiningRows(new Set());
     if (id === "custom") {
       setLoadedCostSheet(null);
       setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
@@ -1293,31 +1293,6 @@ function CostSheetContent() {
               <div className="flex flex-col gap-1.5 bg-slate-50/50 dark:bg-slate-950/20 p-1.5 rounded border border-slate-100">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-blue-900/80 dark:text-blue-300">
-                    Style Select
-                  </span>
-                  <select
-                    className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-white dark:bg-slate-900 font-semibold rounded focus:outline-none"
-                    value={activeStyle.id}
-                    onChange={(e) => {
-                      handleStyleChange(e.target.value);
-                      const currentWO = workOrders.find(
-                        (w) => w.id === workOrderNumber,
-                      );
-                      if (currentWO && currentWO.styleId !== e.target.value) {
-                        setWorkOrderNumber("");
-                      }
-                    }}
-                  >
-                    <option value="custom">-- Custom Style --</option>
-                    {styles.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-blue-900/80 dark:text-blue-300">
                     Work Order No.
                   </span>
                   <select
@@ -1339,6 +1314,31 @@ function CostSheetContent() {
                     ).map((w) => (
                       <option key={w.id} value={w.id}>
                         {w.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-blue-900/80 dark:text-blue-300">
+                    Style Select
+                  </span>
+                  <select
+                    className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-white dark:bg-slate-900 font-semibold rounded focus:outline-none"
+                    value={activeStyle.id}
+                    onChange={(e) => {
+                      handleStyleChange(e.target.value);
+                      const currentWO = workOrders.find(
+                        (w) => w.id === workOrderNumber,
+                      );
+                      if (currentWO && currentWO.styleId !== e.target.value) {
+                        setWorkOrderNumber("");
+                      }
+                    }}
+                  >
+                    <option value="custom">-- Custom Style --</option>
+                    {styles.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.id}
                       </option>
                     ))}
                   </select>
@@ -2116,7 +2116,7 @@ function CostSheetContent() {
                 <TableRow className="bg-muted/10 font-semibold">
                   <TableCell>Selling Price (FOB)</TableCell>
                   <TableCell className="text-right">
-                    Rs. {calcs.sellingPricePKR.toFixed(1)}
+                    PKR. {calcs.sellingPricePKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right">
                     ${calcs.sellingPriceUSD.toFixed(3)}
@@ -2198,7 +2198,7 @@ function CostSheetContent() {
                     Markup & Discounting
                     <span
                       className="cursor-help"
-                      title="Rs Selling Price * (Discount Rate / 365) * Discount Days"
+                      title="PKR Selling Price * (Discount Rate / 365) * Discount Days"
                     >
                       <Info className="size-3 text-muted-foreground" />
                     </span>
@@ -2230,7 +2230,7 @@ function CostSheetContent() {
                     Factoring Cost
                     <span
                       className="cursor-help"
-                      title="Rs Selling Price * (Discount Rate / 365) * Factoring Days"
+                      title="PKR Selling Price * (Discount Rate / 365) * Factoring Days"
                     >
                       <Info className="size-3 text-muted-foreground" />
                     </span>
@@ -2315,7 +2315,7 @@ function CostSheetContent() {
                 <TableRow className="bg-blue-50/30 font-semibold border-t border-b">
                   <TableCell>Net Selling Price</TableCell>
                   <TableCell className="text-right">
-                    Rs. {calcs.netPricePKR.toFixed(1)}
+                    PKR. {calcs.netPricePKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right">
                     ${calcs.netPriceUSD.toFixed(3)}
@@ -2331,7 +2331,7 @@ function CostSheetContent() {
                     Fabric Cost
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    Rs. {calcs.fabricCostPKR.toFixed(1)}
+                    PKR. {calcs.fabricCostPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     ${calcs.fabricCostUSD.toFixed(3)}
@@ -2345,7 +2345,7 @@ function CostSheetContent() {
                     Lining Cost
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    Rs. {calcs.liningCostPKR.toFixed(1)}
+                    PKR. {calcs.liningCostPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     ${calcs.liningCostUSD.toFixed(3)}
@@ -2359,7 +2359,7 @@ function CostSheetContent() {
                     Accessories Cost
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    Rs. {calcs.accessoriesCostPKR.toFixed(1)}
+                    PKR. {calcs.accessoriesCostPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     ${calcs.accessoriesCostUSD.toFixed(3)}
@@ -2373,7 +2373,7 @@ function CostSheetContent() {
                     Chemical & Washing Cost
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    Rs. {calcs.chemicalsCostPKR.toFixed(1)}
+                    PKR. {calcs.chemicalsCostPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     ${calcs.chemicalsCostUSD.toFixed(3)}
@@ -2387,7 +2387,7 @@ function CostSheetContent() {
                     Special Charges Cost
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    Rs. {calcs.specialChargesCostPKR.toFixed(1)}
+                    PKR. {calcs.specialChargesCostPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     ${calcs.specialChargesCostUSD.toFixed(3)}
@@ -2401,7 +2401,7 @@ function CostSheetContent() {
                     Direct Labor Cost (CPM-linked)
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    Rs. {calcs.directLaborCostPKR.toFixed(1)}
+                    PKR. {calcs.directLaborCostPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     ${calcs.directLaborCostUSD.toFixed(3)}
@@ -2415,7 +2415,7 @@ function CostSheetContent() {
                     Utilities Cost (CPM-linked)
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    Rs. {calcs.utilitiesCostPKR.toFixed(1)}
+                    PKR. {calcs.utilitiesCostPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     ${calcs.utilitiesCostUSD.toFixed(3)}
@@ -2429,7 +2429,7 @@ function CostSheetContent() {
                     Leftover Factor Cost
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    Rs. {calcs.leftoverCostPKR.toFixed(1)}
+                    PKR. {calcs.leftoverCostPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     ${calcs.leftoverCostUSD.toFixed(3)}
@@ -2443,7 +2443,7 @@ function CostSheetContent() {
                 <TableRow className="bg-[#fcf5e3]/60 dark:bg-amber-950/20 font-semibold border-t border-b">
                   <TableCell>Total Variable Cost</TableCell>
                   <TableCell className="text-right">
-                    Rs. {calcs.totalVariableCostPKR.toFixed(1)}
+                    PKR. {calcs.totalVariableCostPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right">
                     ${calcs.totalVariableCostUSD.toFixed(3)}
@@ -2457,7 +2457,7 @@ function CostSheetContent() {
                 <TableRow className="bg-emerald-50/30 dark:bg-emerald-950/10 font-bold text-emerald-800 dark:text-emerald-400">
                   <TableCell>Gross CM / PC</TableCell>
                   <TableCell className="text-right">
-                    Rs. {calcs.cmPKR.toFixed(1)}
+                    PKR. {calcs.cmPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right">
                     ${calcs.cmUSD.toFixed(3)}
@@ -2515,7 +2515,7 @@ function CostSheetContent() {
                 <TableRow className="font-semibold border-t">
                   <TableCell>Total Cost</TableCell>
                   <TableCell className="text-right">
-                    Rs. {calcs.totalCostPKR.toFixed(1)}
+                    PKR. {calcs.totalCostPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right">
                     ${calcs.totalCostUSD.toFixed(3)}
@@ -2529,7 +2529,7 @@ function CostSheetContent() {
                     Conversion Cost per Minute
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    Rs. {calcs.conversionCostPerMinPKR.toFixed(1)}
+                    PKR. {calcs.conversionCostPerMinPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
                     {calcs.conversionCostPerMinUSD.toFixed(2)}¢
@@ -2545,7 +2545,7 @@ function CostSheetContent() {
                 >
                   <TableCell>EBITDA / PC</TableCell>
                   <TableCell className="text-right">
-                    Rs. {calcs.ebitdaPKR.toFixed(1)}
+                    PKR. {calcs.ebitdaPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right">
                     ${calcs.ebitdaUSD.toFixed(3)}
@@ -2577,7 +2577,7 @@ function CostSheetContent() {
                 >
                   <TableCell>Net Profit / PC</TableCell>
                   <TableCell className="text-right">
-                    Rs. {calcs.netProfitPKR.toFixed(1)}
+                    PKR. {calcs.netProfitPKR.toFixed(1)}
                   </TableCell>
                   <TableCell className="text-right">
                     ${calcs.netProfitUSD.toFixed(3)}
@@ -2605,7 +2605,6 @@ function CostSheetContent() {
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => {
-                  const newIdx = activeStyle.bomFabric.length;
                   setActiveStyle({
                     ...activeStyle,
                     bomFabric: [
@@ -2619,7 +2618,6 @@ function CostSheetContent() {
                       },
                     ],
                   });
-                  setNewFabricRows((prev) => new Set(prev).add(newIdx));
                 }}
               >
                 <Plus className="mr-1 size-3.5" /> Add Fabric
@@ -2631,9 +2629,11 @@ function CostSheetContent() {
                   <TableRow>
                     <TableHead>Fabric Item Name</TableHead>
                     <TableHead className="w-20">Cons. (Mtr)</TableHead>
-                    <TableHead className="w-24">Rate ($)</TableHead>
-                    <TableHead className="w-24 text-right">Rate (Rs)</TableHead>
-                    <TableHead className="w-28 text-right">Cost (Rs)</TableHead>
+                    <TableHead className="w-24">Rate (PKR)</TableHead>
+                    <TableHead className="w-24 text-right">Rate ($)</TableHead>
+                    <TableHead className="w-28 text-right">
+                      Cost (PKR)
+                    </TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -2649,8 +2649,7 @@ function CostSheetContent() {
                       ratePKR: rawItem?.ratePKR ?? 0,
                       fabricCostPKR: rawItem?.fabricCostPKR ?? 0,
                     };
-                    const isEditable =
-                      activeStyle.id === "custom" || newFabricRows.has(idx);
+                    const isEditable = true;
                     return (
                       <TableRow key={idx}>
                         <TableCell className="p-1.5">
@@ -2706,11 +2705,11 @@ function CostSheetContent() {
                             step="0.01"
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.rateUSD || ""}
+                            value={item.ratePKR || ""}
                             onChange={(e) =>
                               updateFabricBOM(
                                 idx,
-                                "rateUSD",
+                                "ratePKR",
                                 Number(e.target.value),
                               )
                             }
@@ -2723,18 +2722,18 @@ function CostSheetContent() {
                             step="0.01"
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.ratePKR || ""}
+                            value={item.rateUSD || ""}
                             onChange={(e) =>
                               updateFabricBOM(
                                 idx,
-                                "ratePKR",
+                                "rateUSD",
                                 Number(e.target.value),
                               )
                             }
                           />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          Rs. {item.fabricCostPKR.toFixed(1)}
+                          PKR. {item.fabricCostPKR.toFixed(1)}
                         </TableCell>
                         <TableCell className="p-1.5">
                           {isEditable && (
@@ -2748,14 +2747,6 @@ function CostSheetContent() {
                                   bomFabric: activeStyle.bomFabric.filter(
                                     (_, i) => i !== idx,
                                   ),
-                                });
-                                setNewFabricRows((prev) => {
-                                  const next = new Set<number>();
-                                  prev.forEach((i) => {
-                                    if (i < idx) next.add(i);
-                                    else if (i > idx) next.add(i - 1);
-                                  });
-                                  return next;
                                 });
                               }}
                             >
@@ -2771,7 +2762,7 @@ function CostSheetContent() {
                       Total Fabric Cost:
                     </TableCell>
                     <TableCell className="text-right text-primary pr-4">
-                      Rs. {calcs.fabricCostPKR.toFixed(1)}
+                      PKR. {calcs.fabricCostPKR.toFixed(1)}
                     </TableCell>
                     <TableCell />
                   </TableRow>
@@ -2792,7 +2783,6 @@ function CostSheetContent() {
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => {
-                  const newIdx = activeStyle.bomLining.length;
                   setActiveStyle({
                     ...activeStyle,
                     bomLining: [
@@ -2806,7 +2796,6 @@ function CostSheetContent() {
                       },
                     ],
                   });
-                  setNewLiningRows((prev) => new Set(prev).add(newIdx));
                 }}
               >
                 <Plus className="mr-1 size-3.5" /> Add Lining
@@ -2818,9 +2807,11 @@ function CostSheetContent() {
                   <TableRow>
                     <TableHead>Lining Item Name</TableHead>
                     <TableHead className="w-20">Cons. (Mtr)</TableHead>
-                    <TableHead className="w-24">Rate ($)</TableHead>
-                    <TableHead className="w-24 text-right">Rate (Rs)</TableHead>
-                    <TableHead className="w-28 text-right">Cost (Rs)</TableHead>
+                    <TableHead className="w-24">Rate (PKR)</TableHead>
+                    <TableHead className="w-24 text-right">Rate ($)</TableHead>
+                    <TableHead className="w-28 text-right">
+                      Cost (PKR)
+                    </TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -2836,8 +2827,7 @@ function CostSheetContent() {
                       ratePKR: rawItem?.ratePKR ?? 0,
                       liningCostPKR: rawItem?.liningCostPKR ?? 0,
                     };
-                    const isEditable =
-                      activeStyle.id === "custom" || newLiningRows.has(idx);
+                    const isEditable = true;
                     return (
                       <TableRow key={idx}>
                         <TableCell className="p-1.5">
@@ -2893,11 +2883,11 @@ function CostSheetContent() {
                             step="0.01"
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.rateUSD || ""}
+                            value={item.ratePKR || ""}
                             onChange={(e) =>
                               updateLiningBOM(
                                 idx,
-                                "rateUSD",
+                                "ratePKR",
                                 Number(e.target.value),
                               )
                             }
@@ -2910,18 +2900,18 @@ function CostSheetContent() {
                             step="0.01"
                             placeholder="0.00"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.ratePKR || ""}
+                            value={item.rateUSD || ""}
                             onChange={(e) =>
                               updateLiningBOM(
                                 idx,
-                                "ratePKR",
+                                "rateUSD",
                                 Number(e.target.value),
                               )
                             }
                           />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          Rs. {item.liningCostPKR.toFixed(1)}
+                          PKR. {item.liningCostPKR.toFixed(1)}
                         </TableCell>
                         <TableCell className="p-1.5">
                           {isEditable && (
@@ -2935,14 +2925,6 @@ function CostSheetContent() {
                                   bomLining: activeStyle.bomLining.filter(
                                     (_, i) => i !== idx,
                                   ),
-                                });
-                                setNewLiningRows((prev) => {
-                                  const next = new Set<number>();
-                                  prev.forEach((i) => {
-                                    if (i < idx) next.add(i);
-                                    else if (i > idx) next.add(i - 1);
-                                  });
-                                  return next;
                                 });
                               }}
                             >
@@ -2958,7 +2940,7 @@ function CostSheetContent() {
                       Total Lining Cost:
                     </TableCell>
                     <TableCell className="text-right text-primary pr-4">
-                      Rs. {calcs.liningCostPKR.toFixed(1)}
+                      PKR. {calcs.liningCostPKR.toFixed(1)}
                     </TableCell>
                     <TableCell />
                   </TableRow>
@@ -2974,7 +2956,6 @@ function CostSheetContent() {
                 <Layers className="size-4 text-primary" /> Trims, Chemicals &
                 Special Charges (PKR Input)
               </h2>
-           
             </div>
             <CardContent className="p-0 text-xs">
               <div className="max-h-[350px] overflow-auto">
@@ -2985,13 +2966,13 @@ function CostSheetContent() {
                       <TableHead>Item Name</TableHead>
                       <TableHead className="w-16">Cons.</TableHead>
                       <TableHead className="w-24 text-center">
-                        Rate ($)
+                        Rate (PKR)
                       </TableHead>
                       <TableHead className="w-24 text-center">
-                        Rate (Rs)
+                        Rate ($)
                       </TableHead>
                       <TableHead className="w-28 text-right">
-                        Cost (Rs)
+                        Cost (PKR)
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -3010,7 +2991,6 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="text"
-                            disabled={activeStyle.id !== "custom"}
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.itemName}
                             onChange={(e) =>
@@ -3025,7 +3005,6 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
                             step="0.01"
                             className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.consPerPc || ""}
@@ -3041,7 +3020,20 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
+                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            value={item.ratePKR || ""}
+                            onChange={(e) =>
+                              updateAccessoriesBOM(
+                                idx,
+                                "ratePKR",
+                                Number(e.target.value),
+                              )
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="p-1.5">
+                          <input
+                            type="number"
                             step="0.0001"
                             placeholder="0.0000"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
@@ -3065,23 +3057,8 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.ratePKR || ""}
-                            onChange={(e) =>
-                              updateAccessoriesBOM(
-                                idx,
-                                "ratePKR",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          Rs. {(item.totalCostPKR || 0).toFixed(1)}
+                          PKR {(item.totalCostPKR || 0).toFixed(1)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -3098,7 +3075,6 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="text"
-                            disabled={true}
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.washItem}
                             onChange={(e) =>
@@ -3113,7 +3089,6 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
                             step="0.01"
                             className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.consPerPc || ""}
@@ -3129,7 +3104,20 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
+                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            value={item.ratePKR || ""}
+                            onChange={(e) =>
+                              updateChemicalsBOM(
+                                idx,
+                                "ratePKR",
+                                Number(e.target.value),
+                              )
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="p-1.5">
+                          <input
+                            type="number"
                             step="0.0001"
                             placeholder="0.0000"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
@@ -3153,23 +3141,8 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.ratePKR || ""}
-                            onChange={(e) =>
-                              updateChemicalsBOM(
-                                idx,
-                                "ratePKR",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          Rs. {(item.totalCostPKR || 0).toFixed(1)}
+                          PKR {(item.totalCostPKR || 0).toFixed(1)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -3191,7 +3164,6 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
                             step="0.01"
                             className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
                             value={item.consPerPc || ""}
@@ -3207,7 +3179,20 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={activeStyle.id !== "custom"}
+                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            value={item.ratePKR || ""}
+                            onChange={(e) =>
+                              updateSpecialChargesBOM(
+                                idx,
+                                "ratePKR",
+                                Number(e.target.value),
+                              )
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="p-1.5">
+                          <input
+                            type="number"
                             step="0.0001"
                             placeholder="0.0000"
                             className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
@@ -3231,23 +3216,8 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.ratePKR || ""}
-                            onChange={(e) =>
-                              updateSpecialChargesBOM(
-                                idx,
-                                "ratePKR",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          Rs. {(item.totalCostPKR || 0).toFixed(1)}
+                          PKR {(item.totalCostPKR || 0).toFixed(1)}
                         </TableCell>
                       </TableRow>
                     ))}
