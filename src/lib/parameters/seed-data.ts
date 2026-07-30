@@ -38,9 +38,10 @@ function matrix(values: number[][], suffix = ""): MatrixTableData {
 }
 
 export const SEED_SIMPLE: Record<string, SimpleTableData> = {
+  // Style Categories — SAM/PC range classifier (used by formula engine to map SMV → category)
   styles: {
     columns: [
-      { key: "styleName", label: "Style Name" },
+      { key: "styleName", label: "Style Category" },
       { key: "samPcFrom", label: "SAM/PC From" },
       { key: "samPcTo", label: "SAM/PC To" },
     ],
@@ -72,7 +73,15 @@ export const SEED_SIMPLE: Record<string, SimpleTableData> = {
     ],
     rows: simpleRows(
       ["description", "percentOfSales"],
-      [["Taxes", ""], ["EDS", ""], ["Rebate", ""], ["Exchange Rate", ""]]
+      [
+        ["Taxes", ""],
+        ["EDS", ""],
+        ["Rebate", ""],
+        ["Exchange Rate", ""],
+        ["Inland Freight", ""],
+        ["Local Bank Charges", ""],
+        ["Discount Rate", ""]
+      ]
     ),
   },
   "direct-labour-foh": {
@@ -119,6 +128,14 @@ export const SEED_SIMPLE: Record<string, SimpleTableData> = {
   },
 };
 
+export const EMPTY_MATRIX: MatrixTableData = {
+  rowLabels: QTY_BANDS,
+  columnLabels: STYLE_CATEGORIES,
+  cells: Object.fromEntries(
+    QTY_BANDS.map((band) => [band, Object.fromEntries(STYLE_CATEGORIES.map((cat) => [cat, ""]))])
+  ),
+};
+
 export const SEED_CUT_TO_SHIP: MatrixTableData = matrix([
   [54, 50, 47, 45],
   [56, 52, 48, 46],
@@ -131,25 +148,97 @@ export const SEED_CUT_TO_SHIP: MatrixTableData = matrix([
   [75, 66, 62, 60],
 ]);
 
-const REJECTION_VALUES: number[][] = [
-  [0.6, 0.65, 0.7, 0.75],
-  [0.5, 0.5, 0.5, 0.5],
-  [0.5, 0.5, 0.5, 0.5],
-  [0.5, 0.5, 0.5, 0.5],
-  [0.5, 0.5, 0.5, 0.5],
-  [0.5, 0.5, 0.5, 0.5],
-  [0.4, 0.4, 0.4, 0.4],
-  [0.4, 0.4, 0.4, 0.4],
-  [0.4, 0.4, 0.4, 0.4],
+const FABRIC_REJECTION: number[][] = [
+  [0.6, 0.65, 0.7, 0.75], // <=500
+  [0.5, 0.5, 0.5, 0.5],   // 501-1000
+  [0.5, 0.5, 0.5, 0.5],   // 1001-2000
+  [0.5, 0.5, 0.5, 0.5],   // 2001-3000
+  [0.5, 0.5, 0.5, 0.5],   // 3001-4000
+  [0.5, 0.5, 0.5, 0.5],   // 4001-5000
+  [0.4, 0.4, 0.4, 0.4],   // 5001-10000
+  [0.4, 0.4, 0.4, 0.4],   // 10001-25000
+  [0.4, 0.4, 0.4, 0.4],   // >25000
 ];
 
-export const REJECTION_PROCESSES = ["Fabric", "Cutting", "Sewing", "Finishing", "E1"];
+const CUTTING_REJECTION: number[][] = [
+  [0.3, 0.3, 0.3, 0.3],     // <=500
+  [0.25, 0.25, 0.25, 0.25], // 501-1000
+  [0.25, 0.25, 0.25, 0.25], // 1001-2000
+  [0.25, 0.25, 0.25, 0.25], // 2001-3000
+  [0.25, 0.25, 0.25, 0.25], // 3001-4000
+  [0.25, 0.25, 0.25, 0.25], // 4001-5000
+  [0.2, 0.2, 0.2, 0.2],     // 5001-10000
+  [0.2, 0.2, 0.2, 0.2],     // 10001-25000
+  [0.2, 0.2, 0.2, 0.2],     // >25000
+];
+
+const SEWING_REJECTION: number[][] = [
+  [1.5, 1.5, 1.5, 1.5],     // <=500
+  [0.75, 1.0, 1.0, 1.0],    // 501-1000
+  [0.75, 1.0, 1.0, 1.0],    // 1001-2000
+  [0.75, 0.75, 0.75, 0.75], // 2001-3000
+  [0.65, 0.85, 0.85, 0.85], // 3001-4000
+  [0.65, 0.85, 0.85, 0.85], // 4001-5000
+  [0.5, 0.65, 0.75, 0.75],  // 5001-10000
+  [0.5, 0.65, 0.75, 0.75],  // 10001-25000
+  [0.5, 0.65, 0.75, 0.75],  // >25000
+];
+
+const FINISHING_REJECTION: number[][] = [
+  [0.5, 0.5, 0.5, 0.5],     // <=500
+  [0.5, 0.5, 0.5, 0.5],     // 501-1000
+  [0.25, 0.3, 0.3, 0.3],    // 1001-2000
+  [0.25, 0.3, 0.3, 0.3],    // 2001-3000
+  [0.25, 0.3, 0.3, 0.3],    // 3001-4000
+  [0.25, 0.3, 0.3, 0.3],    // 4001-5000
+  [0.25, 0.3, 0.3, 0.3],    // 5001-10000
+  [0.25, 0.3, 0.3, 0.3],    // 10001-25000
+  [0.25, 0.3, 0.3, 0.3],    // >25000
+];
+
+
+
+const E1_REJECTION: number[][] = [
+  [0.1, 0.1, 0.1, 0.1], // <=500
+  [0.1, 0.1, 0.1, 0.1], // 501-1000
+  [0.1, 0.1, 0.1, 0.1], // 1001-2000
+  [0.1, 0.1, 0.1, 0.1], // 2001-3000
+  [0.1, 0.1, 0.1, 0.1], // 3001-4000
+  [0.1, 0.1, 0.1, 0.1], // 4001-5000
+  [0.1, 0.1, 0.1, 0.1], // 5001-10000
+  [0.1, 0.1, 0.1, 0.1], // 10001-25000
+  [0.1, 0.1, 0.1, 0.1], // >25000
+];
+
+const WIP_REJECTION: number[][] = [
+  [0, 0, 0, 0], // <=500
+  [0, 0, 0, 0], // 501-1000
+  [0, 0, 0, 0], // 1001-2000
+  [0, 0, 0, 0], // 2001-3000
+  [0, 0, 0, 0], // 3001-4000
+  [0, 0, 0, 0], // 4001-5000
+  [0, 0, 0, 0], // 5001-10000
+  [0, 0, 0, 0], // 10001-25000
+  [0, 0, 0, 0], // >25000
+];
+
+export const REJECTION_PROCESSES = ["Fabric", "Cutting", "Sewing", "Finishing", "WIP", "E1"];
 
 export const SEED_REJECTION_GRID: ProcessMatrixTableData = {
   processes: REJECTION_PROCESSES,
-  tables: Object.fromEntries(
-    REJECTION_PROCESSES.map((p) => [p, matrix(REJECTION_VALUES, "%")])
-  ),
+  tables: {
+    Fabric: matrix(FABRIC_REJECTION, "%"),
+    Cutting: matrix(CUTTING_REJECTION, "%"),
+    Sewing: matrix(SEWING_REJECTION, "%"),
+    Finishing: matrix(FINISHING_REJECTION, "%"),
+    WIP: matrix(WIP_REJECTION, "%"),
+    E1: matrix(E1_REJECTION, "%"),
+  },
+};
+
+export const EMPTY_PROCESS_MATRIX: ProcessMatrixTableData = {
+  processes: REJECTION_PROCESSES,
+  tables: Object.fromEntries(REJECTION_PROCESSES.map((p) => [p, EMPTY_MATRIX])),
 };
 
 export const SEED_DROPDOWN_LISTS: DropdownListsData = {

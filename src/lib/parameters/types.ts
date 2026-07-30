@@ -25,6 +25,22 @@ export type ProcessMatrixTableData = {
   tables: Record<string, MatrixTableData>;
 };
 
+export type GridCard<T> = {
+  id: string;
+  serialNo: number;
+  name: string;
+  isActive: boolean;
+  data: T;
+};
+
+export type GridCardListData<T> = {
+  cards: GridCard<T>[];
+};
+
+export function getActiveCard<T>(list: GridCardListData<T> | undefined): GridCard<T> | undefined {
+  return list?.cards?.find((c) => c.isActive) ?? list?.cards?.[0];
+}
+
 export type DropdownListsData = {
   lists: { key: string; label: string; items: string[] }[];
 };

@@ -42,11 +42,13 @@ function ParameterTable({
     return subscribeToTable(slug, setData);
   }, [slug]);
 
+  const notReady = data === null;
+
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-semibold tracking-tight">{def.title}</h1>
       <div className="rounded-xl border bg-card p-5 shadow-sm">
-        {data === null ? (
+        {notReady ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : def.kind === "matrix" ? (
           <MatrixTableEditor
