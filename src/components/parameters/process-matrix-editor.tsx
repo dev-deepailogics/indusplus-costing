@@ -3,11 +3,18 @@
 import { useEffect, useState, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MatrixTableEditor } from "./matrix-table-editor";
-import type { MatrixTableData, ProcessMatrixTableData } from "@/lib/parameters/types";
+import type {
+  MatrixTableData,
+  ProcessMatrixTableData,
+} from "@/lib/parameters/types";
 
 import { subscribeToStyles } from "@/lib/style-master/firestore";
 import type { StyleMasterItem } from "@/lib/style-master/types";
-import { calculateSizeBracket, mapSMVToCategory, getWashingRejection } from "@/lib/cost-sheet/formula-engine";
+import {
+  calculateSizeBracket,
+  mapSMVToCategory,
+  getWashingRejection,
+} from "@/lib/cost-sheet/formula-engine";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -76,7 +83,8 @@ export function ProcessMatrixEditor({
       for (const p of data.processes) {
         const table = data.tables[p];
         if (table) {
-          const cellStr = table.cells[sizeBracket]?.[styleCategoryClass] || "0%";
+          const cellStr =
+            table.cells[sizeBracket]?.[styleCategoryClass] || "0%";
           const cellVal = parseFloat(cellStr) / 100;
           processRejections[p] = cellVal;
           baseRejectionSum += cellVal;
@@ -138,18 +146,30 @@ export function ProcessMatrixEditor({
                 <Table>
                   <TableHeader className="bg-muted/40">
                     <TableRow>
-                      <TableHead className="font-semibold text-foreground">Qty. Band</TableHead>
+                      <TableHead className="font-semibold text-foreground">
+                        Qty. Band
+                      </TableHead>
                       {totalTable.columnLabels.map((col) => (
-                        <TableHead key={col} className="font-semibold text-foreground">{col}</TableHead>
+                        <TableHead
+                          key={col}
+                          className="font-semibold text-foreground"
+                        >
+                          {col}
+                        </TableHead>
                       ))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {totalTable.rowLabels.map((row) => (
                       <TableRow key={row} className="hover:bg-muted/10">
-                        <TableCell className="font-semibold text-muted-foreground">{row}</TableCell>
+                        <TableCell className="font-semibold text-muted-foreground">
+                          {row}
+                        </TableCell>
                         {totalTable.columnLabels.map((col) => (
-                          <TableCell key={col} className="font-mono text-xs font-bold text-foreground">
+                          <TableCell
+                            key={col}
+                            className="font-mono text-xs font-bold text-foreground"
+                          >
                             {totalTable.cells[row]?.[col] || "0.00%"}
                           </TableCell>
                         ))}
@@ -158,15 +178,15 @@ export function ProcessMatrixEditor({
                   </TableBody>
                 </Table>
               </div>
-              <p className="text-xs text-muted-foreground italic px-1">
+              {/* <p className="text-xs text-muted-foreground italic px-1">
                 Note: This table automatically sums Fabric + Cutting + Sewing + Finishing + WIP + E1 tables cell-by-cell.
-              </p>
+              </p> */}
             </div>
           </TabsContent>
         )}
       </Tabs>
 
-      {/* Style-level Rejection Breakdown Summary Table */}
+      {/* Style-level Rejection Breakdown Summary Table
       <Card className="border-muted shadow-md overflow-hidden bg-card/60">
         <CardHeader className="bg-muted/30 border-b py-4">
           <CardTitle className="text-sm font-bold flex items-center justify-between">
@@ -230,7 +250,7 @@ export function ProcessMatrixEditor({
             </Table>
           )}
         </CardContent>
-      </Card>
+      </Card> */}
     </div>
   );
 }
