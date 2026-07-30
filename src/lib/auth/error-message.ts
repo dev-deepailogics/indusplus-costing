@@ -8,7 +8,6 @@ const MESSAGES: Record<string, string> = {
   "auth/invalid-credential": "Incorrect email or password.",
   "auth/email-already-in-use": "An account with that email already exists.",
   "auth/weak-password": "Password must be at least 6 characters.",
-  "auth/popup-closed-by-user": "Sign-in was cancelled.",
   "auth/too-many-requests": "Too many attempts. Please try again later.",
 };
 

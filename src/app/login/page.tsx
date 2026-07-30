@@ -15,8 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { GoogleIcon } from "@/components/auth/google-icon";
-import { signInWithEmail, signInWithGoogle, signUpWithEmail } from "@/lib/auth/actions";
+import { signInWithEmail, signUpWithEmail } from "@/lib/auth/actions";
 import { authErrorMessage } from "@/lib/auth/error-message";
 
 export default function LoginPage() {
@@ -26,7 +25,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,18 +43,6 @@ export default function LoginPage() {
     }
   }
 
-  async function handleGoogle() {
-    setGoogleSubmitting(true);
-    try {
-      await signInWithGoogle();
-      router.replace("/parameters");
-    } catch (error) {
-      toast.error(authErrorMessage(error));
-    } finally {
-      setGoogleSubmitting(false);
-    }
-  }
-
   return (
     <div className="flex flex-1 items-center justify-center bg-muted/20 px-6">
       <Card className="w-full max-w-sm rounded-2xl shadow-sm">
@@ -68,23 +54,6 @@ export default function LoginPage() {
           <CardDescription>Indus Plus Costing</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            disabled={googleSubmitting}
-            onClick={handleGoogle}
-          >
-            <GoogleIcon />
-            Continue with Google
-          </Button>
-
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <div className="h-px flex-1 bg-border" />
-            or
-            <div className="h-px flex-1 bg-border" />
-          </div>
-
           <form className="space-y-3" onSubmit={handleSubmit}>
             {mode === "sign-up" && (
               <div className="space-y-1.5">
