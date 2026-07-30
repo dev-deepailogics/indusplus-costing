@@ -69,6 +69,7 @@ function ParameterTable({
           <SimpleTableEditor
             data={data as SimpleTableData}
             onSave={(next) => saveTable(slug, next)}
+            allowAddColumn={slug !== "order-type"}
           />
         )}
       </div>

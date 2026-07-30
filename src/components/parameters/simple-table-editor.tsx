@@ -24,16 +24,20 @@ function slugifyKey(label: string): string {
     .replace(/[^a-zA-Z0-9]+/g, " ")
     .trim()
     .split(" ")
-    .map((w, i) => (i === 0 ? w.toLowerCase() : w[0].toUpperCase() + w.slice(1).toLowerCase()))
+    .map((w, i) =>
+      i === 0 ? w.toLowerCase() : w[0].toUpperCase() + w.slice(1).toLowerCase(),
+    )
     .join("");
 }
 
 export function SimpleTableEditor({
   data,
   onSave,
+  allowAddColumn = true,
 }: {
   data: SimpleTableData;
   onSave: (data: SimpleTableData) => Promise<void>;
+  allowAddColumn?: boolean;
 }) {
   const [addColOpen, setAddColOpen] = useState(false);
   const [deleteRowId, setDeleteRowId] = useState<string | null>(null);
@@ -52,7 +56,7 @@ export function SimpleTableEditor({
     const next: SimpleTableData = {
       ...data,
       rows: data.rows.map((r) =>
-        r.id === rowId ? { ...r, values: { ...r.values, [colKey]: value } } : r
+        r.id === rowId ? { ...r, values: { ...r.values, [colKey]: value } } : r,
       ),
     };
     scheduleSave(next);
@@ -80,7 +84,10 @@ export function SimpleTableEditor({
     }
     const next: SimpleTableData = {
       columns: [...data.columns, { key, label }],
-      rows: data.rows.map((r) => ({ ...r, values: { ...r.values, [key]: "" } })),
+      rows: data.rows.map((r) => ({
+        ...r,
+        values: { ...r.values, [key]: "" },
+      })),
     };
     onSave(next).then(() => toast.success("Column added"));
   }
@@ -105,7 +112,9 @@ export function SimpleTableEditor({
     onSave(next).then(() => toast.success("Column deleted"));
   }
 
-  const deleteColLabel = data.columns.find((c) => c.key === deleteColKey)?.label;
+  const deleteColLabel = data.columns.find(
+    (c) => c.key === deleteColKey,
+  )?.label;
 
   return (
     <div className="space-y-3">
@@ -117,7 +126,7 @@ export function SimpleTableEditor({
                 <TableHead key={col.key}>
                   <div className="flex items-center gap-1">
                     <span>{col.label}</span>
-                    {data.columns.length > 1 && (
+                    {allowAddColumn && data.columns.length > 1 && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -141,7 +150,9 @@ export function SimpleTableEditor({
                     <Input
                       className="h-8"
                       defaultValue={row.values[col.key] ?? ""}
-                      onChange={(e) => updateCell(row.id, col.key, e.target.value)}
+                      onChange={(e) =>
+                        updateCell(row.id, col.key, e.target.value)
+                      }
                     />
                   </TableCell>
                 ))}
@@ -165,9 +176,11 @@ export function SimpleTableEditor({
         <Button variant="outline" size="sm" onClick={addRow}>
           <Plus /> Add row
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setAddColOpen(true)}>
-          <Plus /> Add field
-        </Button>
+        {allowAddColumn && (
+          <Button variant="outline" size="sm" onClick={() => setAddColOpen(true)}>
+            <Plus /> Add Column
+          </Button>
+        )}
       </div>
 
       <PromptDialog
