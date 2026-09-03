@@ -30,7 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   subscribeToCostSheets,
   deleteCostSheet,
-} from "@/lib/cost-sheet/firestore";
+} from "@/lib/cost-sheet/api";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 
 export default function SavedCostSheetsPage() {
