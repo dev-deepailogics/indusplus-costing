@@ -23,6 +23,7 @@ export type MatrixTableData = {
 export type ProcessMatrixTableData = {
   processes: string[];
   tables: Record<string, MatrixTableData>;
+  customerRejections?: Record<string, string>;
 };
 
 export type GridCard<T> = {

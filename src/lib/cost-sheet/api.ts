@@ -35,15 +35,23 @@ export function subscribeToCostSheets(
   callback: (items: SavedCostSheetItem[]) => void
 ): () => void {
   let cancelled = false;
+  let abortController: AbortController | null = null;
 
   async function fetchAndNotify() {
     try {
-      const res = await fetch(BASE, { cache: "no-store" });
+      if (abortController) abortController.abort();
+      abortController = new AbortController();
+
+      const res = await fetch(BASE, {
+        cache: "no-store",
+        signal: abortController.signal,
+      });
       if (!res.ok) throw new Error("Fetch failed");
       const data: SavedCostSheetItem[] = await res.json();
       if (!cancelled) callback(data);
-    } catch (err) {
-      console.error("[subscribeToCostSheets] fetch error:", err);
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      if (!cancelled) console.error("[subscribeToCostSheets] fetch error:", err);
     }
   }
 
@@ -55,9 +63,10 @@ export function subscribeToCostSheets(
     if (!cancelled) fetchAndNotify();
   }, POLL_INTERVAL_MS);
 
-  // Unsubscribe: stop polling
+  // Unsubscribe: stop polling and abort in-flight fetch
   return () => {
     cancelled = true;
+    if (abortController) abortController.abort();
     clearInterval(timerId);
   };
 }

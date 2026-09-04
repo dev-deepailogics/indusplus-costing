@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import { notFound } from "next/navigation";
 
 import { getParameterDef } from "@/lib/parameters/registry";
-import { saveTable, subscribeToTable } from "@/lib/parameters/firestore";
+import { saveTable, subscribeToTable } from "@/lib/parameters/api";
 import type {
   DropdownListsData,
   MatrixTableData,

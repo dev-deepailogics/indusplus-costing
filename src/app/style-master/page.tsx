@@ -47,8 +47,8 @@ import type {
   BOMChemicalsItem,
   BOMSpecialChargesItem,
 } from "@/lib/style-master/types";
-import { subscribeToTable } from "@/lib/parameters/firestore";
-import type { DropdownListsData } from "@/lib/parameters/types";
+import { subscribeToTable } from "@/lib/parameters/api";
+import type { DropdownListsData, SimpleTableData } from "@/lib/parameters/types";
 
 // Default options if database list is empty
 const DEFAULT_CUSTOMERS = [
@@ -171,8 +171,8 @@ export default function StyleMasterPage() {
     null,
   );
 
-  // Exchange rate helper
-  const DEFAULT_PARITY = 278;
+  // Exchange rate from database (with fallback of 278)
+  const [exchangeRate, setExchangeRate] = useState<number>();
 
   useEffect(() => {
     // Subscribe to Styles
@@ -181,8 +181,28 @@ export default function StyleMasterPage() {
       setLoading(false);
     });
 
+    // Subscribe to Cost of Sales parameters for live Exchange Rate
+    const unsubCostOfSales = subscribeToTable<SimpleTableData>(
+      "cost-as-percent-of-sales",
+      (data) => {
+        if (data?.rows?.length) {
+          const row = data.rows.find(
+            (r) =>
+              r.values.description?.toLowerCase().trim() === "exchange rate",
+          );
+          if (row?.values.percentOfSales) {
+            const parsed = parseFloat(row.values.percentOfSales);
+            if (!isNaN(parsed) && parsed > 0) {
+              setExchangeRate(parsed);
+            }
+          }
+        }
+      },
+    );
+
     return () => {
       unsubStyles();
+      unsubCostOfSales();
     };
   }, []);
 
@@ -695,7 +715,7 @@ export default function StyleMasterPage() {
               <TabsContent value="fabric" className="m-0 space-y-3">
                 <p className="text-xs text-muted-foreground mb-2">
                   Configure Fabric requirements (rates in USD. Conversion
-                  default is {DEFAULT_PARITY} PKR/$).
+                  rate is {exchangeRate} PKR/$).
                 </p>
                 <div className="rounded-lg border">
                   <Table>
@@ -748,7 +768,7 @@ export default function StyleMasterPage() {
                               value={item.rateUSD || ""}
                               onChange={(e) => {
                                 const rateUSD = Number(e.target.value);
-                                const ratePKR = rateUSD * DEFAULT_PARITY;
+                                const ratePKR = rateUSD * (exchangeRate || 0);
                                 const newFab = [...formFabric];
                                 newFab[idx].rateUSD = rateUSD;
                                 newFab[idx].ratePKR = ratePKR;
@@ -766,7 +786,10 @@ export default function StyleMasterPage() {
                                 const ratePKR = Number(e.target.value);
                                 const newFab = [...formFabric];
                                 newFab[idx].ratePKR = ratePKR;
-                                newFab[idx].rateUSD = ratePKR / DEFAULT_PARITY;
+                                newFab[idx].rateUSD =
+                                  exchangeRate && exchangeRate > 0
+                                    ? ratePKR / exchangeRate
+                                    : 0;
                                 newFab[idx].fabricCostPKR =
                                   newFab[idx].consumptionPerPc * ratePKR;
                                 setFormFabric(newFab);
@@ -819,7 +842,7 @@ export default function StyleMasterPage() {
               <TabsContent value="lining" className="m-0 space-y-3">
                 <p className="text-xs text-muted-foreground mb-2">
                   Configure Pocket Lining requirements (rates in USD. Conversion
-                  default is {DEFAULT_PARITY} PKR/$).
+                  rate is {exchangeRate} PKR/$).
                 </p>
                 <div className="rounded-lg border">
                   <Table>
@@ -870,7 +893,7 @@ export default function StyleMasterPage() {
                               value={item.rateUSD || ""}
                               onChange={(e) => {
                                 const rateUSD = Number(e.target.value);
-                                const ratePKR = rateUSD * DEFAULT_PARITY;
+                                const ratePKR = rateUSD * (exchangeRate || 0);
                                 const newLin = [...formLining];
                                 newLin[idx].rateUSD = rateUSD;
                                 newLin[idx].ratePKR = ratePKR;
@@ -888,7 +911,10 @@ export default function StyleMasterPage() {
                                 const ratePKR = Number(e.target.value);
                                 const newLin = [...formLining];
                                 newLin[idx].ratePKR = ratePKR;
-                                newLin[idx].rateUSD = ratePKR / DEFAULT_PARITY;
+                                newLin[idx].rateUSD =
+                                  exchangeRate && exchangeRate > 0
+                                    ? ratePKR / exchangeRate
+                                    : 0;
                                 newLin[idx].liningCostPKR =
                                   newLin[idx].consumptionPerPc * ratePKR;
                                 setFormLining(newLin);

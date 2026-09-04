@@ -329,8 +329,27 @@ export function runFormulaEngine(
   if (rejectionOverride !== null) {
     rejectionPct = rejectionOverride;
   } else {
-    // If rejectionGrid exists, sum rejections for the active sizeBracket and styleCategory
-    if (params.rejectionGrid?.tables) {
+    // 1. Check if the active customer has a single rejection rate configured
+    const custName = (style.customerName || "").trim().toLowerCase();
+    let customerRejectionVal: number | null = null;
+    if (custName && params.rejectionGrid?.customerRejections) {
+      const matchKey = Object.keys(params.rejectionGrid.customerRejections).find(
+        (k) => k.trim().toLowerCase() === custName
+      );
+      if (matchKey && params.rejectionGrid.customerRejections[matchKey] !== undefined) {
+        const rawStr = params.rejectionGrid.customerRejections[matchKey].replace("%", "").trim();
+        const parsed = parseFloat(rawStr);
+        if (!isNaN(parsed) && rawStr !== "") {
+          customerRejectionVal = parsed / 100;
+        }
+      }
+    }
+
+    if (customerRejectionVal !== null) {
+      // Use configured customer rejection rate
+      rejectionPct = customerRejectionVal;
+    } else if (params.rejectionGrid?.tables) {
+      // Fallback: If no customer rejection rate, sum rejections from the Rejection Grid process matrix for the active sizeBracket and styleCategory
       let sumRej = 0;
       // Rejection processes
       const processes = ["Fabric", "Cutting", "Sewing", "Finishing", "WIP", "E1"];

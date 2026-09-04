@@ -50,7 +50,7 @@ import {
   subscribeToCatalog,
 } from "@/lib/item-catalog/firestore";
 import type { CatalogItem } from "@/lib/item-catalog/types";
-import { subscribeToTable } from "@/lib/parameters/firestore";
+import { subscribeToTable } from "@/lib/parameters/api";
 import type {
   StyleMasterItem,
   BOMFabricItem,
@@ -230,8 +230,8 @@ function CostSheetContent() {
   const [paymentTerms, setPaymentTerms] = useState("LC-60 days");
   const [shipmentMode, setShipmentMode] = useState("Sea");
   const [deliveryTerms, setDeliveryTerms] = useState("FOB");
-  const [paritySale, setParitySale] = useState(278);
-  const [parityProcurement, setParityProcurement] = useState(278);
+  const [paritySale, setParitySale] = useState<number>();
+  const [parityProcurement, setParityProcurement] = useState<number>();
 
   // New editable style fields
   const [customerName, setCustomerName] = useState("Duer");
@@ -696,10 +696,11 @@ function CostSheetContent() {
     } as BOMFabricItem;
     // Recalculate costs
     if (key === "consumptionPerPc" || key === "rateUSD" || key === "ratePKR") {
+      const procRate = parityProcurement || 0;
       if (key === "rateUSD") {
-        nextFab[idx].ratePKR = Number(val) * parityProcurement;
+        nextFab[idx].ratePKR = Number(val) * procRate;
       } else if (key === "ratePKR") {
-        nextFab[idx].rateUSD = Number(val) / parityProcurement;
+        nextFab[idx].rateUSD = procRate > 0 ? Number(val) / procRate : 0;
       }
       nextFab[idx].fabricCostPKR =
         (nextFab[idx].consumptionPerPc || 0) * (nextFab[idx].ratePKR || 0);
@@ -731,10 +732,11 @@ function CostSheetContent() {
     } as BOMLiningItem;
     // Recalculate costs
     if (key === "consumptionPerPc" || key === "rateUSD" || key === "ratePKR") {
+      const procRate = parityProcurement || 0;
       if (key === "rateUSD") {
-        nextLin[idx].ratePKR = Number(val) * parityProcurement;
+        nextLin[idx].ratePKR = Number(val) * procRate;
       } else if (key === "ratePKR") {
-        nextLin[idx].rateUSD = Number(val) / parityProcurement;
+        nextLin[idx].rateUSD = procRate > 0 ? Number(val) / procRate : 0;
       }
       nextLin[idx].liningCostPKR =
         (nextLin[idx].consumptionPerPc || 0) * (nextLin[idx].ratePKR || 0);
@@ -769,10 +771,11 @@ function CostSheetContent() {
       [key]: val,
     } as BOMAccessoriesItem;
 
+    const procRateAcc = parityProcurement || 0;
     if (key === "rateUSD") {
-      nextAcc[idx].ratePKR = Number(val) * parityProcurement;
+      nextAcc[idx].ratePKR = Number(val) * procRateAcc;
     } else if (key === "ratePKR") {
-      nextAcc[idx].rateUSD = Number(val) / parityProcurement;
+      nextAcc[idx].rateUSD = procRateAcc > 0 ? Number(val) / procRateAcc : 0;
     }
 
     if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
@@ -804,10 +807,11 @@ function CostSheetContent() {
       [key]: val,
     } as BOMChemicalsItem;
 
+    const procRateChem = parityProcurement || 0;
     if (key === "rateUSD") {
-      nextChem[idx].ratePKR = Number(val) * parityProcurement;
+      nextChem[idx].ratePKR = Number(val) * procRateChem;
     } else if (key === "ratePKR") {
-      nextChem[idx].rateUSD = Number(val) / parityProcurement;
+      nextChem[idx].rateUSD = procRateChem > 0 ? Number(val) / procRateChem : 0;
     }
 
     if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
@@ -843,10 +847,11 @@ function CostSheetContent() {
       [key]: val,
     } as BOMSpecialChargesItem;
 
+    const procRateChg = parityProcurement || 0;
     if (key === "rateUSD") {
-      nextChg[idx].ratePKR = Number(val) * parityProcurement;
+      nextChg[idx].ratePKR = Number(val) * procRateChg;
     } else if (key === "ratePKR") {
-      nextChg[idx].rateUSD = Number(val) / parityProcurement;
+      nextChg[idx].rateUSD = procRateChg > 0 ? Number(val) / procRateChg : 0;
     }
 
     if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
@@ -894,8 +899,8 @@ function CostSheetContent() {
       paymentTerms,
       shipmentMode,
       deliveryTerms,
-      paritySale,
-      parityProcurement,
+      paritySale: paritySale ?? 0,
+      parityProcurement: parityProcurement ?? 0,
       manpower,
       efficiencyOverride:
         efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
@@ -992,8 +997,8 @@ function CostSheetContent() {
       paymentTerms,
       shipmentMode,
       deliveryTerms,
-      paritySale,
-      parityProcurement,
+      paritySale: paritySale ?? 0,
+      parityProcurement: parityProcurement ?? 0,
       manpower,
       efficiencyOverride:
         efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
@@ -1101,8 +1106,8 @@ function CostSheetContent() {
       overriddenStyle,
       {
         orderFOB: calculatedOrderFOB,
-        paritySale,
-        parityProcurement,
+        paritySale: paritySale ?? 0,
+        parityProcurement: parityProcurement ?? 0,
         manpower,
         efficiencyOverride: effOv,
         rejectionOverride: rejOv,
@@ -3048,7 +3053,7 @@ function CostSheetContent() {
                             value={
                               item.rateUSD !== undefined
                                 ? item.rateUSD || ""
-                                : item.ratePKR
+                                : (item.ratePKR && parityProcurement && parityProcurement > 0)
                                   ? Number(
                                       (
                                         item.ratePKR / parityProcurement
@@ -3136,7 +3141,7 @@ function CostSheetContent() {
                             value={
                               item.rateUSD !== undefined
                                 ? item.rateUSD || ""
-                                : item.ratePKR
+                                : (item.ratePKR && parityProcurement && parityProcurement > 0)
                                   ? Number(
                                       (
                                         item.ratePKR / parityProcurement
@@ -3214,7 +3219,7 @@ function CostSheetContent() {
                             value={
                               item.rateUSD !== undefined
                                 ? item.rateUSD || ""
-                                : item.ratePKR
+                                : (item.ratePKR && parityProcurement && parityProcurement > 0)
                                   ? Number(
                                       (
                                         item.ratePKR / parityProcurement
