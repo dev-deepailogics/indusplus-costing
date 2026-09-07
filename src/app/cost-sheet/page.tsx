@@ -44,9 +44,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { subscribeToStyles } from "@/lib/style-master/firestore";
-import { subscribeToWorkOrders } from "@/lib/work-orders/firestore";
-import type { WorkOrderItem } from "@/lib/work-orders/types";
 import {
   FABRIC_COLLECTION,
   LINING_COLLECTION,
@@ -238,7 +235,14 @@ function mapIndusBOMToStyle(bom: IndusBOMData) {
   }
   const bomAccessories = Array.from(accMap.values());
 
-  return { bomFabric, bomLining, bomAccessories, smvSewing: bom.smvSewing };
+  return {
+    bomFabric,
+    bomLining,
+    bomAccessories,
+    smvSewing: bom.smvSewing,
+    washType: bom.wash || undefined,
+    styleCategory: bom.category || undefined,
+  };
 }
 
 function CostSheetContent() {
@@ -254,10 +258,8 @@ function CostSheetContent() {
   const [newSnapshotName, setNewSnapshotName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Subscribed Database Data
-  const [styles, setStyles] = useState<StyleMasterItem[]>([]);
+  // Active Style & Catalogs
   const [activeStyle, setActiveStyle] = useState<StyleMasterItem | null>(CUSTOM_STYLE);
-  const [workOrders, setWorkOrders] = useState<WorkOrderItem[]>([]);
   const [fabricCatalog, setFabricCatalog] = useState<CatalogItem[]>([]);
   const [liningCatalog, setLiningCatalog] = useState<CatalogItem[]>([]);
   const [newFabricRows, setNewFabricRows] = useState<Set<number>>(new Set());
@@ -397,32 +399,53 @@ function CostSheetContent() {
       .then((data: { rows?: StyleWorkOrderRow[]; error?: string }) => {
         if (data.rows && data.rows.length > 0) {
           setIndusStyleRows(data.rows);
+          if (styleIdParam && !costSheetIdParam) {
+            if (styleIdParam === "custom") {
+              setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
+            } else {
+              const matchedRow = data.rows.find((r) => r.styleCode === styleIdParam);
+              if (matchedRow) {
+                const rawCust = matchedRow.customer?.trim() || "";
+                setWorkOrderNumber(matchedRow.workOrderNo);
+                setCustomerName(rawCust);
+                const baseStyle = ensureStyleBOMDefaults({
+                  ...CUSTOM_STYLE,
+                  id: matchedRow.styleCode,
+                  styleName: matchedRow.styleName,
+                  customerName: rawCust,
+                  orderQuantity: matchedRow.poQty ?? 1000,
+                });
+                setActiveStyle(baseStyle);
+                fetchIndusBOM(matchedRow.styleCode).then((bom) => {
+                  if (!bom) return;
+                  const mapped = mapIndusBOMToStyle(bom);
+                  setActiveStyle((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          bomFabric: mapped.bomFabric.length ? mapped.bomFabric : prev.bomFabric,
+                          bomLining: mapped.bomLining.length ? mapped.bomLining : prev.bomLining,
+                          bomAccessories: mapped.bomAccessories.length ? mapped.bomAccessories : prev.bomAccessories,
+                          smvSewing: mapped.smvSewing ?? prev.smvSewing,
+                          washType: mapped.washType ?? prev.washType,
+                          styleCategory: mapped.styleCategory ?? prev.styleCategory,
+                        }
+                      : prev
+                  );
+                  if (mapped.smvSewing) setSmvSewingInput(mapped.smvSewing.toString());
+                  if (mapped.washType) setWashType(mapped.washType);
+                  if (mapped.styleCategory) setStyleCategory(mapped.styleCategory);
+                });
+              }
+            }
+          }
         }
       })
       .catch((err) => console.error("[CostSheet] Failed to load styles/WOs:", err));
-  }, []);
+  }, [styleIdParam, costSheetIdParam]);
 
   useEffect(() => {
-    // Subscribe to Style Master
-    const unsubStyles = subscribeToStyles((data) => {
-      setStyles(data);
-      setLoadingStyles(false);
-
-      // Only select active style if explicitly passed in URL query param
-      if (styleIdParam && !costSheetIdParam) {
-        if (styleIdParam === "custom") {
-          setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
-        } else {
-          const found = data.find((s) => s.id === styleIdParam);
-          if (found) {
-            setActiveStyle(ensureStyleBOMDefaults(found));
-          }
-        }
-      }
-    });
-
-    // Subscribe to Work Orders
-    const unsubWorkOrders = subscribeToWorkOrders(setWorkOrders);
+    setLoadingStyles(false);
 
     // Subscribe to Item Catalog
     const unsubFabricCatalog = subscribeToCatalog(FABRIC_COLLECTION, setFabricCatalog);
@@ -540,8 +563,6 @@ function CostSheetContent() {
     );
 
     return () => {
-      unsubStyles();
-      unsubWorkOrders();
       unsubFabricCatalog();
       unsubLiningCatalog();
       unsubDLF();
@@ -747,18 +768,55 @@ function CostSheetContent() {
   function handleStyleChange(id: string) {
     setNewFabricRows(new Set());
     setNewLiningRows(new Set());
-    setWorkOrderNumber("");
-    if (id === "custom") {
+    if (id === "custom" || !id) {
       setLoadedCostSheet(null);
       setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
+      setWorkOrderNumber("");
       router.push("/cost-sheet?styleId=custom");
     } else {
-      const selected = styles.find((s) => s.id === id);
-      if (selected) {
-        setLoadedCostSheet(null);
-        setActiveStyle(ensureStyleBOMDefaults(selected));
-        router.push(`/cost-sheet?styleId=${id}`);
+      const woRow = indusStyleRows.find((r) => r.styleCode === id);
+      const rawCust = woRow?.customer?.trim() || "";
+      const matchedCust =
+        customersList.find(
+          (c) => c.toLowerCase() === rawCust.toLowerCase(),
+        ) || rawCust || customerName;
+      if (woRow) {
+        setWorkOrderNumber(woRow.workOrderNo);
+        setCustomerName(matchedCust);
+        setOrderQuantity(woRow.poQty ?? orderQuantity);
+      } else {
+        setWorkOrderNumber("");
       }
+      const baseStyle = ensureStyleBOMDefaults({
+        ...CUSTOM_STYLE,
+        id: id,
+        styleName: woRow?.styleName ?? id,
+        customerName: matchedCust,
+        orderQuantity: woRow?.poQty ?? orderQuantity,
+      });
+      setLoadedCostSheet(null);
+      setActiveStyle(baseStyle);
+      router.push(`/cost-sheet?styleCode=${encodeURIComponent(id)}`);
+      fetchIndusBOM(id).then((bom) => {
+        if (!bom) return;
+        const mapped = mapIndusBOMToStyle(bom);
+        setActiveStyle((prev) =>
+          prev
+            ? {
+                ...prev,
+                bomFabric: mapped.bomFabric.length ? mapped.bomFabric : prev.bomFabric,
+                bomLining: mapped.bomLining.length ? mapped.bomLining : prev.bomLining,
+                bomAccessories: mapped.bomAccessories.length ? mapped.bomAccessories : prev.bomAccessories,
+                smvSewing: mapped.smvSewing ?? prev.smvSewing,
+                washType: mapped.washType ?? prev.washType,
+                styleCategory: mapped.styleCategory ?? prev.styleCategory,
+              }
+            : prev
+        );
+        if (mapped.smvSewing) setSmvSewingInput(mapped.smvSewing.toString());
+        if (mapped.washType) setWashType(mapped.washType);
+        if (mapped.styleCategory) setStyleCategory(mapped.styleCategory);
+      });
     }
   }
 
@@ -1320,8 +1378,8 @@ function CostSheetContent() {
         </div>
       </div>{" "}
       {/* ZONE 1: 4-COLUMN PARAMETERS SPREADSHEET LAYOUT */}
-      <Card className="shadow-sm border-slate-200/85 bg-white dark:bg-slate-900 overflow-hidden">
-        <div className="bg-blue-50/50 dark:bg-slate-800/45 px-4 py-2.5 border-b border-slate-200/80">
+      <Card className="shadow-sm border-slate-200/85 bg-white dark:bg-slate-900 overflow-visible">
+        <div className="bg-blue-50/50 dark:bg-slate-800/45 px-4 py-2.5 border-b border-slate-200/80 rounded-t-xl">
           <h2 className="text-xs font-bold text-blue-900/85 dark:text-blue-300 uppercase tracking-wider">
             📊 Pre-Order Cost Sheet Header
           </h2>
@@ -1387,177 +1445,103 @@ function CostSheetContent() {
                 </select>
               </div>
 
-              <div className="flex flex-col gap-1.5 bg-slate-50/50 dark:bg-slate-950/20 p-1.5 rounded border border-slate-100">
-                {/* ── Style Select ──────────────────────────── */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-blue-900/80 dark:text-blue-300 shrink-0">
-                    Style Select
-                  </span>
-                  <SearchableSelect
-                    className="w-44 h-7 text-xs font-semibold"
-                    placeholder="Search style code…"
-                    value={activeStyle.id === "custom" ? "" : activeStyle.id}
-                    onChange={(val) => {
-                      if (!val) {
-                        handleStyleChange("custom");
-                        setWorkOrderNumber("");
-                        return;
-                      }
-                      // val is either a firebase styleId or an indus StyleCode
-                      const firebaseMatch = styles.find((s) => s.id === val);
-                      if (firebaseMatch) {
-                        handleStyleChange(val);
-                        const currentWO = workOrders.find((w) => w.id === workOrderNumber);
-                        if (currentWO && currentWO.styleId !== val) setWorkOrderNumber("");
-                      } else {
-                        // Indus style selected — set work order to first matching WO
-                        const woRow = indusStyleRows.find((r) => r.styleCode === val);
-                        const rawCust = woRow?.customer?.trim() || "";
-                        const matchedCust =
-                          customersList.find(
-                            (c) => c.toLowerCase() === rawCust.toLowerCase(),
-                          ) || rawCust || customerName;
-                        if (woRow) {
-                          setWorkOrderNumber(woRow.workOrderNo);
-                          setCustomerName(matchedCust);
-                        } else {
-                          setWorkOrderNumber("");
-                        }
-                        const baseStyle = ensureStyleBOMDefaults({
-                          ...CUSTOM_STYLE,
-                          id: val,
-                          styleName: woRow?.styleName ?? val,
-                          customerName: matchedCust,
-                          orderQuantity: woRow?.poQty ?? orderQuantity,
-                        });
-                        setActiveStyle(baseStyle);
-                        // Async: fetch BOM from indus-plus and merge into activeStyle
-                        fetchIndusBOM(val).then((bom) => {
-                          if (!bom) return;
-                          const mapped = mapIndusBOMToStyle(bom);
-                          setActiveStyle((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  bomFabric: mapped.bomFabric.length ? mapped.bomFabric : prev.bomFabric,
-                                  bomLining: mapped.bomLining.length ? mapped.bomLining : prev.bomLining,
-                                  bomAccessories: mapped.bomAccessories.length ? mapped.bomAccessories : prev.bomAccessories,
-                                  smvSewing: mapped.smvSewing ?? prev.smvSewing,
-                                }
-                              : prev
-                          );
-                          if (mapped.smvSewing) setSmvSewingInput(mapped.smvSewing.toString());
-                        });
-                      }
-                    }}
-                    options={[
-                      { value: "custom", label: "-- Custom Style --" },
-                      // Firebase styles
-                      ...styles.map((s) => ({
-                        value: s.id,
-                        label: `${s.id}${s.styleName ? ` — ${s.styleName}` : ""}`,
-                      })),
-                      // Indus-plus styles (deduplicated by StyleCode)
-                      ...Array.from(
-                        new Map(indusStyleRows.map((r) => [r.styleCode, r])).values()
-                      )
-                        .filter((r) => !styles.find((s) => s.id === r.styleCode))
-                        .map((r) => ({
-                          value: r.styleCode,
-                          label: `${r.styleCode}${r.styleName ? ` — ${r.styleName}` : ""}${r.customer ? ` (${r.customer})` : ""}`,
-                        })),
-                    ]}
-                  />
-                </div>
+              {/* ── Style Select ──────────────────────────── */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Style Select
+                </span>
+                <SearchableSelect
+                  className="w-32"
+                  placeholder="Search style…"
+                  value={activeStyle.id === "custom" ? "" : activeStyle.id}
+                  onChange={(val) => {
+                    handleStyleChange(val || "custom");
+                  }}
+                  options={[
+                    { value: "custom", label: "-- Custom Style --" },
+                    // Indus-plus styles from SQL Server (deduplicated by StyleCode)
+                    ...Array.from(
+                      new Map(indusStyleRows.map((r) => [r.styleCode, r])).values()
+                    ).map((r) => ({
+                      value: r.styleCode,
+                      label: `${r.styleCode}${r.styleName ? ` — ${r.styleName}` : ""}${r.customer ? ` (${r.customer})` : ""}`,
+                    })),
+                  ]}
+                />
+              </div>
 
-                {/* ── Work Order No. ────────────────────────── */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-blue-900/80 dark:text-blue-300 shrink-0">
-                    Work Order No.
-                  </span>
-                  <SearchableSelect
-                    className="w-44 h-7 text-xs font-semibold"
-                    placeholder="Search work order…"
-                    value={workOrderNumber}
-                    onChange={(id) => {
-                      setWorkOrderNumber(id);
-                      if (!id) return;
-                      // If from indus-plus, sync style code
-                      const indusWO = indusStyleRows.find((r) => r.workOrderNo === id);
-                      if (indusWO) {
-                        const rawCust = indusWO.customer?.trim() || "";
-                        const matchedCust =
-                          customersList.find(
-                            (c) => c.toLowerCase() === rawCust.toLowerCase(),
-                          ) || rawCust || customerName;
-                        setCustomerName(matchedCust);
-                        setOrderQuantity(indusWO.poQty ?? orderQuantity);
-                        const baseStyle = ensureStyleBOMDefaults({
-                          ...CUSTOM_STYLE,
-                          id: indusWO.styleCode,
-                          styleName: indusWO.styleName,
-                          customerName: matchedCust,
-                          orderQuantity: indusWO.poQty ?? orderQuantity,
-                        });
-                        setActiveStyle(baseStyle);
-                        // Async: fetch BOM from indus-plus and merge
-                        fetchIndusBOM(indusWO.styleCode).then((bom) => {
-                          if (!bom) return;
-                          const mapped = mapIndusBOMToStyle(bom);
-                          setActiveStyle((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  bomFabric: mapped.bomFabric.length ? mapped.bomFabric : prev.bomFabric,
-                                  bomLining: mapped.bomLining.length ? mapped.bomLining : prev.bomLining,
-                                  bomAccessories: mapped.bomAccessories.length ? mapped.bomAccessories : prev.bomAccessories,
-                                  smvSewing: mapped.smvSewing ?? prev.smvSewing,
-                                }
-                              : prev
-                          );
-                          if (mapped.smvSewing) setSmvSewingInput(mapped.smvSewing.toString());
-                        });
-                        return;
-                      }
-                      // Firebase work orders
-                      const wo = workOrders.find((w) => w.id === id);
-                      if (wo && wo.styleId !== activeStyle.id) {
-                        const selected = styles.find((s) => s.id === wo.styleId);
-                        if (selected) {
-                          setActiveStyle(ensureStyleBOMDefaults(selected));
-                        }
-                      }
-                    }}
-                    options={[
-                      { value: "", label: "-- Select --" },
-                      // Indus-plus WOs — deduplicated by workOrderNo, filtered to current style
-                      ...Array.from(
-                        new Map(
-                          indusStyleRows
-                            .filter((r) =>
-                              activeStyle.id === "custom" || activeStyle.id === ""
-                                ? true
-                                : r.styleCode === activeStyle.id
-                            )
-                            .map((r) => [r.workOrderNo, r])
-                        ).values()
-                      ).map((r) => ({
-                        value: r.workOrderNo,
-                        label: `${r.workOrderNo}${r.styleName ? ` — ${r.styleName}` : ""}${r.customer ? ` (${r.customer})` : ""}`,
-                      })),
-                      // Firebase work orders
-                      ...(activeStyle.id === "custom"
-                        ? workOrders
-                        : workOrders.filter((w) => w.styleId === activeStyle.id)
-                      ).map((w) => ({
-                        value: w.id,
-                        label: w.id,
-                      })),
-                    ]}
-                  />
-                </div>
-
-
+              {/* ── Work Order No. ────────────────────────── */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Work Order No.
+                </span>
+                <SearchableSelect
+                  className="w-32"
+                  placeholder="Search WO…"
+                  value={workOrderNumber}
+                  onChange={(id) => {
+                    setWorkOrderNumber(id);
+                    if (!id) return;
+                    // If from indus-plus, sync style code
+                    const indusWO = indusStyleRows.find((r) => r.workOrderNo === id);
+                    if (indusWO) {
+                      const rawCust = indusWO.customer?.trim() || "";
+                      const matchedCust =
+                        customersList.find(
+                          (c) => c.toLowerCase() === rawCust.toLowerCase(),
+                        ) || rawCust || customerName;
+                      setCustomerName(matchedCust);
+                      setOrderQuantity(indusWO.poQty ?? orderQuantity);
+                      const baseStyle = ensureStyleBOMDefaults({
+                        ...CUSTOM_STYLE,
+                        id: indusWO.styleCode,
+                        styleName: indusWO.styleName,
+                        customerName: matchedCust,
+                        orderQuantity: indusWO.poQty ?? orderQuantity,
+                      });
+                      setActiveStyle(baseStyle);
+                      // Async: fetch BOM from indus-plus and merge
+                      fetchIndusBOM(indusWO.styleCode).then((bom) => {
+                        if (!bom) return;
+                        const mapped = mapIndusBOMToStyle(bom);
+                        setActiveStyle((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                bomFabric: mapped.bomFabric.length ? mapped.bomFabric : prev.bomFabric,
+                                bomLining: mapped.bomLining.length ? mapped.bomLining : prev.bomLining,
+                                bomAccessories: mapped.bomAccessories.length ? mapped.bomAccessories : prev.bomAccessories,
+                                smvSewing: mapped.smvSewing ?? prev.smvSewing,
+                                washType: mapped.washType ?? prev.washType,
+                                styleCategory: mapped.styleCategory ?? prev.styleCategory,
+                              }
+                            : prev
+                        );
+                        if (mapped.smvSewing) setSmvSewingInput(mapped.smvSewing.toString());
+                        if (mapped.washType) setWashType(mapped.washType);
+                        if (mapped.styleCategory) setStyleCategory(mapped.styleCategory);
+                      });
+                    }
+                  }}
+                  options={[
+                    { value: "", label: "-- Select --" },
+                    // Indus-plus WOs — deduplicated by workOrderNo, filtered to current style if chosen
+                    ...Array.from(
+                      new Map(
+                        indusStyleRows
+                          .filter((r) =>
+                            !activeStyle?.id || activeStyle.id === "custom" || activeStyle.id === ""
+                              ? true
+                              : r.styleCode === activeStyle.id
+                          )
+                          .map((r) => [r.workOrderNo, r])
+                      ).values()
+                    ).map((r) => ({
+                      value: r.workOrderNo,
+                      label: `${r.workOrderNo}${r.styleName ? ` — ${r.styleName}` : ""}${r.customer ? ` (${r.customer})` : ""}`,
+                    })),
+                  ]}
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
@@ -1569,6 +1553,10 @@ function CostSheetContent() {
                   value={styleCategory}
                   onChange={(e) => setStyleCategory(e.target.value)}
                 >
+                  {styleCategory &&
+                    !categoriesList.some(
+                      (cat) => cat.toLowerCase() === styleCategory.toLowerCase(),
+                    ) && <option value={styleCategory}>{styleCategory}</option>}
                   {categoriesList.map((cat) => (
                     <option key={cat} value={cat}>
                       {cat}
@@ -1631,6 +1619,10 @@ function CostSheetContent() {
                   value={washType}
                   onChange={(e) => setWashType(e.target.value)}
                 >
+                  {washType &&
+                    !washTypesList.some(
+                      (w) => w.toLowerCase() === washType.toLowerCase(),
+                    ) && <option value={washType}>{washType}</option>}
                   {washTypesList.map((w) => (
                     <option key={w} value={w}>
                       {w}

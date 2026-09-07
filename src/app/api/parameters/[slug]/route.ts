@@ -293,13 +293,13 @@ async function saveRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>, data
   if (rows.length > 0) {
     sqlStatements.push("DELETE FROM rejection_grid;");
     const valuesSql = rows.map((r, idx) => {
-      req.input(`p_${idx}`, sql.NVarChar(64), r.process);
-      req.input(`q_${idx}`, sql.NVarChar(64), r.qty);
-      req.input(`c_${idx}`, sql.NVarChar(64), r.cat);
-      req.input(`v_${idx}`, sql.NVarChar(32), r.val);
-      req.input(`po_${idx}`, sql.Int, r.pi);
-      req.input(`ro_${idx}`, sql.Int, r.ri);
-      req.input(`co_${idx}`, sql.Int, r.ci);
+      req.input(`p_${idx}`, r.process);
+      req.input(`q_${idx}`, r.qty);
+      req.input(`c_${idx}`, r.cat);
+      req.input(`v_${idx}`, r.val);
+      req.input(`po_${idx}`, r.pi);
+      req.input(`ro_${idx}`, r.ri);
+      req.input(`co_${idx}`, r.ci);
       return `(@p_${idx}, @q_${idx}, @c_${idx}, @v_${idx}, @po_${idx}, @ro_${idx}, @co_${idx})`;
     });
     sqlStatements.push(
@@ -315,9 +315,9 @@ async function saveRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>, data
     );
     if (custEntries.length > 0) {
       const valuesSql = custEntries.map(([custName, rejVal], idx) => {
-        req.input(`cn_${idx}`, sql.NVarChar(128), custName.trim());
-        req.input(`rp_${idx}`, sql.NVarChar(32), rejVal.trim());
-        req.input(`cro_${idx}`, sql.Int, idx);
+        req.input(`cn_${idx}`, custName.trim());
+        req.input(`rp_${idx}`, rejVal.trim());
+        req.input(`cro_${idx}`, idx);
         return `(@cn_${idx}, @rp_${idx}, @cro_${idx})`;
       });
       sqlStatements.push(
@@ -789,8 +789,10 @@ export async function PUT(
     }
 
     return Response.json({ ok: true });
-  } catch (err) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
     console.error("[PUT /api/parameters/[slug]]", err);
-    return Response.json({ error: "Failed to save parameter" }, { status: 500 });
+    return Response.json({ error: message, stack }, { status: 500 });
   }
 }

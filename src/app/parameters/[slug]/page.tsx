@@ -42,6 +42,11 @@ function ParameterTable({
     return subscribeToTable(slug, setData);
   }, [slug]);
 
+  const handleSave = async (next: unknown) => {
+    setData(next);
+    await saveTable(slug, next);
+  };
+
   const notReady = data === null;
 
   return (
@@ -53,22 +58,22 @@ function ParameterTable({
         ) : def.kind === "matrix" ? (
           <MatrixTableEditor
             data={data as MatrixTableData}
-            onSave={(next) => saveTable(slug, next)}
+            onSave={handleSave}
           />
         ) : def.kind === "process-matrix" ? (
           <ProcessMatrixEditor
             data={data as ProcessMatrixTableData}
-            onSave={(next) => saveTable(slug, next)}
+            onSave={handleSave}
           />
         ) : def.kind === "dropdown-lists" ? (
           <DropdownListsEditor
             data={data as DropdownListsData}
-            onSave={(next) => saveTable(slug, next)}
+            onSave={handleSave}
           />
         ) : (
           <SimpleTableEditor
             data={data as SimpleTableData}
-            onSave={(next) => saveTable(slug, next)}
+            onSave={handleSave}
           />
         )}
       </div>

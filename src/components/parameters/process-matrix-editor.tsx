@@ -288,23 +288,32 @@ export function ProcessMatrixEditor({
             <Badge
               key={cust}
               variant="outline"
-              className="text-xs py-0.5 px-2 bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 font-semibold flex items-center gap-1.5 shadow-2xs"
+              className="text-xs py-1 px-2.5 bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 font-semibold flex items-center gap-2 shadow-2xs"
             >
               <button
                 type="button"
-                className="hover:underline cursor-pointer flex items-center gap-1"
-                onClick={() => handleSelectCustomer(cust)}
+                className="hover:underline cursor-pointer flex items-center gap-1.5 focus:outline-none"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  handleSelectCustomer(cust);
+                }}
+                title={`Edit custom rate for ${cust}`}
               >
                 <span>{cust}: <strong>{rate}</strong></span>
-                <Edit3 className="size-3 text-muted-foreground ml-0.5" />
+                <Edit3 className="size-3 text-amber-700 dark:text-amber-400 hover:text-amber-900" />
               </button>
               <button
                 type="button"
-                className="hover:text-destructive text-muted-foreground transition-colors cursor-pointer ml-1"
-                onClick={() => handleRemoveCustomerRate(cust)}
+                className="hover:text-destructive text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/50 p-0.5 rounded transition-colors cursor-pointer focus:outline-none"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  handleRemoveCustomerRate(cust);
+                }}
                 title={`Remove custom rate for ${cust}`}
               >
-                <X className="size-3" />
+                <X className="size-3.5" />
               </button>
             </Badge>
           ))}

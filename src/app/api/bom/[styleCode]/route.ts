@@ -55,12 +55,14 @@ export interface IndusBOMData {
   lining: BOMRow[];
   accessories: (BOMRow & { category: string })[];
   smvSewing: number | null; // from TotalSAM if present
+  wash: string | null;      // from Wash column if present
+  category: string | null;  // from Category column if present
 }
 
 /**
  * GET /api/bom/[styleCode]
  * Fetches BOM data from S_StyleCardBOMConsumptionSAMView for the given style code.
- * Returns fabric, lining, accessories arrays and TotalSAM.
+ * Returns fabric, lining, accessories arrays, TotalSAM, wash, and category.
  */
 export async function GET(
   _req: NextRequest,
@@ -69,7 +71,14 @@ export async function GET(
   const { styleCode } = await params;
 
   if (!styleCode || styleCode === "custom") {
-    return NextResponse.json({ fabric: [], lining: [], accessories: [], smvSewing: null });
+    return NextResponse.json({
+      fabric: [],
+      lining: [],
+      accessories: [],
+      smvSewing: null,
+      wash: null,
+      category: null,
+    });
   }
 
   try {
@@ -87,12 +96,13 @@ export async function GET(
         UOM: string;
         LastPurchasedPrice: string;
         TotalSAM: string;
+        Wash: string;
+        Category: string;
       }>(
         `SELECT AccessCode, GroupCode, GroupName, ItemCode, ItemName,
-                Consumption, UOM, LastPurchasedPrice, TotalSAM
+                Consumption, UOM, LastPurchasedPrice, TotalSAM, Wash, Category
          FROM   S_StyleCardBOMConsumptionSAMView
          WHERE  StyleCode = @styleCode
-           AND  AccessCode IN ('FABRIC', 'TRIM')
          ORDER  BY AccessCode, GroupCode, ItemName`
       );
 
@@ -100,6 +110,8 @@ export async function GET(
     const lining: BOMRow[] = [];
     const accessories: (BOMRow & { category: string })[] = [];
     let smvSewing: number | null = null;
+    let wash: string | null = null;
+    let category: string | null = null;
 
     for (const row of result.recordset) {
       const consumption = parseFloat(row.Consumption) || 0;
@@ -115,6 +127,26 @@ export async function GET(
       // Capture the first non-null TotalSAM
       if (totalSAM !== null && smvSewing === null) {
         smvSewing = totalSAM;
+      }
+
+      // Capture the first non-null Wash
+      if (
+        !wash &&
+        row.Wash &&
+        row.Wash !== "NULL" &&
+        row.Wash.trim() !== ""
+      ) {
+        wash = row.Wash.trim();
+      }
+
+      // Capture the first non-null Category
+      if (
+        !category &&
+        row.Category &&
+        row.Category !== "NULL" &&
+        row.Category.trim() !== ""
+      ) {
+        category = row.Category.trim();
       }
 
       const bomRow: BOMRow = {
@@ -136,13 +168,20 @@ export async function GET(
           fabric.push(bomRow);
         }
       } else if (row.AccessCode === "TRIM") {
-        const category =
+        const cat =
           TRIM_CATEGORY_MAP[row.GroupCode] ?? row.GroupName ?? "Trims Mix Materials";
-        accessories.push({ ...bomRow, category });
+        accessories.push({ ...bomRow, category: cat });
       }
     }
 
-    const data: IndusBOMData = { fabric, lining, accessories, smvSewing };
+    const data: IndusBOMData = {
+      fabric,
+      lining,
+      accessories,
+      smvSewing,
+      wash,
+      category,
+    };
     return NextResponse.json(data);
   } catch (err) {
     console.error("[/api/bom] Error:", err);
