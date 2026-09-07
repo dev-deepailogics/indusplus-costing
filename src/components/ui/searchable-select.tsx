@@ -46,7 +46,7 @@ export function SearchableSelect({
         type="text"
         className={className}
         placeholder={placeholder}
-        value={open ? query : selected?.label || ""}
+        value={open ? query : selected ? selected.label : (value || "")}
         onFocus={() => {
           setOpen(true);
           setQuery("");

@@ -252,56 +252,82 @@ async function getRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>): Prom
 }
 
 async function saveRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>, data: ProcessMatrixTableData): Promise<void> {
-  const tx = new sql.Transaction(pool);
-  await tx.begin();
-  try {
-    await new sql.Request(tx).query("DELETE FROM rejection_grid");
+  const req = pool.request();
+  const sqlStatements: string[] = ["BEGIN TRANSACTION;"];
 
+  const rows: {
+    process: string;
+    qty: string;
+    cat: string;
+    val: string;
+    pi: number;
+    ri: number;
+    ci: number;
+  }[] = [];
+
+  if (data.tables && Object.keys(data.tables).length > 0) {
     for (let pi = 0; pi < data.processes.length; pi++) {
       const process = data.processes[pi];
       const matrix = data.tables[process];
-      if (!matrix) continue;
+      if (!matrix || !matrix.rowLabels || !matrix.columnLabels) continue;
 
       for (let ri = 0; ri < matrix.rowLabels.length; ri++) {
         const qty = matrix.rowLabels[ri];
         for (let ci = 0; ci < matrix.columnLabels.length; ci++) {
           const cat = matrix.columnLabels[ci];
-          await new sql.Request(tx)
-            .input("process", sql.NVarChar(64), process)
-            .input("qty_band", sql.NVarChar(64), qty)
-            .input("style_category", sql.NVarChar(64), cat)
-            .input("value", sql.NVarChar(32), matrix.cells[qty]?.[cat] ?? "")
-            .input("process_order", sql.Int, pi)
-            .input("row_order", sql.Int, ri)
-            .input("col_order", sql.Int, ci)
-            .query(
-              "INSERT INTO rejection_grid (process, qty_band, style_category, value, process_order, row_order, col_order) VALUES (@process, @qty_band, @style_category, @value, @process_order, @row_order, @col_order)"
-            );
+          rows.push({
+            process,
+            qty,
+            cat,
+            val: matrix.cells[qty]?.[cat] ?? "",
+            pi,
+            ri,
+            ci,
+          });
         }
       }
     }
-
-    // Save customer single rejection values
-    if (data.customerRejections) {
-      await new sql.Request(tx).query("DELETE FROM customer_rejections");
-      let idx = 0;
-      for (const [custName, rejVal] of Object.entries(data.customerRejections)) {
-        if (!custName.trim() || !rejVal || !rejVal.trim()) continue;
-        await new sql.Request(tx)
-          .input("customer_name", sql.NVarChar(128), custName.trim())
-          .input("rejection_pct", sql.NVarChar(32), rejVal.trim())
-          .input("row_order", sql.Int, idx++)
-          .query(
-            "INSERT INTO customer_rejections (customer_name, rejection_pct, row_order) VALUES (@customer_name, @rejection_pct, @row_order)"
-          );
-      }
-    }
-
-    await tx.commit();
-  } catch (err) {
-    await tx.rollback();
-    throw err;
   }
+
+  // IMPORTANT: Only touch rejection_grid if full table data was provided!
+  if (rows.length > 0) {
+    sqlStatements.push("DELETE FROM rejection_grid;");
+    const valuesSql = rows.map((r, idx) => {
+      req.input(`p_${idx}`, sql.NVarChar(64), r.process);
+      req.input(`q_${idx}`, sql.NVarChar(64), r.qty);
+      req.input(`c_${idx}`, sql.NVarChar(64), r.cat);
+      req.input(`v_${idx}`, sql.NVarChar(32), r.val);
+      req.input(`po_${idx}`, sql.Int, r.pi);
+      req.input(`ro_${idx}`, sql.Int, r.ri);
+      req.input(`co_${idx}`, sql.Int, r.ci);
+      return `(@p_${idx}, @q_${idx}, @c_${idx}, @v_${idx}, @po_${idx}, @ro_${idx}, @co_${idx})`;
+    });
+    sqlStatements.push(
+      `INSERT INTO rejection_grid (process, qty_band, style_category, value, process_order, row_order, col_order) VALUES ${valuesSql.join(", ")};`
+    );
+  }
+
+  // Save customer single rejection values in bulk
+  if (data.customerRejections !== undefined) {
+    sqlStatements.push("DELETE FROM customer_rejections;");
+    const custEntries = Object.entries(data.customerRejections).filter(
+      ([cust, rej]) => cust.trim() && rej && rej.trim()
+    );
+    if (custEntries.length > 0) {
+      const valuesSql = custEntries.map(([custName, rejVal], idx) => {
+        req.input(`cn_${idx}`, sql.NVarChar(128), custName.trim());
+        req.input(`rp_${idx}`, sql.NVarChar(32), rejVal.trim());
+        req.input(`cro_${idx}`, sql.Int, idx);
+        return `(@cn_${idx}, @rp_${idx}, @cro_${idx})`;
+      });
+      sqlStatements.push(
+        `INSERT INTO customer_rejections (customer_name, rejection_pct, row_order) VALUES ${valuesSql.join(", ")};`
+      );
+    }
+  }
+
+  sqlStatements.push("COMMIT TRANSACTION;");
+  await req.query(sqlStatements.join("\n"));
 }
 
 // ---------------------------------------------------------------------------

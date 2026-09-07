@@ -3,10 +3,10 @@
 import { useEffect, useState, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MatrixTableEditor } from "./matrix-table-editor";
-import type { MatrixTableData, ProcessMatrixTableData, DropdownListsData } from "@/lib/parameters/types";
+import type { MatrixTableData, ProcessMatrixTableData } from "@/lib/parameters/types";
 
 import { subscribeToStyles } from "@/lib/style-master/firestore";
-import { subscribeToTable } from "@/lib/parameters/api";
+
 import type { StyleMasterItem } from "@/lib/style-master/types";
 import { calculateSizeBracket, mapSMVToCategory, getWashingRejection } from "@/lib/cost-sheet/formula-engine";
 
@@ -34,14 +34,7 @@ import {
 import { Building2, X, Sparkles, Check, Trash2, Edit3, Plus } from "lucide-react";
 import { toast } from "sonner";
 
-const DEFAULT_CUSTOMERS = [
-  "Duer",
-  "Zara",
-  "Mustang",
-  "Miniconf",
-  "Mohito",
-  "Retrojeans",
-];
+
 
 export function ProcessMatrixEditor({
   data,
@@ -52,7 +45,7 @@ export function ProcessMatrixEditor({
 }) {
   const [active, setActive] = useState(data.processes[0] || "Fabric");
   const [styles, setStyles] = useState<StyleMasterItem[]>([]);
-  const [customerOptionsList, setCustomerOptionsList] = useState<string[]>(DEFAULT_CUSTOMERS);
+  const [customerOptionsList, setCustomerOptionsList] = useState<string[]>([]);
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -65,19 +58,16 @@ export function ProcessMatrixEditor({
     return subscribeToStyles(setStyles);
   }, []);
 
-  // Subscribe to customer list from parameters dropdown-lists
+  // Fetch customer list from indus-plus DB
   useEffect(() => {
-    const unsub = subscribeToTable<DropdownListsData>("dropdown-lists", (dropData) => {
-      if (dropData?.lists) {
-        const custs = dropData.lists.find(
-          (l) => l.key === "customerName" || l.key === "customer"
-        )?.items;
-        if (custs && custs.length > 0) {
-          setCustomerOptionsList(custs);
+    fetch("/api/customers")
+      .then((res) => res.json())
+      .then((data: { customers?: string[]; error?: string }) => {
+        if (data.customers && data.customers.length > 0) {
+          setCustomerOptionsList(data.customers);
         }
-      }
-    });
-    return () => unsub();
+      })
+      .catch((err) => console.error("[ProcessMatrixEditor] Failed to load customers:", err));
   }, []);
 
   // Compute all unique available customers

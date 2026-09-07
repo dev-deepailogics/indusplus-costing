@@ -48,6 +48,8 @@ function parseConnectionString(cs: string): sql.config {
 declare global {
   // eslint-disable-next-line no-var
   var __mssqlPool: sql.ConnectionPool | undefined;
+  // eslint-disable-next-line no-var
+  var __mssqlIndusPool: sql.ConnectionPool | undefined;
 }
 
 export async function getPool(): Promise<sql.ConnectionPool> {
@@ -63,6 +65,24 @@ export async function getPool(): Promise<sql.ConnectionPool> {
   await pool.connect();
 
   global.__mssqlPool = pool;
+  return pool;
+}
+
+/** Pool for the indus-plus database (MSSQL_INDUS_PLUS_CONNECTION_STRING). */
+export async function getIndusPool(): Promise<sql.ConnectionPool> {
+  if (global.__mssqlIndusPool?.connected) {
+    return global.__mssqlIndusPool;
+  }
+
+  const cs = process.env.MSSQL_INDUS_PLUS_CONNECTION_STRING;
+  if (!cs)
+    throw new Error("MSSQL_INDUS_PLUS_CONNECTION_STRING env var is not set");
+
+  const config = parseConnectionString(cs);
+  const pool = new sql.ConnectionPool(config);
+  await pool.connect();
+
+  global.__mssqlIndusPool = pool;
   return pool;
 }
 
