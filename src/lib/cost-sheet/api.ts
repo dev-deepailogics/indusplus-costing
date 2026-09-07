@@ -1,133 +1,24 @@
-/**
- * Client-side cost sheet service — MSSQL edition.
- *
- * Drop-in replacement for the old firestore.ts.
- * All data is persisted via Next.js API routes which talk to MSSQL.
- * The function signatures are identical to the Firestore version so
- * all existing call-sites only need the import path changed.
- */
+import { CostSheetService } from "@/features/cost-sheet";
+import type { SavedCostSheetItem } from "@/features/cost-sheet";
 
-import type { SavedCostSheetItem } from "./types";
-
-const BASE = "/api/cost-sheets";
-
-// ---------------------------------------------------------------------------
-// Get the next sequential cost sheet ID for a given style.
-// e.g. PCS-STY-001-0003
-// ---------------------------------------------------------------------------
-export async function getNextCostSheetId(styleId: string): Promise<string> {
-  const res = await fetch(
-    `${BASE}?styleId=${encodeURIComponent(styleId)}&nextId=1`,
-    { cache: "no-store" }
-  );
-  if (!res.ok) throw new Error("Failed to get next cost sheet ID");
-  const data = await res.json();
-  return data.nextId as string;
+export function getNextCostSheetId(styleId: string): Promise<string> {
+  return CostSheetService.getNextCostSheetId(styleId);
 }
-
-// ---------------------------------------------------------------------------
-// Subscribe to cost sheet updates with polling (MSSQL has no push).
-// Returns an unsubscribe function (same contract as Firestore onSnapshot).
-// ---------------------------------------------------------------------------
-const POLL_INTERVAL_MS = 30_000; // 30 seconds
 
 export function subscribeToCostSheets(
   callback: (items: SavedCostSheetItem[]) => void
 ): () => void {
-  let cancelled = false;
-  let abortController: AbortController | null = null;
-
-  async function fetchAndNotify() {
-    try {
-      if (abortController) abortController.abort();
-      abortController = new AbortController();
-
-      const res = await fetch(BASE, {
-        cache: "no-store",
-        signal: abortController.signal,
-      });
-      if (!res.ok) throw new Error("Fetch failed");
-      const data: SavedCostSheetItem[] = await res.json();
-      if (!cancelled) callback(data);
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      if (!cancelled) console.error("[subscribeToCostSheets] fetch error:", err);
-    }
-  }
-
-  // Immediate first fetch
-  fetchAndNotify();
-
-  // Subsequent polls
-  const timerId = setInterval(() => {
-    if (!cancelled) fetchAndNotify();
-  }, POLL_INTERVAL_MS);
-
-  // Unsubscribe: stop polling and abort in-flight fetch
-  return () => {
-    cancelled = true;
-    if (abortController) abortController.abort();
-    clearInterval(timerId);
-  };
+  return CostSheetService.subscribe(callback);
 }
 
-// ---------------------------------------------------------------------------
-// Retrieve a single cost sheet by ID
-// ---------------------------------------------------------------------------
-export async function getCostSheetById(
-  id: string
-): Promise<SavedCostSheetItem | null> {
-  try {
-    const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, {
-      cache: "no-store",
-    });
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error("Fetch failed");
-    return (await res.json()) as SavedCostSheetItem;
-  } catch (err) {
-    console.error("[getCostSheetById] error:", err);
-    return null;
-  }
+export function getCostSheetById(id: string): Promise<SavedCostSheetItem | null> {
+  return CostSheetService.getById(id);
 }
 
-// ---------------------------------------------------------------------------
-// Save a cost sheet — POST (create) or PUT (update) based on existence check.
-// The server does a SELECT before deciding INSERT vs UPDATE, but we keep
-// the logic here for clarity and to avoid an extra round-trip:
-// - If the ID doesn't exist yet → POST
-// - If it already exists → PUT
-// ---------------------------------------------------------------------------
-export async function saveCostSheet(item: SavedCostSheetItem): Promise<void> {
-  // Determine whether this is a create or update
-  const checkRes = await fetch(`${BASE}/${encodeURIComponent(item.id)}`, {
-    cache: "no-store",
-  });
-  const isNew = checkRes.status === 404;
-
-  const res = await fetch(
-    isNew ? BASE : `${BASE}/${encodeURIComponent(item.id)}`,
-    {
-      method: isNew ? "POST" : "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(item),
-    }
-  );
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to save cost sheet: ${text}`);
-  }
+export function saveCostSheet(item: SavedCostSheetItem): Promise<void> {
+  return CostSheetService.save(item);
 }
 
-// ---------------------------------------------------------------------------
-// Delete a cost sheet by ID
-// ---------------------------------------------------------------------------
-export async function deleteCostSheet(id: string): Promise<void> {
-  const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Failed to delete cost sheet: ${text}`);
-  }
+export function deleteCostSheet(id: string): Promise<void> {
+  return CostSheetService.delete(id);
 }

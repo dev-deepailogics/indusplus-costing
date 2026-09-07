@@ -1,4 +1,1 @@
-export interface WorkOrderItem {
-  id: string; // Work order number, used as the doc id
-  styleId: string;
-}
+export * from "@/features/work-orders/types";

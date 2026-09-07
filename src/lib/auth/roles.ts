@@ -1,9 +1,6 @@
-export type Role = "admin" | "merchant";
+import { Role } from "@/features/auth/types";
+import { AuthService, MERCHANT_ROUTES } from "@/features/auth/services/AuthService";
 
-// Routes a merchant may access; admins can access everything.
-export const MERCHANT_ROUTES = ["/cost-sheet", "/cost-sheets"];
-
-export function canAccessRoute(role: Role, pathname: string): boolean {
-  if (role === "admin") return true;
-  return MERCHANT_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`));
-}
+export type { Role };
+export { MERCHANT_ROUTES };
+export const canAccessRoute = (role: Role, pathname: string): boolean => AuthService.canAccessRoute(role, pathname);

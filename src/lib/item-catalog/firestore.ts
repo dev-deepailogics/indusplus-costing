@@ -1,36 +1,27 @@
-import { collection, doc, addDoc, onSnapshot, updateDoc, deleteDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import type { CatalogItem } from "./types";
+import { ItemCatalogService, FABRIC_COLLECTION, LINING_COLLECTION } from "@/features/item-catalog";
+import type { CatalogItem, CatalogCollectionName } from "@/features/item-catalog";
 
-export const FABRIC_COLLECTION = "fabric_items";
-export const LINING_COLLECTION = "lining_items";
+export { FABRIC_COLLECTION, LINING_COLLECTION };
 
 export function subscribeToCatalog(
-  collectionName: string,
-  onData: (items: CatalogItem[]) => void,
+  collectionName: CatalogCollectionName,
+  onData: (items: CatalogItem[]) => void
 ): () => void {
-  const ref = collection(db, collectionName);
-  return onSnapshot(ref, (snap) => {
-    const items: CatalogItem[] = [];
-    snap.forEach((docSnap) => {
-      items.push({ ...(docSnap.data() as CatalogItem), id: docSnap.id });
-    });
-    onData(items);
-  });
+  return ItemCatalogService.subscribe(collectionName, onData);
 }
 
-export async function addCatalogItem(collectionName: string, name: string): Promise<void> {
-  await addDoc(collection(db, collectionName), { name });
+export async function addCatalogItem(collectionName: CatalogCollectionName, name: string): Promise<void> {
+  await ItemCatalogService.addItem(collectionName, name);
 }
 
 export async function updateCatalogItem(
-  collectionName: string,
+  collectionName: CatalogCollectionName,
   id: string,
-  name: string,
+  name: string
 ): Promise<void> {
-  await updateDoc(doc(db, collectionName, id), { name });
+  await ItemCatalogService.updateItem(collectionName, id, name);
 }
 
-export async function deleteCatalogItem(collectionName: string, id: string): Promise<void> {
-  await deleteDoc(doc(db, collectionName, id));
+export async function deleteCatalogItem(collectionName: CatalogCollectionName, id: string): Promise<void> {
+  await ItemCatalogService.deleteItem(collectionName, id);
 }
