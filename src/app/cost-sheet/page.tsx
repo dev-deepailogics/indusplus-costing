@@ -202,22 +202,30 @@ async function fetchIndusBOM(styleCode: string): Promise<IndusBOMData | null> {
 /**
  * Converts an IndusBOMData payload into the StyleMasterItem BOM arrays.
  */
-function mapIndusBOMToStyle(bom: IndusBOMData) {
-  const bomFabric = bom.fabric.map((r) => ({
-    itemName: r.itemName,
-    consumptionPerPc: r.consumption,
-    rateUSD: 0,
-    ratePKR: r.ratePKR,
-    fabricCostPKR: r.consumption * r.ratePKR,
-  }));
+function mapIndusBOMToStyle(bom: IndusBOMData, parityProc = 278) {
+  const bomFabric = bom.fabric.map((r) => {
+    const ratePKR = r.ratePKR || 0;
+    const rateUSD = parityProc > 0 && ratePKR > 0 ? parseFloat((ratePKR / parityProc).toFixed(4)) : 0;
+    return {
+      itemName: r.itemName,
+      consumptionPerPc: r.consumption,
+      rateUSD,
+      ratePKR,
+      fabricCostPKR: r.consumption * ratePKR,
+    };
+  });
 
-  const bomLining = bom.lining.map((r) => ({
-    itemName: r.itemName,
-    consumptionPerPc: r.consumption,
-    rateUSD: 0,
-    ratePKR: r.ratePKR,
-    liningCostPKR: r.consumption * r.ratePKR,
-  }));
+  const bomLining = bom.lining.map((r) => {
+    const ratePKR = r.ratePKR || 0;
+    const rateUSD = parityProc > 0 && ratePKR > 0 ? parseFloat((ratePKR / parityProc).toFixed(4)) : 0;
+    return {
+      itemName: r.itemName,
+      consumptionPerPc: r.consumption,
+      rateUSD,
+      ratePKR,
+      liningCostPKR: r.consumption * ratePKR,
+    };
+  });
 
   // For accessories, aggregate by category+itemName (view can have duplicates)
   const accMap = new Map<string, { category: string; itemName: string; consPerPc: number; ratePKR: number; totalCostPKR: number }>();

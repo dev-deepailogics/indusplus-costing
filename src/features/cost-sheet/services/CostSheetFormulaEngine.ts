@@ -398,19 +398,33 @@ export function runFormulaEngine(
   const netPriceUSD = netPricePKR / paritySale;
   const netPricePct = netPriceUSD / sellingPriceUSD;
 
-  const fabricCostPKR = (style.bomFabric || []).reduce(
-    (acc, f) => acc + (f ? (f.consumptionPerPc || 0) * (f.rateUSD || 0) * parityProcurement : 0),
-    0
-  );
-  const fabricCostUSD = fabricCostPKR / paritySale;
-  const fabricCostPct = fabricCostUSD / netPriceUSD;
+  const fabricCostPKR = (style.bomFabric || []).reduce((acc, f) => {
+    if (!f) return acc;
+    const cons = f.consumptionPerPc || 0;
+    const pkrRate = (f.rateUSD && f.rateUSD > 0)
+      ? f.rateUSD * parityProcurement
+      : (f.ratePKR || 0);
+    const itemCost = (f.fabricCostPKR && f.fabricCostPKR > 0)
+      ? f.fabricCostPKR
+      : cons * pkrRate;
+    return acc + itemCost;
+  }, 0);
+  const fabricCostUSD = paritySale > 0 ? fabricCostPKR / paritySale : 0;
+  const fabricCostPct = netPriceUSD > 0 ? fabricCostUSD / netPriceUSD : 0;
 
-  const liningCostPKR = (style.bomLining || []).reduce(
-    (acc, l) => acc + (l ? (l.consumptionPerPc || 0) * (l.rateUSD || 0) * parityProcurement : 0),
-    0
-  );
-  const liningCostUSD = liningCostPKR / paritySale;
-  const liningCostPct = liningCostUSD / netPriceUSD;
+  const liningCostPKR = (style.bomLining || []).reduce((acc, l) => {
+    if (!l) return acc;
+    const cons = l.consumptionPerPc || 0;
+    const pkrRate = (l.rateUSD && l.rateUSD > 0)
+      ? l.rateUSD * parityProcurement
+      : (l.ratePKR || 0);
+    const itemCost = (l.liningCostPKR && l.liningCostPKR > 0)
+      ? l.liningCostPKR
+      : cons * pkrRate;
+    return acc + itemCost;
+  }, 0);
+  const liningCostUSD = paritySale > 0 ? liningCostPKR / paritySale : 0;
+  const liningCostPct = netPriceUSD > 0 ? liningCostUSD / netPriceUSD : 0;
 
   const accessoriesCostPKR = (style.bomAccessories || []).reduce(
     (acc, a) => acc + (a ? (a.consPerPc || 0) * (a.ratePKR || 0) : 0),

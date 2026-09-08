@@ -5,7 +5,9 @@ import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 // ---------------------------------------------------------------------------
 // Ensure the table exists (idempotent DDL, runs on every cold start)
 // ---------------------------------------------------------------------------
+let isTableEnsured = false;
 async function ensureTable(pool: Awaited<ReturnType<typeof getPool>>) {
+  if (isTableEnsured) return;
   await pool.request().query(`
     IF NOT EXISTS (
         SELECT 1 FROM INFORMATION_SCHEMA.TABLES
@@ -63,6 +65,7 @@ async function ensureTable(pool: Awaited<ReturnType<typeof getPool>>) {
         CREATE INDEX IX_pcs_saved_at ON pre_order_cost_sheets (saved_at DESC);
     END
   `);
+  isTableEnsured = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -137,7 +140,7 @@ export async function GET(request: NextRequest) {
       const prefix = `PCS-${styleId}-`;
       const result = await pool
         .request()
-        .input("prefix", sql.NVarChar, `${prefix}%`)
+        .input("prefix", `${prefix}%`)
         .query<{ id: string }>(
           "SELECT id FROM pre_order_cost_sheets WHERE id LIKE @prefix"
         );
@@ -163,7 +166,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error("[GET /api/cost-sheets]", err);
     return Response.json(
-      { error: "Failed to fetch cost sheets" },
+      { error: "Failed to fetch cost sheets", details: err instanceof Error ? err.message : String(err) },
       { status: 500 }
     );
   }
@@ -180,51 +183,51 @@ export async function POST(request: NextRequest) {
 
     await pool
       .request()
-      .input("id", sql.NVarChar(64), item.id)
-      .input("reference_name", sql.NVarChar(256), item.referenceName)
-      .input("style_id", sql.NVarChar(64), item.styleId)
-      .input("style_name", sql.NVarChar(256), item.styleName)
-      .input("customer_name", sql.NVarChar(256), item.customerName)
-      .input("style_category", sql.NVarChar(128), item.styleCategory)
-      .input("order_quantity", sql.Int, item.orderQuantity)
-      .input("smv_sewing", sql.Float, item.smvSewing)
-      .input("order_type", sql.NVarChar(128), item.orderType)
-      .input("wash_type", sql.NVarChar(128), item.washType)
-      .input("costing_date", sql.NVarChar(32), item.costingDate)
-      .input("costing_stage", sql.NVarChar(64), item.costingStage)
-      .input("country", sql.NVarChar(128), item.country)
-      .input("payment_terms", sql.NVarChar(128), item.paymentTerms)
-      .input("shipment_mode", sql.NVarChar(128), item.shipmentMode)
-      .input("delivery_terms", sql.NVarChar(128), item.deliveryTerms)
-      .input("parity_sale", sql.Float, item.paritySale)
-      .input("parity_procurement", sql.Float, item.parityProcurement)
-      .input("manpower", sql.Int, item.manpower)
-      .input("efficiency_override", sql.Float, item.efficiencyOverride)
-      .input("rejection_override", sql.Float, item.rejectionOverride)
-      .input("line_target_override", sql.Float, item.lineTargetOverride)
-      .input("discount_rate", sql.Float, item.discountRate)
-      .input("payment_terms_days", sql.Int, item.paymentTermsDays)
-      .input("factoring_days", sql.Int, item.factoringDays)
-      .input("commission_pct", sql.Float, item.commissionPct)
-      .input("foreign_bank_charges", sql.Float, item.foreignBankCharges)
-      .input("order_fob", sql.Float, item.orderFOB)
-      .input("quoted_price", sql.Float, item.quotedPrice ?? null)
-      .input("intl_freight", sql.Float, item.intlFreight ?? null)
-      .input("intl_insurance", sql.Float, item.intlInsurance ?? null)
-      .input("no_of_colors", sql.Int, item.noOfColors ?? null)
-      .input("merch_group", sql.NVarChar(128), item.merchGroup ?? null)
-      .input("work_order_number", sql.NVarChar(64), item.workOrderNumber ?? null)
-      .input("delivery_destination", sql.NVarChar(256), item.deliveryDestination ?? null)
-      .input("ex_factory_date", sql.NVarChar(32), item.exFactoryDate ?? null)
-      .input("inhouse_or_subcontract", sql.NVarChar(64), item.inhouseOrSubcontract ?? null)
-      .input("rebate_pct", sql.Float, item.rebatePct ?? null)
-      .input("bom_fabric", sql.NVarChar(sql.MAX), JSON.stringify(item.bomFabric))
-      .input("bom_lining", sql.NVarChar(sql.MAX), JSON.stringify(item.bomLining))
-      .input("bom_accessories", sql.NVarChar(sql.MAX), JSON.stringify(item.bomAccessories))
-      .input("bom_chemicals", sql.NVarChar(sql.MAX), JSON.stringify(item.bomChemicals))
-      .input("bom_special_charges", sql.NVarChar(sql.MAX), JSON.stringify(item.bomSpecialCharges))
-      .input("calculations", sql.NVarChar(sql.MAX), JSON.stringify(item.calculations))
-      .input("saved_at", sql.NVarChar(64), item.savedAt)
+      .input("id", item.id)
+      .input("reference_name", item.referenceName)
+      .input("style_id", item.styleId)
+      .input("style_name", item.styleName)
+      .input("customer_name", item.customerName)
+      .input("style_category", item.styleCategory)
+      .input("order_quantity", item.orderQuantity)
+      .input("smv_sewing", item.smvSewing)
+      .input("order_type", item.orderType)
+      .input("wash_type", item.washType)
+      .input("costing_date", item.costingDate)
+      .input("costing_stage", item.costingStage)
+      .input("country", item.country)
+      .input("payment_terms", item.paymentTerms)
+      .input("shipment_mode", item.shipmentMode)
+      .input("delivery_terms", item.deliveryTerms)
+      .input("parity_sale", item.paritySale)
+      .input("parity_procurement", item.parityProcurement)
+      .input("manpower", item.manpower)
+      .input("efficiency_override", item.efficiencyOverride ?? null)
+      .input("rejection_override", item.rejectionOverride ?? null)
+      .input("line_target_override", item.lineTargetOverride ?? null)
+      .input("discount_rate", item.discountRate)
+      .input("payment_terms_days", item.paymentTermsDays)
+      .input("factoring_days", item.factoringDays)
+      .input("commission_pct", item.commissionPct)
+      .input("foreign_bank_charges", item.foreignBankCharges)
+      .input("order_fob", item.orderFOB)
+      .input("quoted_price", item.quotedPrice ?? null)
+      .input("intl_freight", item.intlFreight ?? null)
+      .input("intl_insurance", item.intlInsurance ?? null)
+      .input("no_of_colors", item.noOfColors ?? null)
+      .input("merch_group", item.merchGroup ?? null)
+      .input("work_order_number", item.workOrderNumber ?? null)
+      .input("delivery_destination", item.deliveryDestination ?? null)
+      .input("ex_factory_date", item.exFactoryDate ?? null)
+      .input("inhouse_or_subcontract", item.inhouseOrSubcontract ?? null)
+      .input("rebate_pct", item.rebatePct ?? null)
+      .input("bom_fabric", JSON.stringify(item.bomFabric || []))
+      .input("bom_lining", JSON.stringify(item.bomLining || []))
+      .input("bom_accessories", JSON.stringify(item.bomAccessories || []))
+      .input("bom_chemicals", JSON.stringify(item.bomChemicals || []))
+      .input("bom_special_charges", JSON.stringify(item.bomSpecialCharges || []))
+      .input("calculations", JSON.stringify(item.calculations || {}))
+      .input("saved_at", item.savedAt)
       .query(`
         INSERT INTO pre_order_cost_sheets (
           id, reference_name, style_id, style_name, customer_name,
@@ -257,7 +260,7 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     console.error("[POST /api/cost-sheets]", err);
     return Response.json(
-      { error: "Failed to save cost sheet" },
+      { error: "Failed to save cost sheet", details: err instanceof Error ? err.message : String(err) },
       { status: 500 }
     );
   }
