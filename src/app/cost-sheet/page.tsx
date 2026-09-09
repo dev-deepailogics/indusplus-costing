@@ -44,12 +44,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import {
-  FABRIC_COLLECTION,
-  LINING_COLLECTION,
-  subscribeToCatalog,
-} from "@/lib/item-catalog/firestore";
-import type { CatalogItem } from "@/lib/item-catalog/types";
+import type { CatalogItemDB } from "@/app/api/bom/catalog-items/route";
 import { subscribeToTable } from "@/lib/parameters/api";
 import type {
   StyleMasterItem,
@@ -266,12 +261,18 @@ function CostSheetContent() {
   const [newSnapshotName, setNewSnapshotName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Active Style & Catalogs
+  // Active Style & Catalogs (MSSQL DB S_StyleCardBOMConsumptionSAMView)
   const [activeStyle, setActiveStyle] = useState<StyleMasterItem | null>(CUSTOM_STYLE);
-  const [fabricCatalog, setFabricCatalog] = useState<CatalogItem[]>([]);
-  const [liningCatalog, setLiningCatalog] = useState<CatalogItem[]>([]);
+  const [fabricCatalog, setFabricCatalog] = useState<CatalogItemDB[]>([]);
+  const [liningCatalog, setLiningCatalog] = useState<CatalogItemDB[]>([]);
+  const [trimsCatalog, setTrimsCatalog] = useState<CatalogItemDB[]>([]);
+  const [chemicalsCatalog, setChemicalsCatalog] = useState<CatalogItemDB[]>([]);
+  const [specialChargesCatalog, setSpecialChargesCatalog] = useState<CatalogItemDB[]>([]);
   const [newFabricRows, setNewFabricRows] = useState<Set<number>>(new Set());
   const [newLiningRows, setNewLiningRows] = useState<Set<number>>(new Set());
+  const [newAccessoryRows, setNewAccessoryRows] = useState<Set<number>>(new Set());
+  const [newChemicalRows, setNewChemicalRows] = useState<Set<number>>(new Set());
+  const [newSpecialChargeRows, setNewSpecialChargeRows] = useState<Set<number>>(new Set());
 
   const [directLabourFoh, setDirectLabourFoh] = useState<
     SimpleTableData | undefined
@@ -455,9 +456,17 @@ function CostSheetContent() {
   useEffect(() => {
     setLoadingStyles(false);
 
-    // Subscribe to Item Catalog
-    const unsubFabricCatalog = subscribeToCatalog(FABRIC_COLLECTION, setFabricCatalog);
-    const unsubLiningCatalog = subscribeToCatalog(LINING_COLLECTION, setLiningCatalog);
+    // Fetch MSSQL BOM Catalog Items from S_StyleCardBOMConsumptionSAMView
+    fetch("/api/bom/catalog-items")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.fabrics) setFabricCatalog(data.fabrics);
+        if (data.linings) setLiningCatalog(data.linings);
+        if (data.trims) setTrimsCatalog(data.trims);
+        if (data.chemicals) setChemicalsCatalog(data.chemicals);
+        if (data.specialCharges) setSpecialChargesCatalog(data.specialCharges);
+      })
+      .catch((err) => console.error("[CostSheet] Failed to load catalog items from MSSQL DB:", err));
 
     // Subscribe to POC Parameters
     const unsubDLF = subscribeToTable<SimpleTableData>(
@@ -571,8 +580,6 @@ function CostSheetContent() {
     );
 
     return () => {
-      unsubFabricCatalog();
-      unsubLiningCatalog();
       unsubDLF();
       unsubCTS();
       unsubRej();
@@ -776,6 +783,9 @@ function CostSheetContent() {
   function handleStyleChange(id: string) {
     setNewFabricRows(new Set());
     setNewLiningRows(new Set());
+    setNewAccessoryRows(new Set());
+    setNewChemicalRows(new Set());
+    setNewSpecialChargeRows(new Set());
     if (id === "custom" || !id) {
       setLoadedCostSheet(null);
       setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
@@ -829,191 +839,238 @@ function CostSheetContent() {
   }
 
   // Right Panel: Local BOM edits state helpers
-  function updateFabricBOM(idx: number, key: string, val: string | number) {
-    if (!activeStyle) return;
-    const nextFab = [...(activeStyle.bomFabric || [])];
-    for (let i = 0; i <= idx; i++) {
-      if (!nextFab[i]) {
-        nextFab[i] = {
-          itemName: `Fabric ${i + 1}`,
-          consumptionPerPc: 0,
-          rateUSD: 0,
-          ratePKR: 0,
-          fabricCostPKR: 0,
-        };
+  function updateFabricBOM(
+    idx: number,
+    keyOrPatch: string | Partial<BOMFabricItem>,
+    val?: string | number
+  ) {
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      const nextFab = [...(prev.bomFabric || [])];
+      for (let i = 0; i <= idx; i++) {
+        if (!nextFab[i]) {
+          nextFab[i] = {
+            itemName: `Fabric ${i + 1}`,
+            consumptionPerPc: 0,
+            rateUSD: 0,
+            ratePKR: 0,
+            fabricCostPKR: 0,
+          };
+        }
       }
-    }
-    nextFab[idx] = {
-      ...nextFab[idx],
-      [key]: val,
-    } as BOMFabricItem;
-    // Recalculate costs
-    if (key === "consumptionPerPc" || key === "rateUSD" || key === "ratePKR") {
+      const patch =
+        typeof keyOrPatch === "string"
+          ? { [keyOrPatch]: val }
+          : keyOrPatch;
+
+      const updated = {
+        ...nextFab[idx],
+        ...patch,
+      } as BOMFabricItem;
+
       const procRate = parityProcurement || 0;
-      if (key === "rateUSD") {
-        nextFab[idx].ratePKR = Number(val) * procRate;
-      } else if (key === "ratePKR") {
-        nextFab[idx].rateUSD = procRate > 0 ? Number(val) / procRate : 0;
+      if ("rateUSD" in patch && patch.rateUSD !== undefined) {
+        updated.ratePKR = Number(patch.rateUSD) * procRate;
+      } else if ("ratePKR" in patch && patch.ratePKR !== undefined) {
+        updated.rateUSD = procRate > 0 ? Number(patch.ratePKR) / procRate : 0;
       }
-      nextFab[idx].fabricCostPKR =
-        (nextFab[idx].consumptionPerPc || 0) * (nextFab[idx].ratePKR || 0);
-    }
-    setActiveStyle({
-      ...activeStyle,
-      bomFabric: nextFab,
+      updated.fabricCostPKR =
+        (updated.consumptionPerPc || 0) * (updated.ratePKR || 0);
+
+      nextFab[idx] = updated;
+      return {
+        ...prev,
+        bomFabric: nextFab,
+      };
     });
   }
 
   // Pocket Lining BOM
-  function updateLiningBOM(idx: number, key: string, val: string | number) {
-    if (!activeStyle) return;
-    const nextLin = [...(activeStyle.bomLining || [])];
-    for (let i = 0; i <= idx; i++) {
-      if (!nextLin[i]) {
-        nextLin[i] = {
-          itemName: `Lining ${i + 1}`,
-          consumptionPerPc: 0,
-          rateUSD: 0,
-          ratePKR: 0,
-          liningCostPKR: 0,
-        };
+  function updateLiningBOM(
+    idx: number,
+    keyOrPatch: string | Partial<BOMLiningItem>,
+    val?: string | number
+  ) {
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      const nextLin = [...(prev.bomLining || [])];
+      for (let i = 0; i <= idx; i++) {
+        if (!nextLin[i]) {
+          nextLin[i] = {
+            itemName: `Lining ${i + 1}`,
+            consumptionPerPc: 0,
+            rateUSD: 0,
+            ratePKR: 0,
+            liningCostPKR: 0,
+          };
+        }
       }
-    }
-    nextLin[idx] = {
-      ...nextLin[idx],
-      [key]: val,
-    } as BOMLiningItem;
-    // Recalculate costs
-    if (key === "consumptionPerPc" || key === "rateUSD" || key === "ratePKR") {
+      const patch =
+        typeof keyOrPatch === "string"
+          ? { [keyOrPatch]: val }
+          : keyOrPatch;
+
+      const updated = {
+        ...nextLin[idx],
+        ...patch,
+      } as BOMLiningItem;
+
       const procRate = parityProcurement || 0;
-      if (key === "rateUSD") {
-        nextLin[idx].ratePKR = Number(val) * procRate;
-      } else if (key === "ratePKR") {
-        nextLin[idx].rateUSD = procRate > 0 ? Number(val) / procRate : 0;
+      if ("rateUSD" in patch && patch.rateUSD !== undefined) {
+        updated.ratePKR = Number(patch.rateUSD) * procRate;
+      } else if ("ratePKR" in patch && patch.ratePKR !== undefined) {
+        updated.rateUSD = procRate > 0 ? Number(patch.ratePKR) / procRate : 0;
       }
-      nextLin[idx].liningCostPKR =
-        (nextLin[idx].consumptionPerPc || 0) * (nextLin[idx].ratePKR || 0);
-    }
-    setActiveStyle({
-      ...activeStyle,
-      bomLining: nextLin,
+      updated.liningCostPKR =
+        (updated.consumptionPerPc || 0) * (updated.ratePKR || 0);
+
+      nextLin[idx] = updated;
+      return {
+        ...prev,
+        bomLining: nextLin,
+      };
     });
   }
 
   function updateAccessoriesBOM(
     idx: number,
-    key: string,
-    val: string | number,
+    keyOrPatch: string | Partial<BOMAccessoriesItem>,
+    val?: string | number
   ) {
-    if (!activeStyle) return;
-    const nextAcc = [...(activeStyle.bomAccessories || [])];
-    for (let i = 0; i <= idx; i++) {
-      if (!nextAcc[i]) {
-        nextAcc[i] = {
-          category: "Trims",
-          itemName: "",
-          consPerPc: 0,
-          ratePKR: 0,
-          rateUSD: 0,
-          totalCostPKR: 0,
-        };
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      const nextAcc = [...(prev.bomAccessories || [])];
+      for (let i = 0; i <= idx; i++) {
+        if (!nextAcc[i]) {
+          nextAcc[i] = {
+            category: "Trims",
+            itemName: "",
+            consPerPc: 0,
+            ratePKR: 0,
+            rateUSD: 0,
+            totalCostPKR: 0,
+          };
+        }
       }
-    }
-    nextAcc[idx] = {
-      ...nextAcc[idx],
-      [key]: val,
-    } as BOMAccessoriesItem;
+      const patch =
+        typeof keyOrPatch === "string"
+          ? { [keyOrPatch]: val }
+          : keyOrPatch;
 
-    const procRateAcc = parityProcurement || 0;
-    if (key === "rateUSD") {
-      nextAcc[idx].ratePKR = Number(val) * procRateAcc;
-    } else if (key === "ratePKR") {
-      nextAcc[idx].rateUSD = procRateAcc > 0 ? Number(val) / procRateAcc : 0;
-    }
+      const updated = {
+        ...nextAcc[idx],
+        ...patch,
+      } as BOMAccessoriesItem;
 
-    if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
-      nextAcc[idx].totalCostPKR =
-        (nextAcc[idx].consPerPc || 0) * (nextAcc[idx].ratePKR || 0);
-    }
-    setActiveStyle({
-      ...activeStyle,
-      bomAccessories: nextAcc,
+      const procRateAcc = parityProcurement || 0;
+      if ("rateUSD" in patch && patch.rateUSD !== undefined) {
+        updated.ratePKR = Number(patch.rateUSD) * procRateAcc;
+      } else if ("ratePKR" in patch && patch.ratePKR !== undefined) {
+        updated.rateUSD = procRateAcc > 0 ? Number(patch.ratePKR) / procRateAcc : 0;
+      }
+
+      updated.totalCostPKR =
+        (updated.consPerPc || 0) * (updated.ratePKR || 0);
+
+      nextAcc[idx] = updated;
+      return {
+        ...prev,
+        bomAccessories: nextAcc,
+      };
     });
   }
 
-  function updateChemicalsBOM(idx: number, key: string, val: string | number) {
-    if (!activeStyle) return;
-    const nextChem = [...(activeStyle.bomChemicals || [])];
-    for (let i = 0; i <= idx; i++) {
-      if (!nextChem[i]) {
-        nextChem[i] = {
-          washItem: "",
-          consPerPc: 0,
-          ratePKR: 0,
-          rateUSD: 0,
-          totalCostPKR: 0,
-        };
+  function updateChemicalsBOM(
+    idx: number,
+    keyOrPatch: string | Partial<BOMChemicalsItem>,
+    val?: string | number
+  ) {
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      const nextChem = [...(prev.bomChemicals || [])];
+      for (let i = 0; i <= idx; i++) {
+        if (!nextChem[i]) {
+          nextChem[i] = {
+            washItem: "",
+            consPerPc: 0,
+            ratePKR: 0,
+            rateUSD: 0,
+            totalCostPKR: 0,
+          };
+        }
       }
-    }
-    nextChem[idx] = {
-      ...nextChem[idx],
-      [key]: val,
-    } as BOMChemicalsItem;
+      const patch =
+        typeof keyOrPatch === "string"
+          ? { [keyOrPatch]: val }
+          : keyOrPatch;
 
-    const procRateChem = parityProcurement || 0;
-    if (key === "rateUSD") {
-      nextChem[idx].ratePKR = Number(val) * procRateChem;
-    } else if (key === "ratePKR") {
-      nextChem[idx].rateUSD = procRateChem > 0 ? Number(val) / procRateChem : 0;
-    }
+      const updated = {
+        ...nextChem[idx],
+        ...patch,
+      } as BOMChemicalsItem;
 
-    if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
-      nextChem[idx].totalCostPKR =
-        (nextChem[idx].consPerPc || 0) * (nextChem[idx].ratePKR || 0);
-    }
-    setActiveStyle({
-      ...activeStyle,
-      bomChemicals: nextChem,
+      const procRateChem = parityProcurement || 0;
+      if ("rateUSD" in patch && patch.rateUSD !== undefined) {
+        updated.ratePKR = Number(patch.rateUSD) * procRateChem;
+      } else if ("ratePKR" in patch && patch.ratePKR !== undefined) {
+        updated.rateUSD = procRateChem > 0 ? Number(patch.ratePKR) / procRateChem : 0;
+      }
+
+      updated.totalCostPKR =
+        (updated.consPerPc || 0) * (updated.ratePKR || 0);
+
+      nextChem[idx] = updated;
+      return {
+        ...prev,
+        bomChemicals: nextChem,
+      };
     });
   }
 
   function updateSpecialChargesBOM(
     idx: number,
-    key: string,
-    val: string | number,
+    keyOrPatch: string | Partial<BOMSpecialChargesItem>,
+    val?: string | number
   ) {
-    if (!activeStyle) return;
-    const nextChg = [...(activeStyle.bomSpecialCharges || [])];
-    for (let i = 0; i <= idx; i++) {
-      if (!nextChg[i]) {
-        nextChg[i] = {
-          itemName: "",
-          consPerPc: 0,
-          ratePKR: 0,
-          rateUSD: 0,
-          totalCostPKR: 0,
-        };
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      const nextChg = [...(prev.bomSpecialCharges || [])];
+      for (let i = 0; i <= idx; i++) {
+        if (!nextChg[i]) {
+          nextChg[i] = {
+            itemName: "",
+            consPerPc: 0,
+            ratePKR: 0,
+            rateUSD: 0,
+            totalCostPKR: 0,
+          };
+        }
       }
-    }
-    nextChg[idx] = {
-      ...nextChg[idx],
-      [key]: val,
-    } as BOMSpecialChargesItem;
+      const patch =
+        typeof keyOrPatch === "string"
+          ? { [keyOrPatch]: val }
+          : keyOrPatch;
 
-    const procRateChg = parityProcurement || 0;
-    if (key === "rateUSD") {
-      nextChg[idx].ratePKR = Number(val) * procRateChg;
-    } else if (key === "ratePKR") {
-      nextChg[idx].rateUSD = procRateChg > 0 ? Number(val) / procRateChg : 0;
-    }
+      const updated = {
+        ...nextChg[idx],
+        ...patch,
+      } as BOMSpecialChargesItem;
 
-    if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
-      nextChg[idx].totalCostPKR =
-        (nextChg[idx].consPerPc || 0) * (nextChg[idx].ratePKR || 0);
-    }
-    setActiveStyle({
-      ...activeStyle,
-      bomSpecialCharges: nextChg,
+      const procRateChg = parityProcurement || 0;
+      if ("rateUSD" in patch && patch.rateUSD !== undefined) {
+        updated.ratePKR = Number(patch.rateUSD) * procRateChg;
+      } else if ("ratePKR" in patch && patch.ratePKR !== undefined) {
+        updated.rateUSD = procRateChg > 0 ? Number(patch.ratePKR) / procRateChg : 0;
+      }
+
+      updated.totalCostPKR =
+        (updated.consPerPc || 0) * (updated.ratePKR || 0);
+
+      nextChg[idx] = updated;
+      return {
+        ...prev,
+        bomSpecialCharges: nextChg,
+      };
     });
   }
 
@@ -1332,6 +1389,9 @@ function CostSheetContent() {
   // Helper formatting classes
   const isProfitPositive = calcs.netProfitUSD >= 0;
   const isEbitdaPositive = calcs.ebitdaUSD >= 0;
+  const isDbSelected = Boolean(
+    activeStyle && activeStyle.id && activeStyle.id !== "custom"
+  );
   const bomCostUSD =
     calcs.fabricCostUSD +
     calcs.liningCostUSD +
@@ -1416,41 +1476,27 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Customer Name:
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  disabled={isDbSelected}
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                >
-                  <option value="">-- Select --</option>
-                  {customerName &&
-                    !customersList.some(
-                      (c) => c.toLowerCase() === customerName.toLowerCase(),
-                    ) && <option value={customerName}>{customerName}</option>}
-                  {customersList.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Order Type
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
                   value={orderType}
                   onChange={(e) =>
                     setOrderType(e.target.value as "Denim" | "Non Denim")
                   }
-                >
-                  {orderTypesList.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* ── Style Select ──────────────────────────── */}
@@ -1556,21 +1602,13 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Style Category
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  disabled={isDbSelected}
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
                   value={styleCategory}
                   onChange={(e) => setStyleCategory(e.target.value)}
-                >
-                  {styleCategory &&
-                    !categoriesList.some(
-                      (cat) => cat.toLowerCase() === styleCategory.toLowerCase(),
-                    ) && <option value={styleCategory}>{styleCategory}</option>}
-                  {categoriesList.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
@@ -1588,7 +1626,8 @@ function CostSheetContent() {
                 </span>
                 <input
                   type="number"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  disabled={isDbSelected}
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
                   value={orderQuantity || ""}
                   onChange={(e) => setOrderQuantity(Number(e.target.value))}
                 />
@@ -1622,21 +1661,13 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Wash Type:
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  disabled={isDbSelected}
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
                   value={washType}
                   onChange={(e) => setWashType(e.target.value)}
-                >
-                  {washType &&
-                    !washTypesList.some(
-                      (w) => w.toLowerCase() === washType.toLowerCase(),
-                    ) && <option value={washType}>{washType}</option>}
-                  {washTypesList.map((w) => (
-                    <option key={w} value={w}>
-                      {w}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
@@ -1689,79 +1720,60 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Costing Stage
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
                   value={costingStage}
                   onChange={(e) => setCostingStage(e.target.value)}
-                >
-                  <option value="Quote">Quote</option>
-                  <option value="Final">Final</option>
-                </select>
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Country
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
-                >
-                  {countriesList.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Payment Terms
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
                   value={paymentTerms}
                   onChange={(e) => setPaymentTerms(e.target.value)}
-                >
-                  {paymentTermsList.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Shipment mode
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
                   value={shipmentMode}
                   onChange={(e) => setShipmentMode(e.target.value)}
-                >
-                  <option value="Sea">Sea</option>
-                  <option value="Air">Air</option>
-                </select>
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Delivery terms
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
                   value={deliveryTerms}
                   onChange={(e) => setDeliveryTerms(e.target.value)}
-                >
-                  {deliveryTermsList.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
@@ -1780,14 +1792,12 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Delv. Destination
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
                   value={deliveryDestination}
                   onChange={(e) => setDeliveryDestination(e.target.value)}
-                >
-                  <option value="EURO">EURO</option>
-                  <option value="USA">USA</option>
-                </select>
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
@@ -1818,14 +1828,12 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Inhouse/Sub-contract
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
                   value={inhouseOrSubcontract}
                   onChange={(e) => setInhouseOrSubcontract(e.target.value)}
-                >
-                  <option value="INHOUSE">INHOUSE</option>
-                  <option value="CMT">CMT (Sub-contract)</option>
-                </select>
+                />
               </div>
             </div>
 
@@ -2790,7 +2798,7 @@ function CostSheetContent() {
         {/* RIGHT PANEL: DETAILED INTERACTIVE BOM & EXPENSE TABLES */}
         <div className="lg:col-span-7 space-y-6">
           {/* FABRIC BOM */}
-          <Card className="shadow-md border-muted/60 bg-card overflow-hidden">
+          <Card className="shadow-md border-muted/60 bg-card overflow-visible">
             <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center">
               <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
                 <Layers className="size-4 text-primary" /> Fabric Details (USD
@@ -2851,20 +2859,28 @@ function CostSheetContent() {
                       <TableRow key={idx}>
                         <TableCell className="p-1.5">
                           {isEditable ? (
-                            <select
-                              className="w-full h-7 px-2 border bg-background text-xs rounded focus:outline-none"
+                            <SearchableSelect
+                              className="w-full"
+                              placeholder="Search fabric…"
                               value={item.itemName}
-                              onChange={(e) =>
-                                updateFabricBOM(idx, "itemName", e.target.value)
-                              }
-                            >
-                              <option value="">-- Select Fabric --</option>
-                              {fabricCatalog.map((c) => (
-                                <option key={c.id} value={c.name}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </select>
+                              onChange={(val) => {
+                                const chosen = val;
+                                const found = fabricCatalog.find(
+                                  (c) => c.itemName === chosen,
+                                );
+                                updateFabricBOM(idx, {
+                                  itemName: chosen,
+                                  ...(found && found.ratePKR ? { ratePKR: found.ratePKR } : {}),
+                                });
+                              }}
+                              options={[
+                                { value: "", label: "-- Select Fabric --" },
+                                ...fabricCatalog.map((c) => ({
+                                  value: c.itemName,
+                                  label: c.itemName,
+                                })),
+                              ]}
+                            />
                           ) : (
                             <input
                               type="text"
@@ -2977,7 +2993,7 @@ function CostSheetContent() {
           </Card>
 
           {/* POCKET LINING BOM */}
-          <Card className="shadow-md border-muted/60 bg-card overflow-hidden">
+          <Card className="shadow-md border-muted/60 bg-card overflow-visible">
             <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center">
               <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
                 <Layers className="size-4 text-primary" /> Pocket Lining Details
@@ -3038,20 +3054,28 @@ function CostSheetContent() {
                       <TableRow key={idx}>
                         <TableCell className="p-1.5">
                           {isEditable ? (
-                            <select
-                              className="w-full h-7 px-2 border bg-background text-xs rounded focus:outline-none"
+                            <SearchableSelect
+                              className="w-full"
+                              placeholder="Search lining…"
                               value={item.itemName}
-                              onChange={(e) =>
-                                updateLiningBOM(idx, "itemName", e.target.value)
-                              }
-                            >
-                              <option value="">-- Select Lining --</option>
-                              {liningCatalog.map((c) => (
-                                <option key={c.id} value={c.name}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </select>
+                              onChange={(val) => {
+                                const chosen = val;
+                                const found = liningCatalog.find(
+                                  (c) => c.itemName === chosen,
+                                );
+                                updateLiningBOM(idx, {
+                                  itemName: chosen,
+                                  ...(found && found.ratePKR ? { ratePKR: found.ratePKR } : {}),
+                                });
+                              }}
+                              options={[
+                                { value: "", label: "-- Select Lining --" },
+                                ...liningCatalog.map((c) => ({
+                                  value: c.itemName,
+                                  label: c.itemName,
+                                })),
+                              ]}
+                            />
                           ) : (
                             <input
                               type="text"
@@ -3164,20 +3188,94 @@ function CostSheetContent() {
           </Card>
 
           {/* ACCESSORIES, CHEMICALS, & SPECIAL CHARGES */}
-          <Card className="shadow-md border-muted/60 bg-card overflow-hidden">
-            <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center">
+          <Card className="shadow-md border-muted/60 bg-card overflow-visible">
+            <div className="bg-muted/40 px-4 py-3 border-b flex flex-wrap justify-between items-center gap-2">
               <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
                 <Layers className="size-4 text-primary" /> Trims, Chemicals &
                 Special Charges (PKR Input)
               </h2>
-           
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    const newIdx = activeStyle.bomAccessories.length;
+                    setActiveStyle({
+                      ...activeStyle,
+                      bomAccessories: [
+                        ...activeStyle.bomAccessories,
+                        {
+                          category: "Trims Mix Materials",
+                          itemName: "",
+                          consPerPc: 0,
+                          rateUSD: 0,
+                          ratePKR: 0,
+                          totalCostPKR: 0,
+                        },
+                      ],
+                    });
+                    setNewAccessoryRows((prev) => new Set(prev).add(newIdx));
+                  }}
+                >
+                  <Plus className="mr-1 size-3.5" /> Add Trim
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    const newIdx = activeStyle.bomChemicals.length;
+                    setActiveStyle({
+                      ...activeStyle,
+                      bomChemicals: [
+                        ...activeStyle.bomChemicals,
+                        {
+                          washItem: "",
+                          consPerPc: 0,
+                          rateUSD: 0,
+                          ratePKR: 0,
+                          totalCostPKR: 0,
+                        },
+                      ],
+                    });
+                    setNewChemicalRows((prev) => new Set(prev).add(newIdx));
+                  }}
+                >
+                  <Plus className="mr-1 size-3.5" /> Add Chemical
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    const newIdx = activeStyle.bomSpecialCharges.length;
+                    setActiveStyle({
+                      ...activeStyle,
+                      bomSpecialCharges: [
+                        ...activeStyle.bomSpecialCharges,
+                        {
+                          itemName: "",
+                          consPerPc: 0,
+                          rateUSD: 0,
+                          ratePKR: 0,
+                          totalCostPKR: 0,
+                        },
+                      ],
+                    });
+                    setNewSpecialChargeRows((prev) => new Set(prev).add(newIdx));
+                  }}
+                >
+                  <Plus className="mr-1 size-3.5" /> Add Special Charge
+                </Button>
+              </div>
             </div>
             <CardContent className="p-0 text-xs">
-              <div className="max-h-[350px] overflow-auto">
+              <div>
                 <Table>
                   <TableHeader className="bg-muted/30 sticky top-0 z-10">
                     <TableRow>
-                      <TableHead className="w-28">Category</TableHead>
+                      <TableHead className="w-32">Category</TableHead>
                       <TableHead>Item Name</TableHead>
                       <TableHead className="w-16">Cons.</TableHead>
                       <TableHead className="w-24 text-center">
@@ -3189,264 +3287,462 @@ function CostSheetContent() {
                       <TableHead className="w-28 text-right">
                         Cost (Rs)
                       </TableHead>
+                      <TableHead className="w-10"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {/* ACCESSORIES */}
                     <TableRow className="bg-muted/20 font-bold">
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={7}>
                         Accessories (Before & After Wash)
                       </TableCell>
                     </TableRow>
-                    {activeStyle.bomAccessories.map((item, idx) => (
-                      <TableRow key={`acc-${idx}`}>
-                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
-                          {item.category}
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="text"
-                            disabled={activeStyle.id !== "custom"}
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.itemName}
-                            onChange={(e) =>
-                              updateAccessoriesBOM(
-                                idx,
-                                "itemName",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            step="0.01"
-                            className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.consPerPc || ""}
-                            onChange={(e) =>
-                              updateAccessoriesBOM(
-                                idx,
-                                "consPerPc",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            step="0.0001"
-                            placeholder="0.0000"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={
-                              item.rateUSD !== undefined
-                                ? item.rateUSD || ""
-                                : (item.ratePKR && parityProcurement && parityProcurement > 0)
-                                  ? Number(
-                                      (
-                                        item.ratePKR / parityProcurement
-                                      ).toFixed(4),
-                                    )
-                                  : ""
-                            }
-                            onChange={(e) =>
-                              updateAccessoriesBOM(
-                                idx,
-                                "rateUSD",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.ratePKR || ""}
-                            onChange={(e) =>
-                              updateAccessoriesBOM(
-                                idx,
-                                "ratePKR",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          Rs. {(item.totalCostPKR || 0).toFixed(1)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {activeStyle.bomAccessories.map((item, idx) => {
+                      const isAccEditable =
+                        activeStyle.id === "custom" ||
+                        newAccessoryRows.has(idx);
+                      return (
+                        <TableRow key={`acc-${idx}`}>
+                          <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
+                            {isAccEditable ? (
+                              <input
+                                type="text"
+                                className="w-full h-7 px-1.5 text-[10px] border rounded bg-background"
+                                value={item.category}
+                                placeholder="Category"
+                                onChange={(e) =>
+                                  updateAccessoriesBOM(
+                                    idx,
+                                    "category",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            ) : (
+                              item.category
+                            )}
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            {isAccEditable ? (
+                              <SearchableSelect
+                                className="w-full"
+                                placeholder="Search trim…"
+                                value={item.itemName}
+                                onChange={(val) => {
+                                  const chosen = val;
+                                  const found = trimsCatalog.find(
+                                    (t) => t.itemName === chosen,
+                                  );
+                                  updateAccessoriesBOM(idx, {
+                                    itemName: chosen,
+                                    ...(found?.category ? { category: found.category } : {}),
+                                    ...(found?.ratePKR ? { ratePKR: found.ratePKR } : {}),
+                                  });
+                                }}
+                                options={[
+                                  { value: "", label: "-- Select Trim --" },
+                                  ...trimsCatalog.map((t) => ({
+                                    value: t.itemName,
+                                    label: `[${t.category ?? t.groupName ?? "Trim"}] ${t.itemName}`,
+                                  })),
+                                ]}
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                disabled
+                                className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                                value={item.itemName}
+                                onChange={(e) =>
+                                  updateAccessoriesBOM(
+                                    idx,
+                                    "itemName",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            <input
+                              type="number"
+                              disabled={!isAccEditable}
+                              step="0.01"
+                              className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              value={item.consPerPc || ""}
+                              onChange={(e) =>
+                                updateAccessoriesBOM(
+                                  idx,
+                                  "consPerPc",
+                                  Number(e.target.value),
+                                )
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            <input
+                              type="number"
+                              disabled={!isAccEditable}
+                              step="0.0001"
+                              placeholder="0.0000"
+                              className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              value={
+                                item.rateUSD !== undefined
+                                  ? item.rateUSD || ""
+                                  : item.ratePKR &&
+                                      parityProcurement &&
+                                      parityProcurement > 0
+                                    ? Number(
+                                        (
+                                          item.ratePKR / parityProcurement
+                                        ).toFixed(4),
+                                      )
+                                    : ""
+                              }
+                              onChange={(e) =>
+                                updateAccessoriesBOM(
+                                  idx,
+                                  "rateUSD",
+                                  Number(e.target.value),
+                                )
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            <input
+                              type="number"
+                              disabled={!isAccEditable}
+                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              value={item.ratePKR || ""}
+                              onChange={(e) =>
+                                updateAccessoriesBOM(
+                                  idx,
+                                  "ratePKR",
+                                  Number(e.target.value),
+                                )
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
+                            Rs. {(item.totalCostPKR || 0).toFixed(1)}
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            {isAccEditable && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-6 text-destructive"
+                                onClick={() => {
+                                  setActiveStyle({
+                                    ...activeStyle,
+                                    bomAccessories:
+                                      activeStyle.bomAccessories.filter(
+                                        (_, i) => i !== idx,
+                                      ),
+                                  });
+                                  setNewAccessoryRows((prev) => {
+                                    const next = new Set<number>();
+                                    prev.forEach((i) => {
+                                      if (i < idx) next.add(i);
+                                      else if (i > idx) next.add(i - 1);
+                                    });
+                                    return next;
+                                  });
+                                }}
+                              >
+                                <X className="size-3.5" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
 
                     {/* CHEMICALS */}
                     <TableRow className="bg-muted/20 font-bold">
-                      <TableCell colSpan={6}>Chemical Costs</TableCell>
+                      <TableCell colSpan={7}>Chemical Costs</TableCell>
                     </TableRow>
-                    {activeStyle.bomChemicals.map((item, idx) => (
-                      <TableRow key={`chem-${idx}`}>
-                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
-                          Chemicals
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="text"
-                            disabled={true}
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.washItem}
-                            onChange={(e) =>
-                              updateChemicalsBOM(
-                                idx,
-                                "washItem",
-                                e.target.value,
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            step="0.01"
-                            className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.consPerPc || ""}
-                            onChange={(e) =>
-                              updateChemicalsBOM(
-                                idx,
-                                "consPerPc",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            step="0.0001"
-                            placeholder="0.0000"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={
-                              item.rateUSD !== undefined
-                                ? item.rateUSD || ""
-                                : (item.ratePKR && parityProcurement && parityProcurement > 0)
-                                  ? Number(
-                                      (
-                                        item.ratePKR / parityProcurement
-                                      ).toFixed(4),
-                                    )
-                                  : ""
-                            }
-                            onChange={(e) =>
-                              updateChemicalsBOM(
-                                idx,
-                                "rateUSD",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.ratePKR || ""}
-                            onChange={(e) =>
-                              updateChemicalsBOM(
-                                idx,
-                                "ratePKR",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          Rs. {(item.totalCostPKR || 0).toFixed(1)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {activeStyle.bomChemicals.map((item, idx) => {
+                      const isChemEditable =
+                        activeStyle.id === "custom" ||
+                        newChemicalRows.has(idx);
+                      return (
+                        <TableRow key={`chem-${idx}`}>
+                          <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
+                            Chemicals
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            {isChemEditable ? (
+                              <SearchableSelect
+                                className="w-full"
+                                placeholder="Search chemical…"
+                                value={item.washItem}
+                                onChange={(val) => {
+                                  const chosen = val;
+                                  const found = chemicalsCatalog.find(
+                                    (c) => c.itemName === chosen,
+                                  );
+                                  updateChemicalsBOM(idx, {
+                                    washItem: chosen,
+                                    ...(found && found.ratePKR ? { ratePKR: found.ratePKR } : {}),
+                                  });
+                                }}
+                                options={[
+                                  { value: "", label: "-- Select Chemical --" },
+                                  ...chemicalsCatalog.map((c) => ({
+                                    value: c.itemName,
+                                    label: c.itemName,
+                                  })),
+                                ]}
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                disabled
+                                className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                                value={item.washItem}
+                                onChange={(e) =>
+                                  updateChemicalsBOM(
+                                    idx,
+                                    "washItem",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            <input
+                              type="number"
+                              disabled={!isChemEditable}
+                              step="0.01"
+                              className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              value={item.consPerPc || ""}
+                              onChange={(e) =>
+                                updateChemicalsBOM(
+                                  idx,
+                                  "consPerPc",
+                                  Number(e.target.value),
+                                )
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            <input
+                              type="number"
+                              disabled={!isChemEditable}
+                              step="0.0001"
+                              placeholder="0.0000"
+                              className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              value={
+                                item.rateUSD !== undefined
+                                  ? item.rateUSD || ""
+                                  : item.ratePKR &&
+                                      parityProcurement &&
+                                      parityProcurement > 0
+                                    ? Number(
+                                        (
+                                          item.ratePKR / parityProcurement
+                                        ).toFixed(4),
+                                      )
+                                    : ""
+                              }
+                              onChange={(e) =>
+                                updateChemicalsBOM(
+                                  idx,
+                                  "rateUSD",
+                                  Number(e.target.value),
+                                )
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            <input
+                              type="number"
+                              disabled={!isChemEditable}
+                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              value={item.ratePKR || ""}
+                              onChange={(e) =>
+                                updateChemicalsBOM(
+                                  idx,
+                                  "ratePKR",
+                                  Number(e.target.value),
+                                )
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
+                            Rs. {(item.totalCostPKR || 0).toFixed(1)}
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            {isChemEditable && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-6 text-destructive"
+                                onClick={() => {
+                                  setActiveStyle({
+                                    ...activeStyle,
+                                    bomChemicals:
+                                      activeStyle.bomChemicals.filter(
+                                        (_, i) => i !== idx,
+                                      ),
+                                  });
+                                  setNewChemicalRows((prev) => {
+                                    const next = new Set<number>();
+                                    prev.forEach((i) => {
+                                      if (i < idx) next.add(i);
+                                      else if (i > idx) next.add(i - 1);
+                                    });
+                                    return next;
+                                  });
+                                }}
+                              >
+                                <X className="size-3.5" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
 
                     {/* SPECIAL CHARGES */}
                     <TableRow className="bg-muted/20 font-bold">
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={7}>
                         Special Charges (Embroidery, Testing, etc.)
                       </TableCell>
                     </TableRow>
-                    {activeStyle.bomSpecialCharges.map((item, idx) => (
-                      <TableRow key={`chg-${idx}`}>
-                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
-                          {item.itemName}
-                        </TableCell>
-                        <TableCell className="p-1.5 font-medium text-xs align-middle">
-                          {item.itemName} Charges
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            step="0.01"
-                            className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.consPerPc || ""}
-                            onChange={(e) =>
-                              updateSpecialChargesBOM(
-                                idx,
-                                "consPerPc",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            step="0.0001"
-                            placeholder="0.0000"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={
-                              item.rateUSD !== undefined
-                                ? item.rateUSD || ""
-                                : (item.ratePKR && parityProcurement && parityProcurement > 0)
-                                  ? Number(
-                                      (
-                                        item.ratePKR / parityProcurement
-                                      ).toFixed(4),
-                                    )
-                                  : ""
-                            }
-                            onChange={(e) =>
-                              updateSpecialChargesBOM(
-                                idx,
-                                "rateUSD",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            disabled={activeStyle.id !== "custom"}
-                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.ratePKR || ""}
-                            onChange={(e) =>
-                              updateSpecialChargesBOM(
-                                idx,
-                                "ratePKR",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          Rs. {(item.totalCostPKR || 0).toFixed(1)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {activeStyle.bomSpecialCharges.map((item, idx) => {
+                      const isChgEditable =
+                        activeStyle.id === "custom" ||
+                        newSpecialChargeRows.has(idx);
+                      return (
+                        <TableRow key={`chg-${idx}`}>
+                          <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
+                            {item.itemName || "Charges"}
+                          </TableCell>
+                          <TableCell className="p-1.5 font-medium text-xs align-middle">
+                            {isChgEditable ? (
+                              <SearchableSelect
+                                className="w-full"
+                                placeholder="Search charge…"
+                                value={item.itemName}
+                                onChange={(val) => {
+                                  const chosen = val;
+                                  const found = specialChargesCatalog.find(
+                                    (c) => c.itemName === chosen,
+                                  );
+                                  updateSpecialChargesBOM(idx, {
+                                    itemName: chosen,
+                                    ...(found && found.ratePKR ? { ratePKR: found.ratePKR } : {}),
+                                  });
+                                }}
+                                options={[
+                                  { value: "", label: "-- Select Charge --" },
+                                  ...specialChargesCatalog.map((c) => ({
+                                    value: c.itemName,
+                                    label: c.itemName,
+                                  })),
+                                ]}
+                              />
+                            ) : (
+                              `${item.itemName} Charges`
+                            )}
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            <input
+                              type="number"
+                              disabled={!isChgEditable}
+                              step="0.01"
+                              className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              value={item.consPerPc || ""}
+                              onChange={(e) =>
+                                updateSpecialChargesBOM(
+                                  idx,
+                                  "consPerPc",
+                                  Number(e.target.value),
+                                )
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            <input
+                              type="number"
+                              disabled={!isChgEditable}
+                              step="0.0001"
+                              placeholder="0.0000"
+                              className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              value={
+                                item.rateUSD !== undefined
+                                  ? item.rateUSD || ""
+                                  : item.ratePKR &&
+                                      parityProcurement &&
+                                      parityProcurement > 0
+                                    ? Number(
+                                        (
+                                          item.ratePKR / parityProcurement
+                                        ).toFixed(4),
+                                      )
+                                    : ""
+                              }
+                              onChange={(e) =>
+                                updateSpecialChargesBOM(
+                                  idx,
+                                  "rateUSD",
+                                  Number(e.target.value),
+                                )
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            <input
+                              type="number"
+                              disabled={!isChgEditable}
+                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              value={item.ratePKR || ""}
+                              onChange={(e) =>
+                                updateSpecialChargesBOM(
+                                  idx,
+                                  "ratePKR",
+                                  Number(e.target.value),
+                                )
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
+                            Rs. {(item.totalCostPKR || 0).toFixed(1)}
+                          </TableCell>
+                          <TableCell className="p-1.5">
+                            {isChgEditable && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-6 text-destructive"
+                                onClick={() => {
+                                  setActiveStyle({
+                                    ...activeStyle,
+                                    bomSpecialCharges:
+                                      activeStyle.bomSpecialCharges.filter(
+                                        (_, i) => i !== idx,
+                                      ),
+                                  });
+                                  setNewSpecialChargeRows((prev) => {
+                                    const next = new Set<number>();
+                                    prev.forEach((i) => {
+                                      if (i < idx) next.add(i);
+                                      else if (i > idx) next.add(i - 1);
+                                    });
+                                    return next;
+                                  });
+                                }}
+                              >
+                                <X className="size-3.5" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
