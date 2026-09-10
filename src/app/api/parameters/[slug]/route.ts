@@ -5,6 +5,7 @@ import type {
   MatrixTableData,
   ProcessMatrixTableData,
   SimpleTableData,
+  SimpleTableCard,
 } from "@/lib/parameters/types";
 
 // ---------------------------------------------------------------------------
@@ -118,11 +119,32 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
     // ── direct_labour_foh ───────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='direct_labour_foh')
      CREATE TABLE direct_labour_foh (
-       id           NVARCHAR(128) NOT NULL PRIMARY KEY,
+       id           NVARCHAR(128) NOT NULL,
+       card_id      NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       card_name    NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       is_active    BIT           NOT NULL DEFAULT 1,
+       card_serial  INT           NOT NULL DEFAULT 1,
        description  NVARCHAR(256) NOT NULL DEFAULT '',
        cost_per_sam NVARCHAR(64)  NOT NULL DEFAULT '',
+       per_piece    NVARCHAR(64)  NOT NULL DEFAULT '',
+       use_type     NVARCHAR(32)  NOT NULL DEFAULT 'sam',
        row_order    INT           NOT NULL DEFAULT 0
-     )`,
+     )
+     ELSE
+     BEGIN
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'per_piece')
+         ALTER TABLE direct_labour_foh ADD per_piece NVARCHAR(64) NOT NULL DEFAULT '';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'card_id')
+         ALTER TABLE direct_labour_foh ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'card_name')
+         ALTER TABLE direct_labour_foh ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'is_active')
+         ALTER TABLE direct_labour_foh ADD is_active BIT NOT NULL DEFAULT 1;
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'card_serial')
+         ALTER TABLE direct_labour_foh ADD card_serial INT NOT NULL DEFAULT 1;
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'use_type')
+         ALTER TABLE direct_labour_foh ADD use_type NVARCHAR(32) NOT NULL DEFAULT 'sam';
+     END`,
 
     // ── admin_selling ───────────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='admin_selling')
@@ -604,21 +626,92 @@ async function saveCostAsPercentOfSales(pool: Awaited<ReturnType<typeof getPool>
 // 8. DIRECT LABOUR AND FOH (dedicated table: direct_labour_foh)
 // ---------------------------------------------------------------------------
 async function getDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>): Promise<SimpleTableData> {
-  const result = await pool.request().query<{ id: string; description: string; cost_per_sam: string; row_order: number }>(
-    "SELECT id, description, cost_per_sam, row_order FROM direct_labour_foh ORDER BY row_order, id"
+  const result = await pool.request().query<{
+    id: string;
+    card_id?: string;
+    card_name?: string;
+    is_active?: boolean | number;
+    card_serial?: number;
+    description: string;
+    cost_per_sam: string;
+    per_piece?: string;
+    use_type?: string;
+    row_order: number;
+  }>(
+    "SELECT id, card_id, card_name, is_active, card_serial, description, cost_per_sam, per_piece, use_type, row_order FROM direct_labour_foh ORDER BY card_serial, card_id, row_order, id"
   );
 
-  const columns = [
+  const defaultColumns = [
     { key: "description", label: "Description" },
     { key: "costPerSam", label: "Cost/SAM" },
+    { key: "perPiece", label: "PER PIECE" },
   ];
 
-  const rows = result.recordset.map((r) => ({
-    id: r.id,
-    values: { description: r.description, costPerSam: r.cost_per_sam },
-  }));
+  if (result.recordset.length === 0) {
+    const defaultRows = [
+      { id: "1", values: { description: "Direct Labour", costPerSam: "8.928", perPiece: "", useType: "sam" } },
+      { id: "2", values: { description: "Fixed Salaries", costPerSam: "12.492", perPiece: "", useType: "sam" } },
+      { id: "3", values: { description: "Utilities Cost", costPerSam: "4.5", perPiece: "", useType: "sam" } },
+      { id: "4", values: { description: "Repair and Maintenance", costPerSam: "1.224", perPiece: "", useType: "sam" } },
+      { id: "5", values: { description: "Manufacturing FOH", costPerSam: "6.876", perPiece: "", useType: "sam" } },
+      { id: "6", values: { description: "Depreciation", costPerSam: "1.764", perPiece: "", useType: "sam" } },
+    ];
+    const initialCard: SimpleTableCard = {
+      id: "card-1",
+      serialNo: 1,
+      name: "Card 1",
+      isActive: true,
+      columns: defaultColumns,
+      rows: defaultRows,
+    };
+    return {
+      columns: defaultColumns,
+      rows: defaultRows,
+      cards: [initialCard],
+      activeCardId: "card-1",
+    };
+  }
 
-  return { columns, rows };
+  // Group rows by card_id
+  const cardMap = new Map<string, SimpleTableCard>();
+  for (const r of result.recordset) {
+    const cId = r.card_id || "card-1";
+    if (!cardMap.has(cId)) {
+      cardMap.set(cId, {
+        id: cId,
+        serialNo: r.card_serial ?? (cardMap.size + 1),
+        name: r.card_name || `Card ${cardMap.size + 1}`,
+        isActive: r.is_active === true || r.is_active === 1,
+        columns: defaultColumns,
+        rows: [],
+      });
+    }
+    const card = cardMap.get(cId)!;
+    card.rows.push({
+      id: r.id,
+      values: {
+        description: r.description,
+        costPerSam: r.cost_per_sam,
+        perPiece: r.per_piece ?? "",
+        useType: r.use_type || "sam",
+      },
+    });
+  }
+
+  const cards = Array.from(cardMap.values());
+  // Ensure exactly one active card
+  let activeCard = cards.find((c) => c.isActive);
+  if (!activeCard) {
+    cards[0].isActive = true;
+    activeCard = cards[0];
+  }
+
+  return {
+    columns: activeCard.columns || defaultColumns,
+    rows: activeCard.rows,
+    cards,
+    activeCardId: activeCard.id,
+  };
 }
 
 async function saveDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>, data: SimpleTableData): Promise<void> {
@@ -626,14 +719,71 @@ async function saveDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>, da
   await tx.begin();
   try {
     await new sql.Request(tx).query("DELETE FROM direct_labour_foh");
-    for (let i = 0; i < data.rows.length; i++) {
-      const row = data.rows[i];
-      await new sql.Request(tx)
-        .input("id", sql.NVarChar(128), row.id)
-        .input("description", sql.NVarChar(256), row.values.description ?? "")
-        .input("cost_per_sam", sql.NVarChar(64), row.values.costPerSam ?? "")
-        .input("row_order", sql.Int, i)
-        .query("INSERT INTO direct_labour_foh (id, description, cost_per_sam, row_order) VALUES (@id, @description, @cost_per_sam, @row_order)");
+
+    if (data.cards && data.cards.length > 0) {
+      for (const card of data.cards) {
+        for (let i = 0; i < card.rows.length; i++) {
+          const row = card.rows[i];
+          const perPieceVal =
+            row.values.perPiece ??
+            row.values.per_piece ??
+            row.values["PER PIECE"] ??
+            "";
+          const useTypeVal =
+            row.values.useType ??
+            row.values.use_type ??
+            "sam";
+          await new sql.Request(tx)
+            .input("id", sql.NVarChar(128), row.id)
+            .input("card_id", sql.NVarChar(128), card.id)
+            .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+            .input("is_active", sql.Bit, card.isActive ? 1 : 0)
+            .input("card_serial", sql.Int, card.serialNo || 1)
+            .input("description", sql.NVarChar(256), row.values.description ?? "")
+            .input(
+              "cost_per_sam",
+              sql.NVarChar(64),
+              row.values.costPerSam ?? row.values.cost_per_sam ?? "",
+            )
+            .input("per_piece", sql.NVarChar(64), perPieceVal)
+            .input("use_type", sql.NVarChar(32), useTypeVal)
+            .input("row_order", sql.Int, i)
+            .query(
+              "INSERT INTO direct_labour_foh (id, card_id, card_name, is_active, card_serial, description, cost_per_sam, per_piece, use_type, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @description, @cost_per_sam, @per_piece, @use_type, @row_order)"
+            );
+        }
+      }
+    } else {
+      for (let i = 0; i < data.rows.length; i++) {
+        const row = data.rows[i];
+        const perPieceVal =
+          row.values.perPiece ??
+          row.values.per_piece ??
+          row.values["PER PIECE"] ??
+          "";
+        const useTypeVal =
+          row.values.useType ??
+          row.values.use_type ??
+          "sam";
+        await new sql.Request(tx)
+          .input("id", sql.NVarChar(128), row.id)
+          .input("card_id", sql.NVarChar(128), "card-1")
+          .input("card_name", sql.NVarChar(256), "Card 1")
+          .input("is_active", sql.Bit, 1)
+          .input("card_serial", sql.Int, 1)
+          .input("description", sql.NVarChar(256), row.values.description ?? "")
+          .input(
+            "cost_per_sam",
+            sql.NVarChar(64),
+            row.values.costPerSam ?? row.values.cost_per_sam ?? "",
+          )
+          .input("per_piece", sql.NVarChar(64), perPieceVal)
+          .input("use_type", sql.NVarChar(32), useTypeVal)
+          .input("row_order", sql.Int, i)
+          .query(
+            "INSERT INTO direct_labour_foh (id, card_id, card_name, is_active, card_serial, description, cost_per_sam, per_piece, use_type, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @description, @cost_per_sam, @per_piece, @use_type, @row_order)"
+          );
+      }
     }
     await tx.commit();
   } catch (err) {

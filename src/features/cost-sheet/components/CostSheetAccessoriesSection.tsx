@@ -131,18 +131,18 @@ export function CostSheetAccessoriesSection({
                     <TableCell className="p-2">
                       <Input
                         type="number"
+                        disabled
+                        readOnly
                         step="0.0001"
-                        className="h-8 text-xs"
-                        value={item.rateUSD || ""}
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          const ratePKR = val * parityProcurement;
-                          onUpdateAccessories(idx, {
-                            rateUSD: val,
-                            ratePKR,
-                            totalCostPKR: item.consPerPc * ratePKR,
-                          });
-                        }}
+                        placeholder="0.0000"
+                        className="h-8 text-xs bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground cursor-not-allowed"
+                        value={
+                          item.rateUSD !== undefined && item.rateUSD > 0
+                            ? Number(item.rateUSD.toFixed(4))
+                            : item.ratePKR && parityProcurement > 0
+                            ? Number((item.ratePKR / parityProcurement).toFixed(4))
+                            : ""
+                        }
                       />
                     </TableCell>
                     <TableCell className="p-2 text-right font-medium text-xs">

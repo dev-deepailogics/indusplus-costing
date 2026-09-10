@@ -170,11 +170,32 @@ END
 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='direct_labour_foh')
 BEGIN
     CREATE TABLE direct_labour_foh (
-        id           NVARCHAR(128) NOT NULL PRIMARY KEY,
+        id           NVARCHAR(128) NOT NULL,
+        card_id      NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+        card_name    NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+        is_active    BIT           NOT NULL DEFAULT 1,
+        card_serial  INT           NOT NULL DEFAULT 1,
         description  NVARCHAR(256) NOT NULL DEFAULT '',
         cost_per_sam NVARCHAR(64)  NOT NULL DEFAULT '',
+        per_piece    NVARCHAR(64)  NOT NULL DEFAULT '',
+        use_type     NVARCHAR(32)  NOT NULL DEFAULT 'sam',
         row_order    INT           NOT NULL DEFAULT 0
     );
+END
+ELSE
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'per_piece')
+        ALTER TABLE direct_labour_foh ADD per_piece NVARCHAR(64) NOT NULL DEFAULT '';
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'card_id')
+        ALTER TABLE direct_labour_foh ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'card_name')
+        ALTER TABLE direct_labour_foh ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'is_active')
+        ALTER TABLE direct_labour_foh ADD is_active BIT NOT NULL DEFAULT 1;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'card_serial')
+        ALTER TABLE direct_labour_foh ADD card_serial INT NOT NULL DEFAULT 1;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'use_type')
+        ALTER TABLE direct_labour_foh ADD use_type NVARCHAR(32) NOT NULL DEFAULT 'sam';
 END
 
 -- 9. Admin and Selling

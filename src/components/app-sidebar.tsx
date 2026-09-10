@@ -3,7 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronRight, ListTree } from "lucide-react";
+import {
+  ChevronRight,
+  ListTree,
+  FileSpreadsheet,
+  Grid3X3,
+  DollarSign,
+  Layers,
+  Users,
+} from "lucide-react";
 
 import {
   Sidebar,
@@ -66,41 +74,13 @@ export function AppSidebar() {
           <SidebarGroupLabel>Pre-Order Costing</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {/* {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    isActive={pathname === "/style-master"}
-                    render={<Link href="/style-master" />}
-                  >
-                    <span>Style Master</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )} */}
-              {/* {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    isActive={pathname === "/work-orders"}
-                    render={<Link href="/work-orders" />}
-                  >
-                    <span>Work Orders</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )} */}
-              {/* {isAdmin && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    isActive={pathname === "/item-catalog"}
-                    render={<Link href="/item-catalog" />}
-                  >
-                    <span>Item Catalog</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )} */}
               <SidebarMenuItem>
                 <SidebarMenuButton
+                  tooltip="Cost Sheets"
                   isActive={pathname === "/cost-sheets"}
                   render={<Link href="/cost-sheets" />}
                 >
+                  <FileSpreadsheet className="size-4 shrink-0" />
                   <span>Cost Sheets</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -111,7 +91,7 @@ export function AppSidebar() {
           <>
             <SidebarGroup>
               <SidebarGroupLabel className="flex items-center gap-2">
-                <ListTree className="size-4" />
+                <ListTree className="size-4 shrink-0" />
                 <span>POC Parameters</span>
               </SidebarGroupLabel>
               <SidebarGroupContent>
@@ -121,6 +101,7 @@ export function AppSidebar() {
                     <DropdownMenu>
                       <DropdownMenuTrigger className="w-full text-left outline-none">
                         <SidebarMenuButton
+                          tooltip="Grid Parameters"
                           isActive={
                             pathname.startsWith("/parameters/styles") ||
                             pathname.startsWith(
@@ -130,8 +111,11 @@ export function AppSidebar() {
                           }
                           className="w-full justify-between"
                         >
-                          <span>Grid</span>
-                          <ChevronRight className="size-4 text-muted-foreground" />
+                          <div className="flex items-center gap-2">
+                            <Grid3X3 className="size-4 shrink-0" />
+                            <span>Grid</span>
+                          </div>
+                          <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
                         </SidebarMenuButton>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
@@ -174,6 +158,7 @@ export function AppSidebar() {
                     <DropdownMenu>
                       <DropdownMenuTrigger className="w-full text-left outline-none">
                         <SidebarMenuButton
+                          tooltip="Value Parameters"
                           isActive={[
                             "customer-commission",
                             "cost-as-percent-of-sales",
@@ -185,8 +170,11 @@ export function AppSidebar() {
                           )}
                           className="w-full justify-between"
                         >
-                          <span>Value</span>
-                          <ChevronRight className="size-4 text-muted-foreground" />
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="size-4 shrink-0" />
+                            <span>Value</span>
+                          </div>
+                          <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
                         </SidebarMenuButton>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
@@ -230,14 +218,18 @@ export function AppSidebar() {
                     <DropdownMenu>
                       <DropdownMenuTrigger className="w-full text-left outline-none">
                         <SidebarMenuButton
+                          tooltip="Type Parameters"
                           isActive={
                             pathname.startsWith("/parameters/order-type") ||
                             pathname.startsWith("/parameters/dropdown-lists")
                           }
                           className="w-full justify-between"
                         >
-                          <span>Type</span>
-                          <ChevronRight className="size-4 text-muted-foreground" />
+                          <div className="flex items-center gap-2">
+                            <Layers className="size-4 shrink-0" />
+                            <span>Type</span>
+                          </div>
+                          <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
                         </SidebarMenuButton>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent
@@ -274,9 +266,11 @@ export function AppSidebar() {
             </SidebarGroup>
             <SidebarMenuItem className="mx-2">
               <SidebarMenuButton
+                tooltip="Manage Users"
                 isActive={pathname === "/users"}
                 render={<Link href="/users" />}
               >
+                <Users className="size-4 shrink-0" />
                 <span>Manage Users</span>
               </SidebarMenuButton>
             </SidebarMenuItem>

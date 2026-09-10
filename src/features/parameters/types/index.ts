@@ -8,9 +8,21 @@ export type SimpleRow = {
   values: Record<string, string>;
 };
 
+export type SimpleTableCard = {
+  id: string;
+  serialNo: number;
+  name: string;
+  isActive: boolean;
+  columns: SimpleColumn[];
+  rows: SimpleRow[];
+  createdAt?: string;
+};
+
 export type SimpleTableData = {
   columns: SimpleColumn[];
   rows: SimpleRow[];
+  cards?: SimpleTableCard[];
+  activeCardId?: string;
 };
 
 export type MatrixTableData = {

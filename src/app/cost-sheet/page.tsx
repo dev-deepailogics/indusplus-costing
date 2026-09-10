@@ -13,6 +13,7 @@ import {
   Printer,
   Plus,
   X,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,6 +26,8 @@ import type { IndusBOMData } from "@/app/api/bom/[styleCode]/route";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -261,6 +264,23 @@ function CostSheetContent() {
   const [newSnapshotName, setNewSnapshotName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  // Unsaved Changes & Navigation Guard States
+  const [isDirty, setIsDirty] = useState(false);
+  const [unsavedModalOpen, setUnsavedModalOpen] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    type: "url" | "style" | "reset";
+    target?: string;
+  } | null>(null);
+
+  const isDirtyRef = useRef(false);
+  isDirtyRef.current = isDirty;
+
+  const markDirty = () => {
+    if (!isDirtyRef.current) {
+      setIsDirty(true);
+    }
+  };
+
   // Active Style & Catalogs (MSSQL DB S_StyleCardBOMConsumptionSAMView)
   const [activeStyle, setActiveStyle] = useState<StyleMasterItem | null>(CUSTOM_STYLE);
   const [fabricCatalog, setFabricCatalog] = useState<CatalogItemDB[]>([]);
@@ -343,6 +363,65 @@ function CostSheetContent() {
   const [quotedPriceInput, setQuotedPriceInput] = useState<string>("");
   const [intlFreight, setIntlFreight] = useState<string>("");
   const [intlInsurance, setIntlInsurance] = useState<string>("");
+
+  // Global click listener to intercept internal link navigations
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (!isDirtyRef.current) return;
+
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      const anchor = target.closest("a");
+      if (!anchor) return;
+
+      const href = anchor.getAttribute("href");
+      if (!href) return;
+
+      // Ignore hash anchors, javascript:, blank targets, or download links
+      if (
+        href.startsWith("#") ||
+        href.startsWith("javascript:") ||
+        anchor.target === "_blank" ||
+        anchor.hasAttribute("download")
+      ) {
+        return;
+      }
+
+      // Check if navigating to another page/url
+      const currentFullUrl = window.location.pathname + window.location.search;
+      if (href === currentFullUrl || href === window.location.pathname) {
+        return;
+      }
+
+      // Intercept navigation
+      e.preventDefault();
+      e.stopPropagation();
+
+      setPendingNavigation({ type: "url", target: href });
+      setUnsavedModalOpen(true);
+    }
+
+    document.addEventListener("click", handleClick, true);
+    return () => {
+      document.removeEventListener("click", handleClick, true);
+    };
+  }, []);
+
+  // Browser beforeunload event (tab close, refresh, external navigation)
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (isDirtyRef.current) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
 
   // Options lists (will subscribe to parameter dropdown-lists if exists)
   const [paymentTermsList, setPaymentTermsList] = useState([
@@ -779,8 +858,9 @@ function CostSheetContent() {
     }
   }, [washType, activeStyle]);
 
-  // Handle active style change from dropdown
-  function handleStyleChange(id: string) {
+  // Core Style Change Logic
+  function executeStyleChange(id: string) {
+    setIsDirty(false);
     setNewFabricRows(new Set());
     setNewLiningRows(new Set());
     setNewAccessoryRows(new Set());
@@ -838,12 +918,85 @@ function CostSheetContent() {
     }
   }
 
+  // Handle active style change from dropdown with unsaved changes interception
+  function handleStyleChange(id: string) {
+    if (isDirtyRef.current) {
+      setPendingNavigation({ type: "style", target: id });
+      setUnsavedModalOpen(true);
+      return;
+    }
+    executeStyleChange(id);
+  }
+
+  // Core Reset Logic
+  function executeReset() {
+    setIsDirty(false);
+    if (loadedCostSheet) {
+      router.push(`/cost-sheet?costSheetId=${loadedCostSheet.id}`);
+      toast.info("Calculator reset to snapshot defaults");
+    } else if (activeStyle) {
+      setActiveStyle({ ...activeStyle });
+      toast.info("Calculator reset to Style Master defaults");
+    }
+  }
+
+  function handleResetClick() {
+    if (isDirtyRef.current) {
+      setPendingNavigation({ type: "reset" });
+      setUnsavedModalOpen(true);
+    } else {
+      executeReset();
+    }
+  }
+
+  // Proceed with pending navigation after user chooses to discard or save
+  async function proceedWithPendingNavigation() {
+    const nav = pendingNavigation;
+    setIsDirty(false);
+    setUnsavedModalOpen(false);
+    setPendingNavigation(null);
+    if (!nav) return;
+
+    if (nav.type === "url" && nav.target) {
+      router.push(nav.target);
+    } else if (nav.type === "style" && nav.target) {
+      executeStyleChange(nav.target);
+    } else if (nav.type === "reset") {
+      executeReset();
+    }
+  }
+
+  // Save changes and proceed with pending navigation
+  async function handleSaveAndProceed() {
+    if (!activeStyle || !calcs) return;
+    if (loadedCostSheet) {
+      await handleUpdateExisting();
+      if (pendingNavigation) {
+        const nav = pendingNavigation;
+        setIsDirty(false);
+        setUnsavedModalOpen(false);
+        setPendingNavigation(null);
+        if (nav.type === "url" && nav.target) {
+          router.push(nav.target);
+        } else if (nav.type === "style" && nav.target) {
+          executeStyleChange(nav.target);
+        } else if (nav.type === "reset") {
+          executeReset();
+        }
+      }
+    } else {
+      setUnsavedModalOpen(false);
+      setSaveDialogOpen(true);
+    }
+  }
+
   // Right Panel: Local BOM edits state helpers
   function updateFabricBOM(
     idx: number,
     keyOrPatch: string | Partial<BOMFabricItem>,
     val?: string | number
   ) {
+    markDirty();
     setActiveStyle((prev) => {
       if (!prev) return prev;
       const nextFab = [...(prev.bomFabric || [])];
@@ -891,6 +1044,7 @@ function CostSheetContent() {
     keyOrPatch: string | Partial<BOMLiningItem>,
     val?: string | number
   ) {
+    markDirty();
     setActiveStyle((prev) => {
       if (!prev) return prev;
       const nextLin = [...(prev.bomLining || [])];
@@ -937,6 +1091,7 @@ function CostSheetContent() {
     keyOrPatch: string | Partial<BOMAccessoriesItem>,
     val?: string | number
   ) {
+    markDirty();
     setActiveStyle((prev) => {
       if (!prev) return prev;
       const nextAcc = [...(prev.bomAccessories || [])];
@@ -985,6 +1140,7 @@ function CostSheetContent() {
     keyOrPatch: string | Partial<BOMChemicalsItem>,
     val?: string | number
   ) {
+    markDirty();
     setActiveStyle((prev) => {
       if (!prev) return prev;
       const nextChem = [...(prev.bomChemicals || [])];
@@ -992,7 +1148,7 @@ function CostSheetContent() {
         if (!nextChem[i]) {
           nextChem[i] = {
             washItem: "",
-            consPerPc: 0,
+            consPerPc: 1,
             ratePKR: 0,
             rateUSD: 0,
             totalCostPKR: 0,
@@ -1016,8 +1172,8 @@ function CostSheetContent() {
         updated.rateUSD = procRateChem > 0 ? Number(patch.ratePKR) / procRateChem : 0;
       }
 
-      updated.totalCostPKR =
-        (updated.consPerPc || 0) * (updated.ratePKR || 0);
+      updated.consPerPc = 1;
+      updated.totalCostPKR = updated.ratePKR || 0;
 
       nextChem[idx] = updated;
       return {
@@ -1032,6 +1188,7 @@ function CostSheetContent() {
     keyOrPatch: string | Partial<BOMSpecialChargesItem>,
     val?: string | number
   ) {
+    markDirty();
     setActiveStyle((prev) => {
       if (!prev) return prev;
       const nextChg = [...(prev.bomSpecialCharges || [])];
@@ -1039,7 +1196,7 @@ function CostSheetContent() {
         if (!nextChg[i]) {
           nextChg[i] = {
             itemName: "",
-            consPerPc: 0,
+            consPerPc: 1,
             ratePKR: 0,
             rateUSD: 0,
             totalCostPKR: 0,
@@ -1063,8 +1220,8 @@ function CostSheetContent() {
         updated.rateUSD = procRateChg > 0 ? Number(patch.ratePKR) / procRateChg : 0;
       }
 
-      updated.totalCostPKR =
-        (updated.consPerPc || 0) * (updated.ratePKR || 0);
+      updated.consPerPc = 1;
+      updated.totalCostPKR = updated.ratePKR || 0;
 
       nextChg[idx] = updated;
       return {
@@ -1173,7 +1330,21 @@ function CostSheetContent() {
       setSaveDialogOpen(false);
       setNewSnapshotName("");
       toast.success(`Cost Sheet snapshot "${name}" saved successfully`);
-      router.push(`/cost-sheet?costSheetId=${nextId}`);
+      setIsDirty(false);
+
+      if (pendingNavigation) {
+        const nav = pendingNavigation;
+        setPendingNavigation(null);
+        if (nav.type === "url" && nav.target) {
+          router.push(nav.target);
+        } else if (nav.type === "style" && nav.target) {
+          executeStyleChange(nav.target);
+        } else if (nav.type === "reset") {
+          executeReset();
+        }
+      } else {
+        router.push(`/cost-sheet?costSheetId=${nextId}`);
+      }
     } catch (e) {
       toast.error("Failed to save cost sheet");
     } finally {
@@ -1269,6 +1440,7 @@ function CostSheetContent() {
       await saveCostSheet(snapshot);
       setLoadedCostSheet(snapshot);
       toast.success("Saved Cost Sheet updated successfully");
+      setIsDirty(false);
     } catch (e) {
       toast.error("Failed to update cost sheet");
     } finally {
@@ -1400,7 +1572,11 @@ function CostSheetContent() {
     calcs.specialChargesCostUSD;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div
+      onChangeCapture={markDirty}
+      onInputCapture={markDirty}
+      className="space-y-6 max-w-7xl mx-auto"
+    >
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1413,6 +1589,15 @@ function CostSheetContent() {
                 className="text-xs border-blue-200 bg-blue-50 text-blue-800 font-semibold px-2.5 py-1 rounded-md"
               >
                 Snapshot: {loadedCostSheet.id} ({loadedCostSheet.referenceName})
+              </Badge>
+            )}
+            {isDirty && (
+              <Badge
+                variant="outline"
+                className="text-xs border-amber-300 bg-amber-50 text-amber-800 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm"
+              >
+                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                Unsaved Changes
               </Badge>
             )}
           </div>
@@ -1435,8 +1620,14 @@ function CostSheetContent() {
               variant="outline"
               size="sm"
               onClick={() => {
-                setLoadedCostSheet(null);
-                router.push(`/cost-sheet?styleId=${activeStyle.id}`);
+                const targetUrl = `/cost-sheet?styleId=${activeStyle.id}`;
+                if (isDirtyRef.current) {
+                  setPendingNavigation({ type: "url", target: targetUrl });
+                  setUnsavedModalOpen(true);
+                } else {
+                  setLoadedCostSheet(null);
+                  router.push(targetUrl);
+                }
               }}
               className="h-9"
             >
@@ -2298,500 +2489,512 @@ function CostSheetContent() {
             </span>
           </div>
           <CardContent className="p-0 text-xs">
-            <Table>
-              <TableHeader className="bg-muted/30">
-                <TableRow>
-                  <TableHead className="font-semibold text-foreground">
-                    Cost Element
-                  </TableHead>
-                  <TableHead className="text-right font-semibold text-foreground w-20">
-                    PKR
-                  </TableHead>
-                  <TableHead className="text-right font-semibold text-foreground w-20">
-                    USD
-                  </TableHead>
-                  <TableHead className="text-right font-semibold text-foreground w-16">
-                    % Sales
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {/* REVENUE */}
-                <TableRow className="bg-muted/10 font-semibold">
-                  <TableCell>Selling Price (FOB)</TableCell>
-                  <TableCell className="text-right">
-                    Rs. {calcs.sellingPricePKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.sellingPriceUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">100.0%</TableCell>
-                </TableRow>
+            {(() => {
+              const fmtPct = (val: number, decimals: number = 2): string => {
+                if (!isFinite(val) || isNaN(val)) return "0.00%";
+                return `${(val * 100).toFixed(decimals)}%`;
+              };
 
-                {/* DEDUCTIONS */}
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Tax &amp; EDS ({(taxEdsPct * 100).toFixed(2)}%)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.taxEDS_PKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.taxEDS_USD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.taxEDS_Pct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
-                    Rebate (add)
-                  </TableCell>
-                  <TableCell className="p-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">
-                        %:
-                      </span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={rebatePct || ""}
-                        onChange={(e) => setRebatePct(Number(e.target.value))}
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.rebateUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.rebatePct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Inland Freight & Clearing
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.freightPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.freightUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.freightPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Local Bank Charges ({(localBankChargesPct * 100).toFixed(2)}
-                    %)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.bankChargesPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.bankChargesUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.bankChargesPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
-                    Markup & Discounting
-                    <span
-                      className="cursor-help"
-                      title="Rs Selling Price * (Discount Rate / 365) * Discount Days"
+              return (
+                <Table className="table-fixed w-full text-xs">
+                  <TableHeader className="bg-muted/30">
+                    <TableRow>
+                      <TableHead className="w-[43%] font-semibold text-foreground px-2.5 py-2 text-left">
+                        Cost Element
+                      </TableHead>
+                      <TableHead className="w-[21%] text-right font-semibold text-foreground px-1.5 py-2">
+                        PKR
+                      </TableHead>
+                      <TableHead className="w-[18%] text-right font-semibold text-foreground px-1.5 py-2">
+                        USD
+                      </TableHead>
+                      <TableHead className="w-[18%] text-right font-semibold text-foreground px-1.5 py-2">
+                        % Sales
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {/* REVENUE */}
+                    <TableRow className="bg-muted/10 font-semibold">
+                      <TableCell className="px-2.5 py-1 text-foreground">Selling Price (FOB)</TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-medium">
+                        Rs. {calcs.sellingPricePKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-medium">
+                        ${calcs.sellingPriceUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap">100.0%</TableCell>
+                    </TableRow>
+
+                    {/* DEDUCTIONS */}
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        Tax &amp; EDS ({fmtPct(taxEdsPct, 2)})
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {calcs.taxEDS_PKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.taxEDS_USD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.taxEDS_Pct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground">
+                        Rebate (add)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-[10px] text-muted-foreground">
+                            %:
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            value={rebatePct || ""}
+                            onChange={(e) => setRebatePct(Number(e.target.value))}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.rebateUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.rebatePct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        Inland Freight & Clearing
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {calcs.freightPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.freightUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.freightPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        Local Bank Charges ({fmtPct(localBankChargesPct, 2)})
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {calcs.bankChargesPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.bankChargesUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.bankChargesPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        <span className="inline-flex items-center gap-1">
+                          Markup & Discounting
+                          <span
+                            className="cursor-help"
+                            title="Rs Selling Price * (Discount Rate / 365) * Discount Days"
+                          >
+                            <Info className="size-3 text-muted-foreground" />
+                          </span>
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-[10px] text-muted-foreground">
+                            Days:
+                          </span>
+                          <input
+                            type="number"
+                            className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            value={paymentTermsDays || ""}
+                            onChange={(e) =>
+                              setPaymentTermsDays(Number(e.target.value))
+                            }
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.markupDiscountUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.markupDiscountPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        <span className="inline-flex items-center gap-1">
+                          Factoring Cost
+                          <span
+                            className="cursor-help"
+                            title="Rs Selling Price * (Discount Rate / 365) * Factoring Days"
+                          >
+                            <Info className="size-3 text-muted-foreground" />
+                          </span>
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-[10px] text-muted-foreground">
+                            Days:
+                          </span>
+                          <input
+                            type="number"
+                            className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            value={factoringDays || ""}
+                            onChange={(e) =>
+                              setFactoringDays(Number(e.target.value))
+                            }
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.factoringUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.factoringPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        Customer Commission
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-[10px] text-muted-foreground">
+                            %:
+                          </span>
+                          <input
+                            type="number"
+                            className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            value={commissionPct || ""}
+                            onChange={(e) =>
+                              setCommissionPct(Number(e.target.value))
+                            }
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.commissionUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.commissionPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        Foreign Bank Charges ($)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-[10px] text-muted-foreground">
+                            $
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-12 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            value={foreignBankCharges || ""}
+                            onChange={(e) =>
+                              setForeignBankCharges(Number(e.target.value))
+                            }
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.foreignBankChargesUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.foreignBankChargesPct, 2)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* NET SELLING PRICE */}
+                    <TableRow className="bg-blue-50/30 dark:bg-blue-950/20 font-semibold border-t border-b">
+                      <TableCell className="px-2.5 py-1 text-foreground">Net Selling Price</TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                        Rs. {calcs.netPricePKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                        ${calcs.netPriceUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                        {fmtPct(calcs.netPricePct, 1)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* VARIABLE COSTS */}
+                    <TableRow>
+                      <TableCell className="px-2.5 py-1 font-medium text-foreground truncate">
+                        Fabric Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        Rs. {calcs.fabricCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        ${calcs.fabricCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.fabricCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="px-2.5 py-1 font-medium text-foreground truncate">
+                        Lining Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        Rs. {calcs.liningCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        ${calcs.liningCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.liningCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="px-2.5 py-1 font-medium text-foreground truncate">
+                        Accessories Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        Rs. {calcs.accessoriesCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        ${calcs.accessoriesCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.accessoriesCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="px-2.5 py-1 font-medium text-foreground truncate">
+                        Chemical &amp; Washing Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        Rs. {calcs.chemicalsCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        ${calcs.chemicalsCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.chemicalsCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="px-2.5 py-1 font-medium text-foreground truncate">
+                        Special Charges Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        Rs. {calcs.specialChargesCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        ${calcs.specialChargesCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.specialChargesCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="px-2.5 py-1 font-medium text-foreground truncate">
+                        Direct Labor Cost (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        Rs. {calcs.directLaborCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        ${calcs.directLaborCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.directLaborCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="px-2.5 py-1 font-medium text-foreground truncate">
+                        Utilities Cost (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        Rs. {calcs.utilitiesCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        ${calcs.utilitiesCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.utilitiesCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="px-2.5 py-1 font-medium text-foreground truncate">
+                        Leftover Factor Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        Rs. {calcs.leftoverCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
+                        ${calcs.leftoverCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.leftoverCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* TOTAL VARIABLE COST */}
+                    <TableRow className="bg-[#fcf5e3]/60 dark:bg-amber-950/20 font-semibold border-t border-b">
+                      <TableCell className="px-2.5 py-1 text-foreground">Total Variable Cost</TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                        Rs. {calcs.totalVariableCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                        ${calcs.totalVariableCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                        {fmtPct(calcs.totalVariableCostPct, 1)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* CM / PC */}
+                    <TableRow className="bg-emerald-50/30 dark:bg-emerald-950/10 font-bold text-emerald-800 dark:text-emerald-400">
+                      <TableCell className="px-2.5 py-1">Gross CM / PC</TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold">
+                        Rs. {calcs.cmPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold">
+                        ${calcs.cmUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold">
+                        {fmtPct(calcs.cmPct, 1)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* OVERHEADS */}
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        Salaries Cost (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {calcs.salariesCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.salariesCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.salariesCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        FOH/Admin Cost (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {calcs.fohAdminCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.fohAdminCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.fohAdminCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        Repair &amp; Maintenance (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {calcs.repairMtcCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.repairMtcCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.repairMtcCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* TOTAL COST */}
+                    <TableRow className="font-semibold border-t">
+                      <TableCell className="px-2.5 py-1 text-foreground">Total Cost</TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                        Rs. {calcs.totalCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                        ${calcs.totalCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                        {fmtPct(calcs.totalCostPct, 1)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        Conversion Cost per Minute
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        Rs. {calcs.conversionCostPerMinPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {calcs.conversionCostPerMinUSD.toFixed(2)}¢
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        -
+                      </TableCell>
+                    </TableRow>
+
+                    {/* EBITDA */}
+                    <TableRow
+                      className={`font-extrabold border-t border-b ${isEbitdaPositive ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50/10" : "text-red-700 dark:text-red-400 bg-red-50/10"}`}
                     >
-                      <Info className="size-3 text-muted-foreground" />
-                    </span>
-                  </TableCell>
-                  <TableCell className="p-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">
-                        Days:
-                      </span>
-                      <input
-                        type="number"
-                        className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={paymentTermsDays || ""}
-                        onChange={(e) =>
-                          setPaymentTermsDays(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.markupDiscountUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.markupDiscountPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
-                    Factoring Cost
-                    <span
-                      className="cursor-help"
-                      title="Rs Selling Price * (Discount Rate / 365) * Factoring Days"
+                      <TableCell className="px-2.5 py-1">EBITDA / PC</TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold">
+                        Rs. {calcs.ebitdaPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold">
+                        ${calcs.ebitdaUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold">
+                        {fmtPct(calcs.ebitdaPct, 1)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* DEPRECIATION */}
+                    <TableRow>
+                      <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
+                        Depreciation Cost (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {calcs.depreciationCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        ${calcs.depreciationCostUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
+                        {fmtPct(calcs.depreciationCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* NET PROFIT */}
+                    <TableRow
+                      className={`font-black border-t-2 text-sm ${isProfitPositive ? "text-emerald-800 dark:text-emerald-400 bg-emerald-50/40" : "text-red-800 dark:text-red-400 bg-red-50/40"}`}
                     >
-                      <Info className="size-3 text-muted-foreground" />
-                    </span>
-                  </TableCell>
-                  <TableCell className="p-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">
-                        Days:
-                      </span>
-                      <input
-                        type="number"
-                        className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={factoringDays || ""}
-                        onChange={(e) =>
-                          setFactoringDays(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.factoringUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.factoringPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
-                    Customer Commission
-                  </TableCell>
-                  <TableCell className="p-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">
-                        %:
-                      </span>
-                      <input
-                        type="number"
-                        className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={commissionPct || ""}
-                        onChange={(e) =>
-                          setCommissionPct(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.commissionUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.commissionPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Foreign Bank Charges ($)
-                  </TableCell>
-                  <TableCell className="p-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">
-                        $
-                      </span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="w-12 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={foreignBankCharges || ""}
-                        onChange={(e) =>
-                          setForeignBankCharges(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.foreignBankChargesUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.foreignBankChargesPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* NET SELLING PRICE */}
-                <TableRow className="bg-blue-50/30 font-semibold border-t border-b">
-                  <TableCell>Net Selling Price</TableCell>
-                  <TableCell className="text-right">
-                    Rs. {calcs.netPricePKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.netPriceUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.netPricePct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* VARIABLE COSTS */}
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Fabric Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    Rs. {calcs.fabricCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.fabricCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.fabricCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Lining Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    Rs. {calcs.liningCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.liningCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.liningCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Accessories Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    Rs. {calcs.accessoriesCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.accessoriesCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.accessoriesCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Chemical & Washing Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    Rs. {calcs.chemicalsCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.chemicalsCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.chemicalsCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Special Charges Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    Rs. {calcs.specialChargesCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.specialChargesCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.specialChargesCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Direct Labor Cost (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    Rs. {calcs.directLaborCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.directLaborCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.directLaborCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Utilities Cost (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    Rs. {calcs.utilitiesCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.utilitiesCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.utilitiesCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Leftover Factor Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    Rs. {calcs.leftoverCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.leftoverCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.leftoverCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* TOTAL VARIABLE COST */}
-                <TableRow className="bg-[#fcf5e3]/60 dark:bg-amber-950/20 font-semibold border-t border-b">
-                  <TableCell>Total Variable Cost</TableCell>
-                  <TableCell className="text-right">
-                    Rs. {calcs.totalVariableCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.totalVariableCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.totalVariableCostPct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* CM / PC */}
-                <TableRow className="bg-emerald-50/30 dark:bg-emerald-950/10 font-bold text-emerald-800 dark:text-emerald-400">
-                  <TableCell>Gross CM / PC</TableCell>
-                  <TableCell className="text-right">
-                    Rs. {calcs.cmPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.cmUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.cmPct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* OVERHEADS */}
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Salaries Cost (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.salariesCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.salariesCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.salariesCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    FOH/Admin Cost (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.fohAdminCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.fohAdminCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.fohAdminCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Repair & Maintenance (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.repairMtcCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.repairMtcCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.repairMtcCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* TOTAL COST */}
-                <TableRow className="font-semibold border-t">
-                  <TableCell>Total Cost</TableCell>
-                  <TableCell className="text-right">
-                    Rs. {calcs.totalCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.totalCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.totalCostPct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Conversion Cost per Minute
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    Rs. {calcs.conversionCostPerMinPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.conversionCostPerMinUSD.toFixed(2)}¢
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    -
-                  </TableCell>
-                </TableRow>
-
-                {/* EBITDA */}
-                <TableRow
-                  className={`font-extrabold border-t border-b ${isEbitdaPositive ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50/10" : "text-red-700 dark:text-red-400 bg-red-50/10"}`}
-                >
-                  <TableCell>EBITDA / PC</TableCell>
-                  <TableCell className="text-right">
-                    Rs. {calcs.ebitdaPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.ebitdaUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.ebitdaPct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* DEPRECIATION */}
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Depreciation Cost (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.depreciationCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.depreciationCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.depreciationCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* NET PROFIT */}
-                <TableRow
-                  className={`font-black border-t-2 text-sm ${isProfitPositive ? "text-emerald-800 dark:text-emerald-400 bg-emerald-50/40" : "text-red-800 dark:text-red-400 bg-red-50/40"}`}
-                >
-                  <TableCell>Net Profit / PC</TableCell>
-                  <TableCell className="text-right">
-                    Rs. {calcs.netProfitPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.netProfitUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.netProfitPct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+                      <TableCell className="px-2.5 py-1.5 font-bold">Net Profit / PC</TableCell>
+                      <TableCell className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap font-bold">
+                        Rs. {calcs.netProfitPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap font-bold">
+                        ${calcs.netProfitUSD.toFixed(3)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap font-bold">
+                        {fmtPct(calcs.netProfitPct, 1)}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              );
+            })()}
           </CardContent>
         </Card>
 
@@ -2809,6 +3012,7 @@ function CostSheetContent() {
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => {
+                  markDirty();
                   const newIdx = activeStyle.bomFabric.length;
                   setActiveStyle({
                     ...activeStyle,
@@ -2897,10 +3101,9 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={!isEditable}
                             step="0.01"
                             placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.consumptionPerPc || ""}
                             onChange={(e) =>
                               updateFabricBOM(
@@ -2914,27 +3117,26 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={!isEditable}
-                            step="0.01"
-                            placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.rateUSD || ""}
-                            onChange={(e) =>
-                              updateFabricBOM(
-                                idx,
-                                "rateUSD",
-                                Number(e.target.value),
-                              )
+                            disabled
+                            readOnly
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-7 px-2 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                            value={
+                              item.rateUSD !== undefined && item.rateUSD > 0
+                                ? Number(item.rateUSD.toFixed(4))
+                                : item.ratePKR && parityProcurement && parityProcurement > 0
+                                ? Number((item.ratePKR / parityProcurement).toFixed(4))
+                                : ""
                             }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={!isEditable}
                             step="0.01"
                             placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.ratePKR || ""}
                             onChange={(e) =>
                               updateFabricBOM(
@@ -2955,6 +3157,7 @@ function CostSheetContent() {
                               size="icon"
                               className="size-6 text-destructive"
                               onClick={() => {
+                                markDirty();
                                 setActiveStyle({
                                   ...activeStyle,
                                   bomFabric: activeStyle.bomFabric.filter(
@@ -3004,6 +3207,7 @@ function CostSheetContent() {
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => {
+                  markDirty();
                   const newIdx = activeStyle.bomLining.length;
                   setActiveStyle({
                     ...activeStyle,
@@ -3092,10 +3296,9 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={!isEditable}
                             step="0.01"
                             placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.consumptionPerPc || ""}
                             onChange={(e) =>
                               updateLiningBOM(
@@ -3109,27 +3312,26 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={!isEditable}
-                            step="0.01"
-                            placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.rateUSD || ""}
-                            onChange={(e) =>
-                              updateLiningBOM(
-                                idx,
-                                "rateUSD",
-                                Number(e.target.value),
-                              )
+                            disabled
+                            readOnly
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-7 px-2 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                            value={
+                              item.rateUSD !== undefined && item.rateUSD > 0
+                                ? Number(item.rateUSD.toFixed(4))
+                                : item.ratePKR && parityProcurement && parityProcurement > 0
+                                ? Number((item.ratePKR / parityProcurement).toFixed(4))
+                                : ""
                             }
                           />
                         </TableCell>
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled={!isEditable}
                             step="0.01"
                             placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.ratePKR || ""}
                             onChange={(e) =>
                               updateLiningBOM(
@@ -3150,6 +3352,7 @@ function CostSheetContent() {
                               size="icon"
                               className="size-6 text-destructive"
                               onClick={() => {
+                                markDirty();
                                 setActiveStyle({
                                   ...activeStyle,
                                   bomLining: activeStyle.bomLining.filter(
@@ -3200,6 +3403,7 @@ function CostSheetContent() {
                   variant="outline"
                   className="h-7 text-xs"
                   onClick={() => {
+                    markDirty();
                     const newIdx = activeStyle.bomAccessories.length;
                     setActiveStyle({
                       ...activeStyle,
@@ -3225,6 +3429,7 @@ function CostSheetContent() {
                   variant="outline"
                   className="h-7 text-xs"
                   onClick={() => {
+                    markDirty();
                     const newIdx = activeStyle.bomChemicals.length;
                     setActiveStyle({
                       ...activeStyle,
@@ -3249,6 +3454,7 @@ function CostSheetContent() {
                   variant="outline"
                   className="h-7 text-xs"
                   onClick={() => {
+                    markDirty();
                     const newIdx = activeStyle.bomSpecialCharges.length;
                     setActiveStyle({
                       ...activeStyle,
@@ -3366,9 +3572,8 @@ function CostSheetContent() {
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              disabled={!isAccEditable}
                               step="0.01"
-                              className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                               value={item.consPerPc || ""}
                               onChange={(e) =>
                                 updateAccessoriesBOM(
@@ -3382,13 +3587,14 @@ function CostSheetContent() {
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              disabled={!isAccEditable}
+                              disabled
+                              readOnly
                               step="0.0001"
                               placeholder="0.0000"
-                              className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              className="w-full h-7 px-2 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
                               value={
-                                item.rateUSD !== undefined
-                                  ? item.rateUSD || ""
+                                item.rateUSD !== undefined && item.rateUSD > 0
+                                  ? Number(item.rateUSD.toFixed(4))
                                   : item.ratePKR &&
                                       parityProcurement &&
                                       parityProcurement > 0
@@ -3399,20 +3605,12 @@ function CostSheetContent() {
                                       )
                                     : ""
                               }
-                              onChange={(e) =>
-                                updateAccessoriesBOM(
-                                  idx,
-                                  "rateUSD",
-                                  Number(e.target.value),
-                                )
-                              }
                             />
                           </TableCell>
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              disabled={!isAccEditable}
-                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                               value={item.ratePKR || ""}
                               onChange={(e) =>
                                 updateAccessoriesBOM(
@@ -3433,6 +3631,7 @@ function CostSheetContent() {
                                 size="icon"
                                 className="size-6 text-destructive"
                                 onClick={() => {
+                                  markDirty();
                                   setActiveStyle({
                                     ...activeStyle,
                                     bomAccessories:
@@ -3457,6 +3656,15 @@ function CostSheetContent() {
                         </TableRow>
                       );
                     })}
+                    <TableRow className="bg-muted/10 font-bold">
+                      <TableCell colSpan={5} className="text-right">
+                        Total Accessories Cost:
+                      </TableCell>
+                      <TableCell className="text-right text-primary pr-4">
+                        Rs. {calcs.accessoriesCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell />
+                    </TableRow>
 
                     {/* CHEMICALS */}
                     <TableRow className="bg-muted/20 font-bold">
@@ -3471,7 +3679,7 @@ function CostSheetContent() {
                           <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
                             Chemicals
                           </TableCell>
-                          <TableCell className="p-1.5">
+                          <TableCell colSpan={2} className="p-1.5">
                             {isChemEditable ? (
                               <SearchableSelect
                                 className="w-full"
@@ -3514,29 +3722,14 @@ function CostSheetContent() {
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              disabled={!isChemEditable}
-                              step="0.01"
-                              className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                              value={item.consPerPc || ""}
-                              onChange={(e) =>
-                                updateChemicalsBOM(
-                                  idx,
-                                  "consPerPc",
-                                  Number(e.target.value),
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell className="p-1.5">
-                            <input
-                              type="number"
-                              disabled={!isChemEditable}
+                              disabled
+                              readOnly
                               step="0.0001"
                               placeholder="0.0000"
-                              className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              className="w-full h-7 px-2 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
                               value={
-                                item.rateUSD !== undefined
-                                  ? item.rateUSD || ""
+                                item.rateUSD !== undefined && item.rateUSD > 0
+                                  ? Number(item.rateUSD.toFixed(4))
                                   : item.ratePKR &&
                                       parityProcurement &&
                                       parityProcurement > 0
@@ -3547,20 +3740,12 @@ function CostSheetContent() {
                                       )
                                     : ""
                               }
-                              onChange={(e) =>
-                                updateChemicalsBOM(
-                                  idx,
-                                  "rateUSD",
-                                  Number(e.target.value),
-                                )
-                              }
                             />
                           </TableCell>
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              disabled={!isChemEditable}
-                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                               value={item.ratePKR || ""}
                               onChange={(e) =>
                                 updateChemicalsBOM(
@@ -3572,7 +3757,7 @@ function CostSheetContent() {
                             />
                           </TableCell>
                           <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                            Rs. {(item.totalCostPKR || 0).toFixed(1)}
+                            Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(1)}
                           </TableCell>
                           <TableCell className="p-1.5">
                             {isChemEditable && (
@@ -3581,6 +3766,7 @@ function CostSheetContent() {
                                 size="icon"
                                 className="size-6 text-destructive"
                                 onClick={() => {
+                                  markDirty();
                                   setActiveStyle({
                                     ...activeStyle,
                                     bomChemicals:
@@ -3605,6 +3791,15 @@ function CostSheetContent() {
                         </TableRow>
                       );
                     })}
+                    <TableRow className="bg-muted/10 font-bold">
+                      <TableCell colSpan={5} className="text-right">
+                        Total Chemical Cost:
+                      </TableCell>
+                      <TableCell className="text-right text-primary pr-4">
+                        Rs. {calcs.chemicalsCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell />
+                    </TableRow>
 
                     {/* SPECIAL CHARGES */}
                     <TableRow className="bg-muted/20 font-bold">
@@ -3621,7 +3816,7 @@ function CostSheetContent() {
                           <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
                             {item.itemName || "Charges"}
                           </TableCell>
-                          <TableCell className="p-1.5 font-medium text-xs align-middle">
+                          <TableCell colSpan={2} className="p-1.5 font-medium text-xs align-middle">
                             {isChgEditable ? (
                               <SearchableSelect
                                 className="w-full"
@@ -3652,29 +3847,14 @@ function CostSheetContent() {
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              disabled={!isChgEditable}
-                              step="0.01"
-                              className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                              value={item.consPerPc || ""}
-                              onChange={(e) =>
-                                updateSpecialChargesBOM(
-                                  idx,
-                                  "consPerPc",
-                                  Number(e.target.value),
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell className="p-1.5">
-                            <input
-                              type="number"
-                              disabled={!isChgEditable}
+                              disabled
+                              readOnly
                               step="0.0001"
                               placeholder="0.0000"
-                              className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              className="w-full h-7 px-2 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
                               value={
-                                item.rateUSD !== undefined
-                                  ? item.rateUSD || ""
+                                item.rateUSD !== undefined && item.rateUSD > 0
+                                  ? Number(item.rateUSD.toFixed(4))
                                   : item.ratePKR &&
                                       parityProcurement &&
                                       parityProcurement > 0
@@ -3685,20 +3865,12 @@ function CostSheetContent() {
                                       )
                                     : ""
                               }
-                              onChange={(e) =>
-                                updateSpecialChargesBOM(
-                                  idx,
-                                  "rateUSD",
-                                  Number(e.target.value),
-                                )
-                              }
                             />
                           </TableCell>
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              disabled={!isChgEditable}
-                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                               value={item.ratePKR || ""}
                               onChange={(e) =>
                                 updateSpecialChargesBOM(
@@ -3710,7 +3882,7 @@ function CostSheetContent() {
                             />
                           </TableCell>
                           <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                            Rs. {(item.totalCostPKR || 0).toFixed(1)}
+                            Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(1)}
                           </TableCell>
                           <TableCell className="p-1.5">
                             {isChgEditable && (
@@ -3719,6 +3891,7 @@ function CostSheetContent() {
                                 size="icon"
                                 className="size-6 text-destructive"
                                 onClick={() => {
+                                  markDirty();
                                   setActiveStyle({
                                     ...activeStyle,
                                     bomSpecialCharges:
@@ -3743,6 +3916,15 @@ function CostSheetContent() {
                         </TableRow>
                       );
                     })}
+                    <TableRow className="bg-muted/10 font-bold">
+                      <TableCell colSpan={5} className="text-right">
+                        Total Special Charges Cost:
+                      </TableCell>
+                      <TableCell className="text-right text-primary pr-4">
+                        Rs. {calcs.specialChargesCostPKR.toFixed(1)}
+                      </TableCell>
+                      <TableCell />
+                    </TableRow>
                   </TableBody>
                 </Table>
               </div>
@@ -3754,16 +3936,7 @@ function CostSheetContent() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                if (loadedCostSheet) {
-                  // Restore values of the loaded snapshot
-                  router.push(`/cost-sheet?costSheetId=${loadedCostSheet.id}`);
-                  toast.info("Calculator reset to snapshot defaults");
-                } else {
-                  setActiveStyle({ ...activeStyle });
-                  toast.info("Calculator reset to Style Master defaults");
-                }
-              }}
+              onClick={handleResetClick}
               className="h-9"
             >
               <RefreshCw className="mr-1.5 size-4" /> Reset Calculator
@@ -3846,6 +4019,58 @@ function CostSheetContent() {
                   {isSaving ? "Saving…" : "Save"}
                 </Button>
               </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Unsaved Changes Confirmation Dialog */}
+          <Dialog open={unsavedModalOpen} onOpenChange={setUnsavedModalOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="size-5 text-amber-600" />
+                  Unsaved Changes
+                </DialogTitle>
+                <DialogDescription className="pt-2 text-sm text-slate-600 dark:text-slate-300">
+                  You have unsaved changes on this cost sheet. If you leave or change page without saving, your changes will be lost.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-2 text-xs text-muted-foreground">
+                Do you want to save your changes to this cost sheet before proceeding?
+              </div>
+              <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:justify-end border-t pt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setUnsavedModalOpen(false);
+                    setPendingNavigation(null);
+                  }}
+                >
+                  Stay on Page
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    proceedWithPendingNavigation();
+                  }}
+                >
+                  Discard Changes
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={handleSaveAndProceed}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <RefreshCw className="mr-1.5 size-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-1.5 size-4" />
+                  )}
+                  Save &amp; Continue
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>

@@ -105,16 +105,18 @@ export function CostSheetFabricSection({
                   <TableCell className="p-2">
                     <Input
                       type="number"
-                      step="0.01"
-                      className="h-8 text-xs"
-                      value={item.rateUSD || ""}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        onUpdateFabric(idx, {
-                          rateUSD: val,
-                          ratePKR: val * parityProcurement,
-                        });
-                      }}
+                      disabled
+                      readOnly
+                      step="0.0001"
+                      placeholder="0.0000"
+                      className="h-8 text-xs bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground cursor-not-allowed"
+                      value={
+                        item.rateUSD !== undefined && item.rateUSD > 0
+                          ? Number(item.rateUSD.toFixed(4))
+                          : item.ratePKR && parityProcurement > 0
+                          ? Number((item.ratePKR / parityProcurement).toFixed(4))
+                          : ""
+                      }
                     />
                   </TableCell>
                   <TableCell className="p-2">

@@ -69,7 +69,6 @@ export function CostSheetChargesSection({
               <TableHeader className="bg-muted/10">
                 <TableRow>
                   <TableHead className="text-xs font-semibold">Wash Item Name</TableHead>
-                  <TableHead className="w-24 text-xs font-semibold">Cons. / Pc</TableHead>
                   <TableHead className="w-28 text-xs font-semibold">Rate (PKR)</TableHead>
                   <TableHead className="w-32 text-xs font-semibold text-right">Total (PKR)</TableHead>
                 </TableRow>
@@ -87,34 +86,20 @@ export function CostSheetChargesSection({
                     <TableCell className="p-2">
                       <Input
                         type="number"
-                        step="0.01"
-                        className="h-8 text-xs"
-                        value={item.consPerPc || ""}
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          onUpdateChemicals(idx, {
-                            consPerPc: val,
-                            totalCostPKR: val * item.ratePKR,
-                          });
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell className="p-2">
-                      <Input
-                        type="number"
                         className="h-8 text-xs"
                         value={item.ratePKR || ""}
                         onChange={(e) => {
                           const val = Number(e.target.value);
                           onUpdateChemicals(idx, {
                             ratePKR: val,
-                            totalCostPKR: item.consPerPc * val,
+                            consPerPc: 1,
+                            totalCostPKR: val,
                           });
                         }}
                       />
                     </TableCell>
                     <TableCell className="p-2 text-right font-medium text-xs">
-                      Rs. {item.totalCostPKR.toFixed(1)}
+                      Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(1)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -136,7 +121,6 @@ export function CostSheetChargesSection({
               <TableHeader className="bg-muted/10">
                 <TableRow>
                   <TableHead className="text-xs font-semibold">Charge Category</TableHead>
-                  <TableHead className="w-24 text-xs font-semibold">Cons. / Pc</TableHead>
                   <TableHead className="w-28 text-xs font-semibold">Rate (PKR)</TableHead>
                   <TableHead className="w-32 text-xs font-semibold text-right">Total (PKR)</TableHead>
                 </TableRow>
@@ -150,34 +134,20 @@ export function CostSheetChargesSection({
                     <TableCell className="p-2">
                       <Input
                         type="number"
-                        step="0.01"
-                        className="h-8 text-xs"
-                        value={item.consPerPc || ""}
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          onUpdateSpecialCharges(idx, {
-                            consPerPc: val,
-                            totalCostPKR: val * item.ratePKR,
-                          });
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell className="p-2">
-                      <Input
-                        type="number"
                         className="h-8 text-xs"
                         value={item.ratePKR || ""}
                         onChange={(e) => {
                           const val = Number(e.target.value);
                           onUpdateSpecialCharges(idx, {
                             ratePKR: val,
-                            totalCostPKR: item.consPerPc * val,
+                            consPerPc: 1,
+                            totalCostPKR: val,
                           });
                         }}
                       />
                     </TableCell>
                     <TableCell className="p-2 text-right font-medium text-xs">
-                      Rs. {item.totalCostPKR.toFixed(1)}
+                      Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(1)}
                     </TableCell>
                   </TableRow>
                 ))}

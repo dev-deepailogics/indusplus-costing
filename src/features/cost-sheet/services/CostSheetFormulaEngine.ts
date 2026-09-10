@@ -31,6 +31,63 @@ function findRate(tableData: SimpleTableData | undefined, description: string, f
   return parseFloat(row.values.costPerSam) || fallback;
 }
 
+function findLaborOrFohCost(
+  tableData: SimpleTableData | undefined,
+  description: string,
+  fallbackCPM: number,
+  smv: number,
+  efficiency: number
+): number {
+  if (!tableData?.rows) {
+    return efficiency > 0 ? (fallbackCPM * smv) / efficiency : 0;
+  }
+  const row = tableData.rows.find(
+    (r) =>
+      r.values.description?.toLowerCase().replace(/\s+/g, "") ===
+      description.toLowerCase().replace(/\s+/g, "")
+  );
+  if (!row) {
+    return efficiency > 0 ? (fallbackCPM * smv) / efficiency : 0;
+  }
+
+  const useType = (
+    row.values.useType ??
+    row.values.use_type ??
+    ""
+  ).toLowerCase().trim();
+
+  const perPieceStr = (
+    row.values.perPiece ??
+    row.values.per_piece ??
+    row.values["PER PIECE"] ??
+    ""
+  ).toString().trim();
+  const perPieceVal = parseFloat(perPieceStr);
+
+  const costPerSamStr = (
+    row.values.costPerSam ??
+    row.values.cost_per_sam ??
+    ""
+  ).toString().trim();
+  const cpm = parseFloat(costPerSamStr) || fallbackCPM;
+
+  // 1. If explicit radio button selection is PER PIECE
+  if (useType === "piece" || useType === "perpiece") {
+    return !isNaN(perPieceVal) ? perPieceVal : 0;
+  }
+
+  // 2. If explicit radio button selection is SAM
+  if (useType === "sam") {
+    return efficiency > 0 ? (cpm * smv) / efficiency : 0;
+  }
+
+  // 3. Fallback if no radio button selection is stored
+  if (!isNaN(perPieceVal) && perPieceStr !== "" && perPieceVal > 0) {
+    return perPieceVal;
+  }
+  return efficiency > 0 ? (cpm * smv) / efficiency : 0;
+}
+
 export function mapSMVToCategory(smv: number, stylesGrid?: SimpleTableData): string {
   if (stylesGrid?.rows && stylesGrid.rows.length > 0) {
     for (const row of stylesGrid.rows) {
@@ -449,24 +506,36 @@ export function runFormulaEngine(
   const accessoriesCostPct = accessoriesCostUSD / netPriceUSD;
 
   const chemicalsCostPKR = (style.bomChemicals || []).reduce(
-    (acc, c) => acc + (c ? (c.consPerPc || 0) * (c.ratePKR || 0) : 0),
+    (acc, c) => {
+      if (!c) return acc;
+      const cost = c.totalCostPKR !== undefined && c.totalCostPKR > 0
+        ? c.totalCostPKR
+        : (c.ratePKR || 0) * (c.consPerPc && c.consPerPc > 0 ? c.consPerPc : 1);
+      return acc + cost;
+    },
     0
   );
   const chemicalsCostUSD = chemicalsCostPKR / paritySale;
   const chemicalsCostPct = chemicalsCostUSD / netPriceUSD;
 
   const specialChargesCostPKR = (style.bomSpecialCharges || []).reduce(
-    (acc, s) => acc + (s ? (s.consPerPc || 0) * (s.ratePKR || 0) : 0),
+    (acc, s) => {
+      if (!s) return acc;
+      const cost = s.totalCostPKR !== undefined && s.totalCostPKR > 0
+        ? s.totalCostPKR
+        : (s.ratePKR || 0) * (s.consPerPc && s.consPerPc > 0 ? s.consPerPc : 1);
+      return acc + cost;
+    },
     0
   );
   const specialChargesCostUSD = specialChargesCostPKR / paritySale;
   const specialChargesCostPct = specialChargesCostUSD / netPriceUSD;
 
-  const directLaborCostPKR = (cpmDirectLabour * smv) / efficiency;
+  const directLaborCostPKR = findLaborOrFohCost(params.directLabourFoh, "Direct Labour", FALLBACK_CPMS.directLabour, smv, efficiency);
   const directLaborCostUSD = directLaborCostPKR / paritySale;
   const directLaborCostPct = directLaborCostUSD / netPriceUSD;
 
-  const utilitiesCostPKR = (cpmUtilities * smv) / efficiency;
+  const utilitiesCostPKR = findLaborOrFohCost(params.directLabourFoh, "Utilities Cost", FALLBACK_CPMS.utilities, smv, efficiency);
   const utilitiesCostUSD = utilitiesCostPKR / paritySale;
   const utilitiesCostPct = utilitiesCostUSD / netPriceUSD;
 
@@ -487,15 +556,15 @@ export function runFormulaEngine(
   const cmMinutePKR = (cmPKR * efficiency) / smv;
   const cmMinuteUSD = (cmUSD * efficiency / smv) * 100;
 
-  const salariesCostPKR = (cpmSalaries * smv) / efficiency;
+  const salariesCostPKR = findLaborOrFohCost(params.directLabourFoh, "Fixed Salaries", FALLBACK_CPMS.salaries, smv, efficiency);
   const salariesCostUSD = salariesCostPKR / paritySale;
   const salariesCostPct = salariesCostUSD / netPriceUSD;
 
-  const fohAdminCostPKR = (cpmFohAdmin * smv) / efficiency;
+  const fohAdminCostPKR = findLaborOrFohCost(params.directLabourFoh, "Manufacturing FOH", FALLBACK_CPMS.fohAdmin, smv, efficiency);
   const fohAdminCostUSD = fohAdminCostPKR / paritySale;
   const fohAdminCostPct = fohAdminCostUSD / netPriceUSD;
 
-  const repairMtcCostPKR = (cpmRepair * smv) / efficiency;
+  const repairMtcCostPKR = findLaborOrFohCost(params.directLabourFoh, "Repair and Maintenance", FALLBACK_CPMS.repair, smv, efficiency);
   const repairMtcCostUSD = repairMtcCostPKR / paritySale;
   const repairMtcCostPct = repairMtcCostUSD / netPriceUSD;
 
@@ -510,7 +579,7 @@ export function runFormulaEngine(
   const ebitdaUSD = ebitdaPKR / paritySale;
   const ebitdaPct = ebitdaUSD / netPriceUSD;
 
-  const depreciationCostPKR = (cpmDepreciation * smv) / efficiency;
+  const depreciationCostPKR = findLaborOrFohCost(params.directLabourFoh, "Depreciation", FALLBACK_CPMS.depreciation, smv, efficiency);
   const depreciationCostUSD = depreciationCostPKR / paritySale;
   const depreciationCostPct = depreciationCostUSD / netPriceUSD;
 

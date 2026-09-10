@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +18,8 @@ export function PromptDialog({
   title,
   description,
   label,
+  defaultValue = "",
+  confirmLabel = "Add",
   onSubmit,
 }: {
   open: boolean;
@@ -25,9 +27,17 @@ export function PromptDialog({
   title: string;
   description?: string;
   label: string;
+  defaultValue?: string;
+  confirmLabel?: string;
   onSubmit: (value: string) => void;
 }) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(defaultValue);
+
+  useEffect(() => {
+    if (open) {
+      setValue(defaultValue);
+    }
+  }, [open, defaultValue]);
 
   function submit() {
     const trimmed = value.trim();
@@ -63,7 +73,7 @@ export function PromptDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={submit}>Add</Button>
+          <Button onClick={submit}>{confirmLabel}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
