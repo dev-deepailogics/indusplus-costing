@@ -24,6 +24,8 @@ export type ProcessMatrixTableData = {
   processes: string[];
   tables: Record<string, MatrixTableData>;
   customerRejections?: Record<string, string>;
+  useGridRejection?: boolean;
+  defaultRejection?: string;
 };
 
 export type GridCard<T> = {

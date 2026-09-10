@@ -53,6 +53,59 @@ export function ProcessMatrixEditor({
   const [customerRateInput, setCustomerRateInput] = useState<string>("");
   const [isSavingRate, setIsSavingRate] = useState(false);
 
+  // Default Rejection Rate input state
+  const isGridModeActive = data.useGridRejection !== false;
+  const [defaultRejectionInput, setDefaultRejectionInput] = useState<string>(
+    (data.defaultRejection || "4.00%").replace("%", "").trim()
+  );
+  const [isSavingDefaultRej, setIsSavingDefaultRej] = useState(false);
+
+  // Keep default rejection input in sync with external data changes
+  useEffect(() => {
+    if (data.defaultRejection) {
+      setDefaultRejectionInput(data.defaultRejection.replace("%", "").trim());
+    }
+  }, [data.defaultRejection]);
+
+  // Toggle between Grid Mode (Active) and Customer Mode (Inactive)
+  async function handleToggleMode(useGrid: boolean) {
+    try {
+      await onSave({
+        ...data,
+        useGridRejection: useGrid,
+      });
+      toast.success(
+        useGrid
+          ? "Rejection mode set to Active (Process Grid Sum)."
+          : "Rejection mode set to Inactive (Customer Rejection Rates)."
+      );
+    } catch {
+      toast.error("Failed to update rejection mode");
+    }
+  }
+
+  // Save Default Rejection Rate
+  async function handleSaveDefaultRejection(val?: string) {
+    const raw = (val !== undefined ? val : defaultRejectionInput).trim();
+    if (!raw || isNaN(parseFloat(raw))) {
+      toast.error("Please enter a valid numeric default rejection percentage (e.g. 4.00).");
+      return;
+    }
+    const formatted = `${parseFloat(raw).toFixed(2)}%`;
+    setIsSavingDefaultRej(true);
+    try {
+      await onSave({
+        ...data,
+        defaultRejection: formatted,
+      });
+      toast.success(`Default rejection saved as ${formatted}.`);
+    } catch {
+      toast.error("Failed to save default rejection rate");
+    } finally {
+      setIsSavingDefaultRej(false);
+    }
+  }
+
   // Subscribe to style master records to resolve active order quantity band sums
   useEffect(() => {
     return subscribeToStyles(setStyles);
@@ -187,6 +240,10 @@ export function ProcessMatrixEditor({
 
   // Compute live rejection totals per registered style master
   const styleSummaries = useMemo(() => {
+    const useGrid = data.useGridRejection !== false;
+    const defaultRejPercent = parseFloat((data.defaultRejection || "4.00%").replace("%", "").trim()) || 4.0;
+    const defaultRejVal = defaultRejPercent / 100;
+
     return styles.map((style) => {
       const sizeBracket = calculateSizeBracket(style.orderQuantity);
       const styleCategoryClass = mapSMVToCategory(style.smvSewing);
@@ -210,9 +267,22 @@ export function ProcessMatrixEditor({
       }
 
       const washingRejection = getWashingRejection(style.washType, sizeBracket);
-      const totalRejection = hasCustomerSingleRate
-        ? parseFloat(custRateStr!) / 100
-        : baseRejectionSum + washingRejection;
+      
+      let totalRejection = 0;
+      let rejectionSource: "grid" | "customer" | "default" = "grid";
+
+      if (useGrid) {
+        totalRejection = baseRejectionSum + washingRejection;
+        rejectionSource = "grid";
+      } else {
+        if (hasCustomerSingleRate) {
+          totalRejection = parseFloat(custRateStr!) / 100;
+          rejectionSource = "customer";
+        } else {
+          totalRejection = defaultRejVal;
+          rejectionSource = "default";
+        }
+      }
 
       return {
         style,
@@ -220,6 +290,7 @@ export function ProcessMatrixEditor({
         styleCategoryClass,
         hasCustomerSingleRate,
         custRateStr,
+        rejectionSource,
         processRejections,
         baseRejectionSum,
         washingRejection,
@@ -232,53 +303,117 @@ export function ProcessMatrixEditor({
 
   return (
     <div className="space-y-6">
-      {/* Top Header Toolbar with Process Tabs on Left & Customer Selector on Right */}
-      <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 bg-muted/40 p-3.5 rounded-xl border">
-        {/* Left Side: Process Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto w-full xl:w-auto">
-          <Tabs value={active} onValueChange={(v) => setActive(v as string)} className="w-full">
-            <TabsList className="flex flex-wrap h-auto bg-muted p-1">
-              {data.processes.map((p) => (
-                <TabsTrigger
-                  key={p}
-                  value={p}
-                  className="data-active:bg-primary data-active:text-primary-foreground py-1.5 px-3 text-xs"
-                >
-                  {p}
-                </TabsTrigger>
-              ))}
-              {totalTable && (
-                <TabsTrigger
-                  value="total-rejections"
-                  className="data-active:bg-emerald-600 data-active:text-white py-1.5 px-3 text-xs font-semibold text-emerald-800 dark:text-emerald-300"
-                >
-                  Total (Processes Sum)
-                </TabsTrigger>
-              )}
-            </TabsList>
-          </Tabs>
-        </div>
+      {/* ── Main Control & Configuration Toolbar ── */}
+      <div className="p-4 bg-gradient-to-r from-slate-50 to-slate-100/80 dark:from-slate-900 dark:to-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        {/* Row 1: Active/Inactive Mode Switch & Default Rejection Field */}
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          {/* Active / Inactive Toggle Button */}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+              Rejection Mode:
+            </span>
+            <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 p-1 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => handleToggleMode(true)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                  isGridModeActive
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                <span className={`size-2 rounded-full ${isGridModeActive ? "bg-white animate-pulse" : "bg-slate-400"}`} />
+                Active (Process Grid)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleMode(false)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                  !isGridModeActive
+                    ? "bg-amber-600 text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                <span className={`size-2 rounded-full ${!isGridModeActive ? "bg-white animate-pulse" : "bg-slate-400"}`} />
+                Inactive (Customer Rejection)
+              </button>
+            </div>
 
-        {/* Right Side: Customer Search & Select (Opens Modal on Select) */}
-        <div className="flex items-center gap-2.5 w-full xl:w-auto justify-start xl:justify-end bg-white dark:bg-slate-900/70 p-2 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">
-            <Building2 className="size-4 text-primary" />
-            <span>Customer Rejection:</span>
+            <Badge
+              variant="outline"
+              className={`text-xs px-2.5 py-1 font-semibold ${
+                isGridModeActive
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300"
+                  : "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300"
+              }`}
+            >
+              {isGridModeActive ? "✓ Dynamic Grid Mode Active" : "⚠ Customer Rejection Mode Active"}
+            </Badge>
           </div>
 
-          <div className="w-64 sm:w-72">
-            <SearchableSelect
-              options={customerSelectOptions}
-              value={selectedCustomer}
-              onChange={handleSelectCustomer}
-              placeholder="Search or Select Customer Name..."
-              className="bg-transparent text-xs h-8 font-semibold"
-            />
+          {/* Right Controls: Default Rejection & Customer Selector */}
+          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-start lg:justify-end">
+            {/* Default Rejection Input Field */}
+            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-2xs">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                Default Rejection:
+              </span>
+              <div className="relative flex items-center w-24">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  placeholder="4.00"
+                  className="w-full h-7 pl-2 pr-6 text-xs font-bold border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded text-right focus:bg-white focus:outline-none"
+                  value={defaultRejectionInput}
+                  onChange={(e) => setDefaultRejectionInput(e.target.value)}
+                  onBlur={() => handleSaveDefaultRejection()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveDefaultRejection();
+                  }}
+                  disabled={isSavingDefaultRej}
+                />
+                <span className="absolute right-2 text-xs font-bold text-slate-400 pointer-events-none">
+                  %
+                </span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs font-bold text-primary hover:bg-primary/10"
+                onClick={() => handleSaveDefaultRejection()}
+                disabled={isSavingDefaultRej}
+                title="Save default rejection rate"
+              >
+                <Check className="size-3.5" />
+              </Button>
+            </div>
+
+            {/* Customer Rejection Search & Select */}
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-2xs">
+              <Building2 className="size-4 text-primary shrink-0" />
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">
+                Customer:
+              </span>
+              <div className="w-52 sm:w-60">
+                <SearchableSelect
+                  options={customerSelectOptions}
+                  value={selectedCustomer}
+                  onChange={handleSelectCustomer}
+                  placeholder="Search or Select Customer..."
+                  className="bg-transparent text-xs h-7 font-semibold"
+                />
+              </div>
+            </div>
           </div>
         </div>
+
+
       </div>
 
-      {/* Active Customer Custom Rate Badges List */}
+      {/* Customer Custom Rate Badges List */}
       {data.customerRejections && Object.keys(data.customerRejections).length > 0 && (
         <div className="flex flex-wrap items-center gap-2 p-2.5 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 rounded-lg">
           <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1">
@@ -319,6 +454,31 @@ export function ProcessMatrixEditor({
           ))}
         </div>
       )}
+
+      {/* Process Tabs Navigation Bar */}
+      <div className="flex items-center gap-2 overflow-x-auto w-full bg-muted/40 p-2 rounded-xl border">
+        <Tabs value={active} onValueChange={(v) => setActive(v as string)} className="w-full">
+          <TabsList className="flex flex-wrap h-auto bg-muted p-1">
+            {data.processes.map((p) => (
+              <TabsTrigger
+                key={p}
+                value={p}
+                className="data-active:bg-primary data-active:text-primary-foreground py-1.5 px-3 text-xs"
+              >
+                {p}
+              </TabsTrigger>
+            ))}
+            {totalTable && (
+              <TabsTrigger
+                value="total-rejections"
+                className="data-active:bg-emerald-600 data-active:text-white py-1.5 px-3 text-xs font-semibold text-emerald-800 dark:text-emerald-300"
+              >
+                Total (Processes Sum)
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </Tabs>
+      </div>
 
       {/* Modal Dialog for Setting Single Customer Rejection Rate */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
@@ -493,19 +653,31 @@ export function ProcessMatrixEditor({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {styleSummaries.map(({ style, sizeBracket, styleCategoryClass, hasCustomerSingleRate, custRateStr, baseRejectionSum, washingRejection, totalRejection }) => (
+                {styleSummaries.map(({ style, sizeBracket, styleCategoryClass, hasCustomerSingleRate, custRateStr, rejectionSource, baseRejectionSum, washingRejection, totalRejection }) => (
                   <TableRow key={style.id} className="hover:bg-muted/10">
                     <TableCell className="py-2.5 text-xs">
                       <span className="font-bold text-primary block">{style.id}</span>
                       <span className="text-muted-foreground font-medium text-[11px]">{style.styleName}</span>
                     </TableCell>
                     <TableCell className="py-2.5 text-xs">
-                      <span className="font-semibold text-foreground">{style.customerName || "—"}</span>
-                      {hasCustomerSingleRate && (
-                        <Badge variant="outline" className="ml-1.5 text-[9px] px-1 py-0 border-amber-300 text-amber-700 bg-amber-50 font-bold">
-                          Customer Rate: {custRateStr}
-                        </Badge>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="font-semibold text-foreground">{style.customerName || "—"}</span>
+                        {rejectionSource === "customer" && (
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 border-amber-300 text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 font-bold">
+                            Customer Rate: {custRateStr}
+                          </Badge>
+                        )}
+                        {rejectionSource === "default" && (
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 border-slate-300 text-slate-700 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 font-bold">
+                            Default: {data.defaultRejection || "4.00%"}
+                          </Badge>
+                        )}
+                        {rejectionSource === "grid" && (
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 border-emerald-300 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 font-bold">
+                            Grid Mode
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="py-2.5 text-xs font-semibold">
                       {styleCategoryClass}
@@ -526,7 +698,13 @@ export function ProcessMatrixEditor({
                       {(washingRejection * 100).toFixed(2)}%
                     </TableCell>
                     <TableCell className="py-2.5 text-right pr-4">
-                      <Badge className="font-mono text-xs font-extrabold bg-primary text-primary-foreground shadow-sm">
+                      <Badge className={`font-mono text-xs font-extrabold shadow-sm ${
+                        rejectionSource === "grid"
+                          ? "bg-emerald-600 text-white"
+                          : rejectionSource === "customer"
+                          ? "bg-amber-600 text-white"
+                          : "bg-slate-700 text-white"
+                      }`}>
                         {(totalRejection * 100).toFixed(2)}%
                       </Badge>
                     </TableCell>

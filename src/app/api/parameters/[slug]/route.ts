@@ -48,6 +48,14 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
        row_order     INT           NOT NULL DEFAULT 0
      )`,
 
+    // ── rejection_settings ───────────────────────────────────────────────────
+    `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='rejection_settings')
+     CREATE TABLE rejection_settings (
+       id                 INT          NOT NULL PRIMARY KEY DEFAULT 1,
+       use_grid_rejection BIT          NOT NULL DEFAULT 1,
+       default_rejection  NVARCHAR(32) NOT NULL DEFAULT '4.00%'
+     )`,
+
     // ── styles (dedicated 2-table schema for dynamic fields) ────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='styles_columns')
      CREATE TABLE styles_columns (
@@ -248,7 +256,26 @@ async function getRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>): Prom
     // If table doesn't exist yet, ignore
   }
 
-  return { processes, tables, customerRejections };
+  // Load rejection mode settings (active/inactive toggle and default rejection rate)
+  let useGridRejection = true;
+  let defaultRejection = "4.00%";
+  try {
+    const settingsRes = await pool.request().query<{
+      use_grid_rejection: boolean | number;
+      default_rejection: string;
+    }>("SELECT use_grid_rejection, default_rejection FROM rejection_settings WHERE id = 1");
+    if (settingsRes.recordset.length > 0) {
+      const s = settingsRes.recordset[0];
+      useGridRejection = Boolean(s.use_grid_rejection);
+      if (s.default_rejection) {
+        defaultRejection = s.default_rejection;
+      }
+    }
+  } catch {
+    // If table doesn't exist yet, ignore
+  }
+
+  return { processes, tables, customerRejections, useGridRejection, defaultRejection };
 }
 
 async function saveRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>, data: ProcessMatrixTableData): Promise<void> {
@@ -324,6 +351,20 @@ async function saveRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>, data
         `INSERT INTO customer_rejections (customer_name, rejection_pct, row_order) VALUES ${valuesSql.join(", ")};`
       );
     }
+  }
+
+  // Save rejection mode settings (active/inactive toggle and default rejection rate)
+  if (data.useGridRejection !== undefined || data.defaultRejection !== undefined) {
+    const useGrid = data.useGridRejection !== false ? 1 : 0;
+    const defRej = data.defaultRejection || "4.00%";
+    req.input("set_use_grid", useGrid);
+    req.input("set_def_rej", defRej);
+    sqlStatements.push(`
+      IF EXISTS (SELECT 1 FROM rejection_settings WHERE id = 1)
+        UPDATE rejection_settings SET use_grid_rejection = @set_use_grid, default_rejection = @set_def_rej WHERE id = 1;
+      ELSE
+        INSERT INTO rejection_settings (id, use_grid_rejection, default_rejection) VALUES (1, @set_use_grid, @set_def_rej);
+    `);
   }
 
   sqlStatements.push("COMMIT TRANSACTION;");

@@ -315,40 +315,55 @@ export function runFormulaEngine(
   if (rejectionOverride !== null) {
     rejectionPct = rejectionOverride;
   } else {
-    const custName = (style.customerName || "").trim().toLowerCase();
-    let customerRejectionVal: number | null = null;
-    if (custName && params.rejectionGrid?.customerRejections) {
-      const matchKey = Object.keys(params.rejectionGrid.customerRejections).find(
-        (k) => k.trim().toLowerCase() === custName
-      );
-      if (matchKey && params.rejectionGrid.customerRejections[matchKey] !== undefined) {
-        const rawStr = params.rejectionGrid.customerRejections[matchKey].replace("%", "").trim();
-        const parsed = parseFloat(rawStr);
-        if (!isNaN(parsed) && rawStr !== "") {
-          customerRejectionVal = parsed / 100;
+    // Mode determination: true = Active (Process Grid sum), false = Inactive (Customer Rejection rate)
+    const isGridActive = params.rejectionGrid?.useGridRejection !== false;
+
+    if (isGridActive) {
+      // ── ACTIVE: Grid Mode (Dynamic Processes Sum + Washing) ──
+      if (params.rejectionGrid?.tables) {
+        let sumRej = 0;
+        const processes = ["Fabric", "Cutting", "Sewing", "Finishing", "WIP", "E1"];
+        processes.forEach((procName) => {
+          const table = params.rejectionGrid?.tables[procName];
+          if (table?.cells) {
+            const lookupCategory = (procName === "Fabric" || procName === "Cutting" || procName === "Finishing")
+              ? "High Fashion"
+              : styleCategory;
+            const rateStr = table.cells[sizeBracket]?.[lookupCategory] || "0";
+            sumRej += parseFloat(rateStr.replace("%", "")) / 100;
+          }
+        });
+        sumRej += getWashingRejection(style.washType, sizeBracket);
+        rejectionPct = sumRej;
+      } else {
+        rejectionPct = style.rejectionPct ?? 0.0415;
+      }
+    } else {
+      // ── INACTIVE: Customer Mode (Customer Rejection or Default Rejection) ──
+      const custName = (style.customerName || "").trim().toLowerCase();
+      let customerRejectionVal: number | null = null;
+      if (custName && params.rejectionGrid?.customerRejections) {
+        const matchKey = Object.keys(params.rejectionGrid.customerRejections).find(
+          (k) => k.trim().toLowerCase() === custName
+        );
+        if (matchKey && params.rejectionGrid.customerRejections[matchKey] !== undefined) {
+          const rawStr = params.rejectionGrid.customerRejections[matchKey].replace("%", "").trim();
+          const parsed = parseFloat(rawStr);
+          if (!isNaN(parsed) && rawStr !== "") {
+            customerRejectionVal = parsed / 100;
+          }
         }
       }
-    }
 
-    if (customerRejectionVal !== null) {
-      rejectionPct = customerRejectionVal;
-    } else if (params.rejectionGrid?.tables) {
-      let sumRej = 0;
-      const processes = ["Fabric", "Cutting", "Sewing", "Finishing", "WIP", "E1"];
-      processes.forEach((procName) => {
-        const table = params.rejectionGrid?.tables[procName];
-        if (table?.cells) {
-          const lookupCategory = (procName === "Fabric" || procName === "Cutting" || procName === "Finishing")
-            ? "High Fashion"
-            : styleCategory;
-          const rateStr = table.cells[sizeBracket]?.[lookupCategory] || "0";
-          sumRej += parseFloat(rateStr.replace("%", "")) / 100;
-        }
-      });
-      sumRej += getWashingRejection(style.washType, sizeBracket);
-      rejectionPct = sumRej;
-    } else {
-      rejectionPct = style.rejectionPct ?? 0.0415;
+      if (customerRejectionVal !== null) {
+        rejectionPct = customerRejectionVal;
+      } else if (params.rejectionGrid?.defaultRejection) {
+        const rawDefault = params.rejectionGrid.defaultRejection.replace("%", "").trim();
+        const parsedDef = parseFloat(rawDefault);
+        rejectionPct = !isNaN(parsedDef) && rawDefault !== "" ? parsedDef / 100 : (style.rejectionPct ?? 0.0415);
+      } else {
+        rejectionPct = style.rejectionPct ?? 0.0415;
+      }
     }
   }
 
