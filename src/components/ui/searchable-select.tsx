@@ -17,6 +17,7 @@ export function SearchableSelect({
   placeholder,
   className,
   align = "left",
+  disabled,
 }: {
   options: SearchableSelectOption[];
   value: string;
@@ -24,6 +25,7 @@ export function SearchableSelect({
   placeholder?: string;
   className?: string;
   align?: "left" | "right";
+  disabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -125,9 +127,10 @@ export function SearchableSelect({
         <input
           ref={inputRef}
           type="text"
-          className="w-full h-7 pl-2 pr-6 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-left truncate focus:bg-white focus:outline-none transition-colors"
+          className="w-full h-7 pl-2 pr-6 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-left truncate focus:bg-white focus:outline-none transition-colors disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
           placeholder={placeholder}
           value={displayVal}
+          disabled={disabled}
           title={selected ? selected.label : value || ""}
           onFocus={handleOpen}
           onClick={handleOpen}

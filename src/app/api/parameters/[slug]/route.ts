@@ -84,37 +84,113 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
     // ── other_expenses ──────────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='other_expenses')
      CREATE TABLE other_expenses (
-       id               NVARCHAR(128) NOT NULL PRIMARY KEY,
+       id               NVARCHAR(128) NOT NULL,
+       card_id          NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       card_name        NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       is_active        BIT           NOT NULL DEFAULT 1,
+       card_serial      INT           NOT NULL DEFAULT 1,
        description      NVARCHAR(256) NOT NULL DEFAULT '',
        percent_of_sales NVARCHAR(64)  NOT NULL DEFAULT '',
        row_order        INT           NOT NULL DEFAULT 0
-     )`,
+     )
+     ELSE
+     BEGIN
+       DECLARE @ConstraintName_other_expenses nvarchar(200);
+       SELECT @ConstraintName_other_expenses = Name FROM sys.key_constraints WHERE type = 'PK' AND parent_object_id = OBJECT_ID('other_expenses');
+       IF @ConstraintName_other_expenses IS NOT NULL
+         EXEC('ALTER TABLE other_expenses DROP CONSTRAINT ' + @ConstraintName_other_expenses);
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('other_expenses') AND name = 'card_id')
+         ALTER TABLE other_expenses ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('other_expenses') AND name = 'card_name')
+         ALTER TABLE other_expenses ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('other_expenses') AND name = 'is_active')
+         ALTER TABLE other_expenses ADD is_active BIT NOT NULL DEFAULT 1;
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('other_expenses') AND name = 'card_serial')
+         ALTER TABLE other_expenses ADD card_serial INT NOT NULL DEFAULT 1;
+     END`,
 
     // ── order_types ─────────────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='order_types')
      CREATE TABLE order_types (
-       id         NVARCHAR(128) NOT NULL PRIMARY KEY,
+       id         NVARCHAR(128) NOT NULL,
+       card_id    NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       card_name  NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       is_active  BIT           NOT NULL DEFAULT 1,
+       card_serial INT          NOT NULL DEFAULT 1,
        order_type NVARCHAR(128) NOT NULL DEFAULT '',
        row_order  INT           NOT NULL DEFAULT 0
-     )`,
+     )
+     ELSE
+     BEGIN
+       DECLARE @ConstraintName_order_types nvarchar(200);
+       SELECT @ConstraintName_order_types = Name FROM sys.key_constraints WHERE type = 'PK' AND parent_object_id = OBJECT_ID('order_types');
+       IF @ConstraintName_order_types IS NOT NULL
+         EXEC('ALTER TABLE order_types DROP CONSTRAINT ' + @ConstraintName_order_types);
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('order_types') AND name = 'card_id')
+         ALTER TABLE order_types ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('order_types') AND name = 'card_name')
+         ALTER TABLE order_types ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('order_types') AND name = 'is_active')
+         ALTER TABLE order_types ADD is_active BIT NOT NULL DEFAULT 1;
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('order_types') AND name = 'card_serial')
+         ALTER TABLE order_types ADD card_serial INT NOT NULL DEFAULT 1;
+     END`,
 
     // ── customer_commissions ────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='customer_commissions')
      CREATE TABLE customer_commissions (
-       id                 NVARCHAR(128) NOT NULL PRIMARY KEY,
+       id                 NVARCHAR(128) NOT NULL,
+       card_id            NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       card_name          NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       is_active          BIT           NOT NULL DEFAULT 1,
+       card_serial        INT           NOT NULL DEFAULT 1,
        customer           NVARCHAR(256) NOT NULL DEFAULT '',
        commission_percent NVARCHAR(64)  NOT NULL DEFAULT '',
        row_order          INT           NOT NULL DEFAULT 0
-     )`,
+     )
+     ELSE
+     BEGIN
+       DECLARE @ConstraintName_customer_commissions nvarchar(200);
+       SELECT @ConstraintName_customer_commissions = Name FROM sys.key_constraints WHERE type = 'PK' AND parent_object_id = OBJECT_ID('customer_commissions');
+       IF @ConstraintName_customer_commissions IS NOT NULL
+         EXEC('ALTER TABLE customer_commissions DROP CONSTRAINT ' + @ConstraintName_customer_commissions);
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('customer_commissions') AND name = 'card_id')
+         ALTER TABLE customer_commissions ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('customer_commissions') AND name = 'card_name')
+         ALTER TABLE customer_commissions ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('customer_commissions') AND name = 'is_active')
+         ALTER TABLE customer_commissions ADD is_active BIT NOT NULL DEFAULT 1;
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('customer_commissions') AND name = 'card_serial')
+         ALTER TABLE customer_commissions ADD card_serial INT NOT NULL DEFAULT 1;
+     END`,
 
     // ── cost_as_percent_of_sales ────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='cost_as_percent_of_sales')
      CREATE TABLE cost_as_percent_of_sales (
-       id               NVARCHAR(128) NOT NULL PRIMARY KEY,
+       id               NVARCHAR(128) NOT NULL,
+       card_id          NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       card_name        NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       is_active        BIT           NOT NULL DEFAULT 1,
+       card_serial      INT           NOT NULL DEFAULT 1,
        description      NVARCHAR(256) NOT NULL DEFAULT '',
        percent_of_sales NVARCHAR(64)  NOT NULL DEFAULT '',
        row_order        INT           NOT NULL DEFAULT 0
-     )`,
+     )
+     ELSE
+     BEGIN
+       DECLARE @ConstraintName_cost_as_percent_of_sales nvarchar(200);
+       SELECT @ConstraintName_cost_as_percent_of_sales = Name FROM sys.key_constraints WHERE type = 'PK' AND parent_object_id = OBJECT_ID('cost_as_percent_of_sales');
+       IF @ConstraintName_cost_as_percent_of_sales IS NOT NULL
+         EXEC('ALTER TABLE cost_as_percent_of_sales DROP CONSTRAINT ' + @ConstraintName_cost_as_percent_of_sales);
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('cost_as_percent_of_sales') AND name = 'card_id')
+         ALTER TABLE cost_as_percent_of_sales ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('cost_as_percent_of_sales') AND name = 'card_name')
+         ALTER TABLE cost_as_percent_of_sales ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('cost_as_percent_of_sales') AND name = 'is_active')
+         ALTER TABLE cost_as_percent_of_sales ADD is_active BIT NOT NULL DEFAULT 1;
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('cost_as_percent_of_sales') AND name = 'card_serial')
+         ALTER TABLE cost_as_percent_of_sales ADD card_serial INT NOT NULL DEFAULT 1;
+     END`,
 
     // ── direct_labour_foh ───────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='direct_labour_foh')
@@ -149,11 +225,30 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
     // ── admin_selling ───────────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='admin_selling')
      CREATE TABLE admin_selling (
-       id           NVARCHAR(128) NOT NULL PRIMARY KEY,
+       id           NVARCHAR(128) NOT NULL,
+       card_id      NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       card_name    NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       is_active    BIT           NOT NULL DEFAULT 1,
+       card_serial  INT           NOT NULL DEFAULT 1,
        description  NVARCHAR(256) NOT NULL DEFAULT '',
        cost_per_sam NVARCHAR(64)  NOT NULL DEFAULT '',
        row_order    INT           NOT NULL DEFAULT 0
-     )`,
+     )
+     ELSE
+     BEGIN
+       DECLARE @ConstraintName_admin_selling nvarchar(200);
+       SELECT @ConstraintName_admin_selling = Name FROM sys.key_constraints WHERE type = 'PK' AND parent_object_id = OBJECT_ID('admin_selling');
+       IF @ConstraintName_admin_selling IS NOT NULL
+         EXEC('ALTER TABLE admin_selling DROP CONSTRAINT ' + @ConstraintName_admin_selling);
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'card_id')
+         ALTER TABLE admin_selling ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'card_name')
+         ALTER TABLE admin_selling ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'is_active')
+         ALTER TABLE admin_selling ADD is_active BIT NOT NULL DEFAULT 1;
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'card_serial')
+         ALTER TABLE admin_selling ADD card_serial INT NOT NULL DEFAULT 1;
+     END`,
 
     // ── dropdown_lists ──────────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='dropdown_lists')
@@ -462,21 +557,67 @@ async function saveStyles(pool: Awaited<ReturnType<typeof getPool>>, data: Simpl
 // 4. OTHER EXPENSES (dedicated table: other_expenses)
 // ---------------------------------------------------------------------------
 async function getOtherExpenses(pool: Awaited<ReturnType<typeof getPool>>): Promise<SimpleTableData> {
-  const result = await pool.request().query<{ id: string; description: string; percent_of_sales: string; row_order: number }>(
-    "SELECT id, description, percent_of_sales, row_order FROM other_expenses ORDER BY row_order, id"
-  );
+  const result = await pool.request().query<{
+    id: string;
+    card_id?: string;
+    card_name?: string;
+    is_active?: boolean | number;
+    card_serial?: number;
+    description: string;
+    percent_of_sales: string;
+    row_order: number;
+  }>("SELECT id, card_id, card_name, is_active, card_serial, description, percent_of_sales, row_order FROM other_expenses ORDER BY card_serial, card_id, row_order, id");
 
-  const columns = [
+  const defaultColumns = [
     { key: "description", label: "Description" },
     { key: "percentOfSales", label: "% of Sales" },
   ];
 
-  const rows = result.recordset.map((r) => ({
-    id: r.id,
-    values: { description: r.description, percentOfSales: r.percent_of_sales },
-  }));
+  if (result.recordset.length === 0) {
+    const initialCard: SimpleTableCard = {
+      id: "card-1",
+      serialNo: 1,
+      name: "Card 1",
+      isActive: true,
+      columns: defaultColumns,
+      rows: [],
+    };
+    return { columns: defaultColumns, rows: [], cards: [initialCard], activeCardId: "card-1" };
+  }
 
-  return { columns, rows };
+  const cardMap = new Map<string, SimpleTableCard>();
+  for (const r of result.recordset) {
+    const cId = r.card_id || "card-1";
+    if (!cardMap.has(cId)) {
+      cardMap.set(cId, {
+        id: cId,
+        serialNo: r.card_serial ?? (cardMap.size + 1),
+        name: r.card_name || `Card ${cardMap.size + 1}`,
+        isActive: r.is_active === true || r.is_active === 1,
+        columns: defaultColumns,
+        rows: [],
+      });
+    }
+    const card = cardMap.get(cId)!;
+    card.rows.push({
+      id: r.id,
+      values: { description: r.description, percentOfSales: r.percent_of_sales },
+    });
+  }
+
+  const cards = Array.from(cardMap.values());
+  let activeCard = cards.find((c) => c.isActive);
+  if (!activeCard) {
+    cards[0].isActive = true;
+    activeCard = cards[0];
+  }
+
+  return {
+    columns: activeCard.columns || defaultColumns,
+    rows: activeCard.rows,
+    cards,
+    activeCardId: activeCard.id,
+  };
 }
 
 async function saveOtherExpenses(pool: Awaited<ReturnType<typeof getPool>>, data: SimpleTableData): Promise<void> {
@@ -484,14 +625,23 @@ async function saveOtherExpenses(pool: Awaited<ReturnType<typeof getPool>>, data
   await tx.begin();
   try {
     await new sql.Request(tx).query("DELETE FROM other_expenses");
-    for (let i = 0; i < data.rows.length; i++) {
-      const row = data.rows[i];
-      await new sql.Request(tx)
-        .input("id", sql.NVarChar(128), row.id)
-        .input("description", sql.NVarChar(256), row.values.description ?? "")
-        .input("percent_of_sales", sql.NVarChar(64), row.values.percentOfSales ?? "")
-        .input("row_order", sql.Int, i)
-        .query("INSERT INTO other_expenses (id, description, percent_of_sales, row_order) VALUES (@id, @description, @percent_of_sales, @row_order)");
+    const cardsToSave = data.cards && data.cards.length > 0 ? data.cards : [{
+      id: "card-1", name: "Card 1", serialNo: 1, isActive: true, columns: data.columns, rows: data.rows
+    }];
+    for (const card of cardsToSave) {
+      for (let i = 0; i < card.rows.length; i++) {
+        const row = card.rows[i];
+        await new sql.Request(tx)
+          .input("id", sql.NVarChar(128), row.id)
+          .input("card_id", sql.NVarChar(128), card.id)
+          .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+          .input("is_active", sql.Bit, card.isActive ? 1 : 0)
+          .input("card_serial", sql.Int, card.serialNo || 1)
+          .input("description", sql.NVarChar(256), row.values.description ?? "")
+          .input("percent_of_sales", sql.NVarChar(64), row.values.percentOfSales ?? "")
+          .input("row_order", sql.Int, i)
+          .query("INSERT INTO other_expenses (id, card_id, card_name, is_active, card_serial, description, percent_of_sales, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @description, @percent_of_sales, @row_order)");
+      }
     }
     await tx.commit();
   } catch (err) {
@@ -504,18 +654,63 @@ async function saveOtherExpenses(pool: Awaited<ReturnType<typeof getPool>>, data
 // 5. ORDER TYPES (dedicated table: order_types)
 // ---------------------------------------------------------------------------
 async function getOrderTypes(pool: Awaited<ReturnType<typeof getPool>>): Promise<SimpleTableData> {
-  const result = await pool.request().query<{ id: string; order_type: string; row_order: number }>(
-    "SELECT id, order_type, row_order FROM order_types ORDER BY row_order, id"
-  );
+  const result = await pool.request().query<{
+    id: string;
+    card_id?: string;
+    card_name?: string;
+    is_active?: boolean | number;
+    card_serial?: number;
+    order_type: string;
+    row_order: number;
+  }>("SELECT id, card_id, card_name, is_active, card_serial, order_type, row_order FROM order_types ORDER BY card_serial, card_id, row_order, id");
 
-  const columns = [{ key: "orderType", label: "Order Type" }];
+  const defaultColumns = [{ key: "orderType", label: "Order Type" }];
 
-  const rows = result.recordset.map((r) => ({
-    id: r.id,
-    values: { orderType: r.order_type },
-  }));
+  if (result.recordset.length === 0) {
+    const initialCard: SimpleTableCard = {
+      id: "card-1",
+      serialNo: 1,
+      name: "Card 1",
+      isActive: true,
+      columns: defaultColumns,
+      rows: [],
+    };
+    return { columns: defaultColumns, rows: [], cards: [initialCard], activeCardId: "card-1" };
+  }
 
-  return { columns, rows };
+  const cardMap = new Map<string, SimpleTableCard>();
+  for (const r of result.recordset) {
+    const cId = r.card_id || "card-1";
+    if (!cardMap.has(cId)) {
+      cardMap.set(cId, {
+        id: cId,
+        serialNo: r.card_serial ?? (cardMap.size + 1),
+        name: r.card_name || `Card ${cardMap.size + 1}`,
+        isActive: r.is_active === true || r.is_active === 1,
+        columns: defaultColumns,
+        rows: [],
+      });
+    }
+    const card = cardMap.get(cId)!;
+    card.rows.push({
+      id: r.id,
+      values: { orderType: r.order_type },
+    });
+  }
+
+  const cards = Array.from(cardMap.values());
+  let activeCard = cards.find((c) => c.isActive);
+  if (!activeCard) {
+    cards[0].isActive = true;
+    activeCard = cards[0];
+  }
+
+  return {
+    columns: activeCard.columns || defaultColumns,
+    rows: activeCard.rows,
+    cards,
+    activeCardId: activeCard.id,
+  };
 }
 
 async function saveOrderTypes(pool: Awaited<ReturnType<typeof getPool>>, data: SimpleTableData): Promise<void> {
@@ -523,13 +718,22 @@ async function saveOrderTypes(pool: Awaited<ReturnType<typeof getPool>>, data: S
   await tx.begin();
   try {
     await new sql.Request(tx).query("DELETE FROM order_types");
-    for (let i = 0; i < data.rows.length; i++) {
-      const row = data.rows[i];
-      await new sql.Request(tx)
-        .input("id", sql.NVarChar(128), row.id)
-        .input("order_type", sql.NVarChar(128), row.values.orderType ?? "")
-        .input("row_order", sql.Int, i)
-        .query("INSERT INTO order_types (id, order_type, row_order) VALUES (@id, @order_type, @row_order)");
+    const cardsToSave = data.cards && data.cards.length > 0 ? data.cards : [{
+      id: "card-1", name: "Card 1", serialNo: 1, isActive: true, columns: data.columns, rows: data.rows
+    }];
+    for (const card of cardsToSave) {
+      for (let i = 0; i < card.rows.length; i++) {
+        const row = card.rows[i];
+        await new sql.Request(tx)
+          .input("id", sql.NVarChar(128), row.id)
+          .input("card_id", sql.NVarChar(128), card.id)
+          .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+          .input("is_active", sql.Bit, card.isActive ? 1 : 0)
+          .input("card_serial", sql.Int, card.serialNo || 1)
+          .input("order_type", sql.NVarChar(128), row.values.orderType ?? "")
+          .input("row_order", sql.Int, i)
+          .query("INSERT INTO order_types (id, card_id, card_name, is_active, card_serial, order_type, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @order_type, @row_order)");
+      }
     }
     await tx.commit();
   } catch (err) {
@@ -542,21 +746,67 @@ async function saveOrderTypes(pool: Awaited<ReturnType<typeof getPool>>, data: S
 // 6. CUSTOMER COMMISSIONS (dedicated table: customer_commissions)
 // ---------------------------------------------------------------------------
 async function getCustomerCommissions(pool: Awaited<ReturnType<typeof getPool>>): Promise<SimpleTableData> {
-  const result = await pool.request().query<{ id: string; customer: string; commission_percent: string; row_order: number }>(
-    "SELECT id, customer, commission_percent, row_order FROM customer_commissions ORDER BY row_order, id"
-  );
+  const result = await pool.request().query<{
+    id: string;
+    card_id?: string;
+    card_name?: string;
+    is_active?: boolean | number;
+    card_serial?: number;
+    customer: string;
+    commission_percent: string;
+    row_order: number;
+  }>("SELECT id, card_id, card_name, is_active, card_serial, customer, commission_percent, row_order FROM customer_commissions ORDER BY card_serial, card_id, row_order, id");
 
-  const columns = [
+  const defaultColumns = [
     { key: "customer", label: "Customer" },
     { key: "commissionPercent", label: "Commission %" },
   ];
 
-  const rows = result.recordset.map((r) => ({
-    id: r.id,
-    values: { customer: r.customer, commissionPercent: r.commission_percent },
-  }));
+  if (result.recordset.length === 0) {
+    const initialCard: SimpleTableCard = {
+      id: "card-1",
+      serialNo: 1,
+      name: "Card 1",
+      isActive: true,
+      columns: defaultColumns,
+      rows: [],
+    };
+    return { columns: defaultColumns, rows: [], cards: [initialCard], activeCardId: "card-1" };
+  }
 
-  return { columns, rows };
+  const cardMap = new Map<string, SimpleTableCard>();
+  for (const r of result.recordset) {
+    const cId = r.card_id || "card-1";
+    if (!cardMap.has(cId)) {
+      cardMap.set(cId, {
+        id: cId,
+        serialNo: r.card_serial ?? (cardMap.size + 1),
+        name: r.card_name || `Card ${cardMap.size + 1}`,
+        isActive: r.is_active === true || r.is_active === 1,
+        columns: defaultColumns,
+        rows: [],
+      });
+    }
+    const card = cardMap.get(cId)!;
+    card.rows.push({
+      id: r.id,
+      values: { customer: r.customer, commissionPercent: r.commission_percent },
+    });
+  }
+
+  const cards = Array.from(cardMap.values());
+  let activeCard = cards.find((c) => c.isActive);
+  if (!activeCard) {
+    cards[0].isActive = true;
+    activeCard = cards[0];
+  }
+
+  return {
+    columns: activeCard.columns || defaultColumns,
+    rows: activeCard.rows,
+    cards,
+    activeCardId: activeCard.id,
+  };
 }
 
 async function saveCustomerCommissions(pool: Awaited<ReturnType<typeof getPool>>, data: SimpleTableData): Promise<void> {
@@ -564,14 +814,23 @@ async function saveCustomerCommissions(pool: Awaited<ReturnType<typeof getPool>>
   await tx.begin();
   try {
     await new sql.Request(tx).query("DELETE FROM customer_commissions");
-    for (let i = 0; i < data.rows.length; i++) {
-      const row = data.rows[i];
-      await new sql.Request(tx)
-        .input("id", sql.NVarChar(128), row.id)
-        .input("customer", sql.NVarChar(256), row.values.customer ?? "")
-        .input("commission_percent", sql.NVarChar(64), row.values.commissionPercent ?? "")
-        .input("row_order", sql.Int, i)
-        .query("INSERT INTO customer_commissions (id, customer, commission_percent, row_order) VALUES (@id, @customer, @commission_percent, @row_order)");
+    const cardsToSave = data.cards && data.cards.length > 0 ? data.cards : [{
+      id: "card-1", name: "Card 1", serialNo: 1, isActive: true, columns: data.columns, rows: data.rows
+    }];
+    for (const card of cardsToSave) {
+      for (let i = 0; i < card.rows.length; i++) {
+        const row = card.rows[i];
+        await new sql.Request(tx)
+          .input("id", sql.NVarChar(128), row.id)
+          .input("card_id", sql.NVarChar(128), card.id)
+          .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+          .input("is_active", sql.Bit, card.isActive ? 1 : 0)
+          .input("card_serial", sql.Int, card.serialNo || 1)
+          .input("customer", sql.NVarChar(256), row.values.customer ?? "")
+          .input("commission_percent", sql.NVarChar(64), row.values.commissionPercent ?? "")
+          .input("row_order", sql.Int, i)
+          .query("INSERT INTO customer_commissions (id, card_id, card_name, is_active, card_serial, customer, commission_percent, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @customer, @commission_percent, @row_order)");
+      }
     }
     await tx.commit();
   } catch (err) {
@@ -584,21 +843,67 @@ async function saveCustomerCommissions(pool: Awaited<ReturnType<typeof getPool>>
 // 7. COST AS % OF SALES (dedicated table: cost_as_percent_of_sales)
 // ---------------------------------------------------------------------------
 async function getCostAsPercentOfSales(pool: Awaited<ReturnType<typeof getPool>>): Promise<SimpleTableData> {
-  const result = await pool.request().query<{ id: string; description: string; percent_of_sales: string; row_order: number }>(
-    "SELECT id, description, percent_of_sales, row_order FROM cost_as_percent_of_sales ORDER BY row_order, id"
-  );
+  const result = await pool.request().query<{
+    id: string;
+    card_id?: string;
+    card_name?: string;
+    is_active?: boolean | number;
+    card_serial?: number;
+    description: string;
+    percent_of_sales: string;
+    row_order: number;
+  }>("SELECT id, card_id, card_name, is_active, card_serial, description, percent_of_sales, row_order FROM cost_as_percent_of_sales ORDER BY card_serial, card_id, row_order, id");
 
-  const columns = [
+  const defaultColumns = [
     { key: "description", label: "Description" },
     { key: "percentOfSales", label: "% of Sales" },
   ];
 
-  const rows = result.recordset.map((r) => ({
-    id: r.id,
-    values: { description: r.description, percentOfSales: r.percent_of_sales },
-  }));
+  if (result.recordset.length === 0) {
+    const initialCard: SimpleTableCard = {
+      id: "card-1",
+      serialNo: 1,
+      name: "Card 1",
+      isActive: true,
+      columns: defaultColumns,
+      rows: [],
+    };
+    return { columns: defaultColumns, rows: [], cards: [initialCard], activeCardId: "card-1" };
+  }
 
-  return { columns, rows };
+  const cardMap = new Map<string, SimpleTableCard>();
+  for (const r of result.recordset) {
+    const cId = r.card_id || "card-1";
+    if (!cardMap.has(cId)) {
+      cardMap.set(cId, {
+        id: cId,
+        serialNo: r.card_serial ?? (cardMap.size + 1),
+        name: r.card_name || `Card ${cardMap.size + 1}`,
+        isActive: r.is_active === true || r.is_active === 1,
+        columns: defaultColumns,
+        rows: [],
+      });
+    }
+    const card = cardMap.get(cId)!;
+    card.rows.push({
+      id: r.id,
+      values: { description: r.description, percentOfSales: r.percent_of_sales },
+    });
+  }
+
+  const cards = Array.from(cardMap.values());
+  let activeCard = cards.find((c) => c.isActive);
+  if (!activeCard) {
+    cards[0].isActive = true;
+    activeCard = cards[0];
+  }
+
+  return {
+    columns: activeCard.columns || defaultColumns,
+    rows: activeCard.rows,
+    cards,
+    activeCardId: activeCard.id,
+  };
 }
 
 async function saveCostAsPercentOfSales(pool: Awaited<ReturnType<typeof getPool>>, data: SimpleTableData): Promise<void> {
@@ -606,14 +911,23 @@ async function saveCostAsPercentOfSales(pool: Awaited<ReturnType<typeof getPool>
   await tx.begin();
   try {
     await new sql.Request(tx).query("DELETE FROM cost_as_percent_of_sales");
-    for (let i = 0; i < data.rows.length; i++) {
-      const row = data.rows[i];
-      await new sql.Request(tx)
-        .input("id", sql.NVarChar(128), row.id)
-        .input("description", sql.NVarChar(256), row.values.description ?? "")
-        .input("percent_of_sales", sql.NVarChar(64), row.values.percentOfSales ?? "")
-        .input("row_order", sql.Int, i)
-        .query("INSERT INTO cost_as_percent_of_sales (id, description, percent_of_sales, row_order) VALUES (@id, @description, @percent_of_sales, @row_order)");
+    const cardsToSave = data.cards && data.cards.length > 0 ? data.cards : [{
+      id: "card-1", name: "Card 1", serialNo: 1, isActive: true, columns: data.columns, rows: data.rows
+    }];
+    for (const card of cardsToSave) {
+      for (let i = 0; i < card.rows.length; i++) {
+        const row = card.rows[i];
+        await new sql.Request(tx)
+          .input("id", sql.NVarChar(128), row.id)
+          .input("card_id", sql.NVarChar(128), card.id)
+          .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+          .input("is_active", sql.Bit, card.isActive ? 1 : 0)
+          .input("card_serial", sql.Int, card.serialNo || 1)
+          .input("description", sql.NVarChar(256), row.values.description ?? "")
+          .input("percent_of_sales", sql.NVarChar(64), row.values.percentOfSales ?? "")
+          .input("row_order", sql.Int, i)
+          .query("INSERT INTO cost_as_percent_of_sales (id, card_id, card_name, is_active, card_serial, description, percent_of_sales, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @description, @percent_of_sales, @row_order)");
+      }
     }
     await tx.commit();
   } catch (err) {
@@ -796,21 +1110,67 @@ async function saveDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>, da
 // 9. ADMIN AND SELLING (dedicated table: admin_selling)
 // ---------------------------------------------------------------------------
 async function getAdminSelling(pool: Awaited<ReturnType<typeof getPool>>): Promise<SimpleTableData> {
-  const result = await pool.request().query<{ id: string; description: string; cost_per_sam: string; row_order: number }>(
-    "SELECT id, description, cost_per_sam, row_order FROM admin_selling ORDER BY row_order, id"
-  );
+  const result = await pool.request().query<{
+    id: string;
+    card_id?: string;
+    card_name?: string;
+    is_active?: boolean | number;
+    card_serial?: number;
+    description: string;
+    cost_per_sam: string;
+    row_order: number;
+  }>("SELECT id, card_id, card_name, is_active, card_serial, description, cost_per_sam, row_order FROM admin_selling ORDER BY card_serial, card_id, row_order, id");
 
-  const columns = [
+  const defaultColumns = [
     { key: "description", label: "Description" },
     { key: "costPerSam", label: "Cost/SAM" },
   ];
 
-  const rows = result.recordset.map((r) => ({
-    id: r.id,
-    values: { description: r.description, costPerSam: r.cost_per_sam },
-  }));
+  if (result.recordset.length === 0) {
+    const initialCard: SimpleTableCard = {
+      id: "card-1",
+      serialNo: 1,
+      name: "Card 1",
+      isActive: true,
+      columns: defaultColumns,
+      rows: [],
+    };
+    return { columns: defaultColumns, rows: [], cards: [initialCard], activeCardId: "card-1" };
+  }
 
-  return { columns, rows };
+  const cardMap = new Map<string, SimpleTableCard>();
+  for (const r of result.recordset) {
+    const cId = r.card_id || "card-1";
+    if (!cardMap.has(cId)) {
+      cardMap.set(cId, {
+        id: cId,
+        serialNo: r.card_serial ?? (cardMap.size + 1),
+        name: r.card_name || `Card ${cardMap.size + 1}`,
+        isActive: r.is_active === true || r.is_active === 1,
+        columns: defaultColumns,
+        rows: [],
+      });
+    }
+    const card = cardMap.get(cId)!;
+    card.rows.push({
+      id: r.id,
+      values: { description: r.description, costPerSam: r.cost_per_sam },
+    });
+  }
+
+  const cards = Array.from(cardMap.values());
+  let activeCard = cards.find((c) => c.isActive);
+  if (!activeCard) {
+    cards[0].isActive = true;
+    activeCard = cards[0];
+  }
+
+  return {
+    columns: activeCard.columns || defaultColumns,
+    rows: activeCard.rows,
+    cards,
+    activeCardId: activeCard.id,
+  };
 }
 
 async function saveAdminSelling(pool: Awaited<ReturnType<typeof getPool>>, data: SimpleTableData): Promise<void> {
@@ -818,14 +1178,23 @@ async function saveAdminSelling(pool: Awaited<ReturnType<typeof getPool>>, data:
   await tx.begin();
   try {
     await new sql.Request(tx).query("DELETE FROM admin_selling");
-    for (let i = 0; i < data.rows.length; i++) {
-      const row = data.rows[i];
-      await new sql.Request(tx)
-        .input("id", sql.NVarChar(128), row.id)
-        .input("description", sql.NVarChar(256), row.values.description ?? "")
-        .input("cost_per_sam", sql.NVarChar(64), row.values.costPerSam ?? "")
-        .input("row_order", sql.Int, i)
-        .query("INSERT INTO admin_selling (id, description, cost_per_sam, row_order) VALUES (@id, @description, @cost_per_sam, @row_order)");
+    const cardsToSave = data.cards && data.cards.length > 0 ? data.cards : [{
+      id: "card-1", name: "Card 1", serialNo: 1, isActive: true, columns: data.columns, rows: data.rows
+    }];
+    for (const card of cardsToSave) {
+      for (let i = 0; i < card.rows.length; i++) {
+        const row = card.rows[i];
+        await new sql.Request(tx)
+          .input("id", sql.NVarChar(128), row.id)
+          .input("card_id", sql.NVarChar(128), card.id)
+          .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+          .input("is_active", sql.Bit, card.isActive ? 1 : 0)
+          .input("card_serial", sql.Int, card.serialNo || 1)
+          .input("description", sql.NVarChar(256), row.values.description ?? "")
+          .input("cost_per_sam", sql.NVarChar(64), row.values.costPerSam ?? "")
+          .input("row_order", sql.Int, i)
+          .query("INSERT INTO admin_selling (id, card_id, card_name, is_active, card_serial, description, cost_per_sam, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @description, @cost_per_sam, @row_order)");
+      }
     }
     await tx.commit();
   } catch (err) {

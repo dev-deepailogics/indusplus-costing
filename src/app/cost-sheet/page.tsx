@@ -314,33 +314,33 @@ function CostSheetContent() {
   const [costingDate, setCostingDate] = useState(
     () => new Date().toISOString().split("T")[0],
   );
-  const [costingStage, setCostingStage] = useState("Quote");
-  const [country, setCountry] = useState("SPAIN");
-  const [paymentTerms, setPaymentTerms] = useState("LC-60 days");
-  const [shipmentMode, setShipmentMode] = useState("Sea");
-  const [deliveryTerms, setDeliveryTerms] = useState("FOB");
+  const [costingStage, setCostingStage] = useState("");
+  const [country, setCountry] = useState("");
+  const [paymentTerms, setPaymentTerms] = useState("");
+  const [shipmentMode, setShipmentMode] = useState("");
+  const [deliveryTerms, setDeliveryTerms] = useState("");
   const [paritySale, setParitySale] = useState<number>();
   const [parityProcurement, setParityProcurement] = useState<number>();
 
   // New editable style fields
   const [customerName, setCustomerName] = useState("");
-  const [styleCategory, setStyleCategory] = useState("Top Ware");
-  const [washType, setWashType] = useState("Rinse");
+  const [styleCategory, setStyleCategory] = useState("");
+  const [washType, setWashType] = useState("");
   const [orderQuantity, setOrderQuantity] = useState(0);
-  const [orderType, setOrderType] = useState<"Denim" | "Non Denim">("Denim");
+  const [orderType, setOrderType] = useState<"Denim" | "Non Denim" | "">("");
   const [smvSewingInput, setSmvSewingInput] = useState<string>("");
   const [noOfColors, setNoOfColors] = useState<number>(1);
-  const [merchGroup, setMerchGroup] = useState<string>("Ayaz");
+  const [merchGroup, setMerchGroup] = useState("");
   const [workOrderNumber, setWorkOrderNumber] = useState<string>("");
   const [deliveryDestination, setDeliveryDestination] =
-    useState<string>("EURO");
+    useState("");
   const [exFactoryDate, setExFactoryDate] = useState<string>(() => {
     const d = new Date();
     d.setMonth(d.getMonth() + 3);
     return d.toISOString().split("T")[0];
   });
   const [inhouseOrSubcontract, setInhouseOrSubcontract] =
-    useState<string>("INHOUSE");
+    useState("");
   const [rebatePct, setRebatePct] = useState<number>(0);
 
   // Operational Inputs
@@ -424,46 +424,18 @@ function CostSheetContent() {
   }, []);
 
   // Options lists (will subscribe to parameter dropdown-lists if exists)
-  const [paymentTermsList, setPaymentTermsList] = useState([
-    "LC at Sight",
-    "LC-30 days",
-    "LC-45 days",
-    "LC-60 days",
-    "LC-75 days",
-    "DA",
-    "Advance",
-  ]);
-  const [deliveryTermsList, setDeliveryTermsList] = useState([
-    "FOB",
-    "CIF",
-    "CFR",
-    "DDP/LDP",
-  ]);
-  const [countriesList, setCountriesList] = useState([
-    "SPAIN",
-    "GERMANY",
-    "USA",
-    "UK",
-    "FRANCE",
-    "ITALY",
-  ]);
+  const [paymentTermsList, setPaymentTermsList] = useState<string[]>([]);
+  const [deliveryTermsList, setDeliveryTermsList] = useState<string[]>([]);
+  const [countriesList, setCountriesList] = useState<string[]>([]);
   const [customersList, setCustomersList] = useState<string[]>([]);
-  const [categoriesList, setCategoriesList] = useState([
-    "Top Ware",
-    "Men's Pant",
-    "Ladies Pant",
-    "Shorts",
-    "Shirt",
-  ]);
-  const [washTypesList, setWashTypesList] = useState([
-    "Rinse",
-    "Dyeing",
-    "Softner",
-    "Stone Wash",
-    "EW/Biopolish",
-    "Silicon Ball",
-  ]);
-  const [orderTypesList, setOrderTypesList] = useState(["Denim", "Non Denim"]);
+  const [categoriesList, setCategoriesList] = useState<string[]>([]);
+  const [washTypesList, setWashTypesList] = useState<string[]>([]);
+  const [orderTypesList, setOrderTypesList] = useState<string[]>([]);
+  const [costingStageList, setCostingStageList] = useState<string[]>([]);
+  const [shipmentModeList, setShipmentModeList] = useState<string[]>([]);
+  const [merchGroupList, setMerchGroupList] = useState<string[]>([]);
+  const [delvDestinationList, setDelvDestinationList] = useState<string[]>([]);
+  const [inhouseSubcontractList, setInhouseSubcontractList] = useState<string[]>([]);
 
   // indus-plus: Styles & Work Orders from S_StyleAndWorkOrdersView
   const [indusStyleRows, setIndusStyleRows] = useState<StyleWorkOrderRow[]>([]);
@@ -601,10 +573,22 @@ function CostSheetContent() {
           if (cats) setCategoriesList(cats);
           if (washes) setWashTypesList(washes);
           const orderTypes = data.lists.find(
-            (l) => l.key === "orderType" || l.key === "Order Type",
+            (l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "ordertype",
           )?.items;
           if (orderTypes && orderTypes.length > 0)
             setOrderTypesList(orderTypes);
+
+          const cStage = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "costingstage")?.items;
+          const sMode = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "shipmentmode")?.items;
+          const mGroup = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "merchgroup")?.items;
+          const dDest = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "deliverydestination")?.items;
+          const inhSub = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "inhouseorsubcontract")?.items;
+
+          if (cStage) setCostingStageList(cStage);
+          if (sMode) setShipmentModeList(sMode);
+          if (mGroup) setMerchGroupList(mGroup);
+          if (dDest) setDelvDestinationList(dDest);
+          if (inhSub) setInhouseSubcontractList(inhSub);
         }
       },
     );
@@ -823,7 +807,7 @@ function CostSheetContent() {
 
   // Adjust payment days based on payment terms dropdown
   useEffect(() => {
-    const match = paymentTerms.match(/(\d+)\s*days/i);
+    const match = paymentTerms?.match(/(\d+)\s*days/i);
     Promise.resolve().then(() => {
       if (match) {
         setPaymentTermsDays(parseInt(match[1], 10));
@@ -1680,13 +1664,11 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Order Type
                 </span>
-                <input
-                  type="text"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={orderType}
-                  onChange={(e) =>
-                    setOrderType(e.target.value as "Denim" | "Non Denim")
-                  }
+                  onChange={(val) => setOrderType(val as "Denim" | "Non Denim")}
+                  options={[{ value: "", label: "" }, ...orderTypesList.map(t => ({ value: t, label: t }))]}
                 />
               </div>
 
@@ -1793,12 +1775,12 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Style Category
                 </span>
-                <input
-                  type="text"
+                <SearchableSelect
+                  className="w-32"
                   disabled={isDbSelected}
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
                   value={styleCategory}
-                  onChange={(e) => setStyleCategory(e.target.value)}
+                  onChange={(val) => setStyleCategory(val)}
+                  options={[{ value: "", label: "" }, ...categoriesList.map(t => ({ value: t, label: t }))]}
                 />
               </div>
 
@@ -1852,12 +1834,12 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Wash Type:
                 </span>
-                <input
-                  type="text"
+                <SearchableSelect
+                  className="w-32"
                   disabled={isDbSelected}
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
                   value={washType}
-                  onChange={(e) => setWashType(e.target.value)}
+                  onChange={(val) => setWashType(val)}
+                  options={[{ value: "", label: "" }, ...washTypesList.map(t => ({ value: t, label: t }))]}
                 />
               </div>
 
@@ -1911,11 +1893,11 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Costing Stage
                 </span>
-                <input
-                  type="text"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={costingStage}
-                  onChange={(e) => setCostingStage(e.target.value)}
+                  onChange={(val) => setCostingStage(val)}
+                  options={[{ value: "", label: "" }, ...costingStageList.map(t => ({ value: t, label: t }))]}
                 />
               </div>
 
@@ -1923,11 +1905,11 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Country
                 </span>
-                <input
-                  type="text"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={country}
-                  onChange={(e) => setCountry(e.target.value)}
+                  onChange={(val) => setCountry(val)}
+                  options={[{ value: "", label: "" }, ...countriesList.map(t => ({ value: t, label: t }))]}
                 />
               </div>
 
@@ -1935,11 +1917,11 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Payment Terms
                 </span>
-                <input
-                  type="text"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={paymentTerms}
-                  onChange={(e) => setPaymentTerms(e.target.value)}
+                  onChange={(val) => setPaymentTerms(val)}
+                  options={[{ value: "", label: "" }, ...paymentTermsList.map(t => ({ value: t, label: t }))]}
                 />
               </div>
 
@@ -1947,11 +1929,11 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Shipment mode
                 </span>
-                <input
-                  type="text"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={shipmentMode}
-                  onChange={(e) => setShipmentMode(e.target.value)}
+                  onChange={(val) => setShipmentMode(val)}
+                  options={[{ value: "", label: "" }, ...shipmentModeList.map(t => ({ value: t, label: t }))]}
                 />
               </div>
 
@@ -1959,11 +1941,11 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Delivery terms
                 </span>
-                <input
-                  type="text"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={deliveryTerms}
-                  onChange={(e) => setDeliveryTerms(e.target.value)}
+                  onChange={(val) => setDeliveryTerms(val)}
+                  options={[{ value: "", label: "" }, ...deliveryTermsList.map(t => ({ value: t, label: t }))]}
                 />
               </div>
 
@@ -1971,11 +1953,11 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Merch_Group
                 </span>
-                <input
-                  type="text"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={merchGroup}
-                  onChange={(e) => setMerchGroup(e.target.value)}
+                  onChange={(val) => setMerchGroup(val)}
+                  options={[{ value: "", label: "" }, ...merchGroupList.map(t => ({ value: t, label: t }))]}
                 />
               </div>
 
@@ -1983,11 +1965,11 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Delv. Destination
                 </span>
-                <input
-                  type="text"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={deliveryDestination}
-                  onChange={(e) => setDeliveryDestination(e.target.value)}
+                  onChange={(val) => setDeliveryDestination(val)}
+                  options={[{ value: "", label: "" }, ...delvDestinationList.map(t => ({ value: t, label: t }))]}
                 />
               </div>
 
@@ -2019,11 +2001,11 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Inhouse/Sub-contract
                 </span>
-                <input
-                  type="text"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={inhouseOrSubcontract}
-                  onChange={(e) => setInhouseOrSubcontract(e.target.value)}
+                  onChange={(val) => setInhouseOrSubcontract(val)}
+                  options={[{ value: "", label: "" }, ...inhouseSubcontractList.map(t => ({ value: t, label: t }))]}
                 />
               </div>
             </div>

@@ -29,6 +29,16 @@ import { Badge } from "@/components/ui/badge";
 import type { SimpleTableData, SimpleTableCard, SimpleColumn, SimpleRow } from "@/lib/parameters/types";
 import { PromptDialog } from "./prompt-dialog";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function slugifyKey(label: string): string {
   return label
@@ -47,19 +57,22 @@ export function SimpleTableEditor({
   data: SimpleTableData;
   onSave: (data: SimpleTableData) => Promise<void>;
 }) {
-  // Normalize cards
-  const cards: SimpleTableCard[] = (data.cards && data.cards.length > 0)
-    ? data.cards
-    : [
-        {
-          id: "card-1",
-          serialNo: 1,
-          name: "Card 1",
-          isActive: true,
-          columns: data.columns,
-          rows: data.rows,
-        },
-      ];
+  // Local state for cards
+  const [cards, setCards] = useState<SimpleTableCard[]>(
+    (data.cards && data.cards.length > 0)
+      ? data.cards
+      : [
+          {
+            id: "card-1",
+            serialNo: 1,
+            name: "Card 1",
+            isActive: true,
+            columns: data.columns,
+            rows: data.rows,
+          },
+        ]
+  );
+  const [hasChanges, setHasChanges] = useState(false);
 
   const initialSelectedId =
     data.activeCardId ||
@@ -74,8 +87,28 @@ export function SimpleTableEditor({
   const [deleteRowId, setDeleteRowId] = useState<string | null>(null);
   const [deleteColKey, setDeleteColKey] = useState<string | null>(null);
   const [deleteCardId, setDeleteCardId] = useState<string | null>(null);
+  const [activeConfirmCardId, setActiveConfirmCardId] = useState<string | null>(null);
 
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Sync local cards if data prop changes externally
+  useEffect(() => {
+    if (hasChanges) return; // Prevent overwriting unsaved changes from backend polling
+
+    setCards(
+      (data.cards && data.cards.length > 0)
+        ? data.cards
+        : [
+            {
+              id: "card-1",
+              serialNo: 1,
+              name: "Card 1",
+              isActive: true,
+              columns: data.columns,
+              rows: data.rows,
+            },
+          ]
+    );
+    setHasChanges(false);
+  }, [data, hasChanges]);
 
   // Keep selected card in sync if list changes
   useEffect(() => {
@@ -84,6 +117,37 @@ export function SimpleTableEditor({
       setSelectedCardId(fallback);
     }
   }, [cards, selectedCardId]);
+
+  // Warn before leaving the page with unsaved changes (both browser reload and internal Next.js links)
+  useEffect(() => {
+    if (!hasChanges) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      const target = (e.target as Element).closest('a');
+      if (target && target.href && target.origin === window.location.origin) {
+        // Prevent if navigating away from current page
+        if (target.pathname !== window.location.pathname) {
+          if (!window.confirm("You have unsaved changes. Are you sure you want to leave this page?")) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("click", handleClick, true);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("click", handleClick, true);
+    };
+  }, [hasChanges]);
 
   const currentCard = cards.find((c) => c.id === selectedCardId) || cards[0];
   const currentColumns: SimpleColumn[] =
@@ -107,61 +171,50 @@ export function SimpleTableEditor({
         c.label.toLowerCase().includes("per piece")
     );
 
-  function scheduleSave(nextCards: SimpleTableCard[], newActiveId?: string) {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      const targetActiveId =
-        newActiveId ||
-        nextCards.find((c) => c.isActive)?.id ||
-        nextCards[0]?.id ||
-        "card-1";
-      const activeCard =
-        nextCards.find((c) => c.id === targetActiveId) || nextCards[0];
-
-      const payload: SimpleTableData = {
-        ...data,
-        columns: activeCard.columns,
-        rows: activeCard.rows,
-        cards: nextCards,
-        activeCardId: activeCard.id,
-      };
-
-      await onSave(payload);
-      toast.success("Saved");
-    }, 500);
-  }
-
-  // Set card as active (only one card remains active at a time)
-  async function handleSetActive(cardId: string) {
-    const nextCards = cards.map((c) => ({
-      ...c,
-      isActive: c.id === cardId,
-    }));
-    const activeC = nextCards.find((c) => c.id === cardId) || nextCards[0];
-
+  async function handleManualSave() {
+    const activeC = cards.find((c) => c.isActive) || cards[0];
     const payload: SimpleTableData = {
       ...data,
       columns: activeC.columns,
       rows: activeC.rows,
-      cards: nextCards,
+      cards: cards,
       activeCardId: activeC.id,
     };
-
     await onSave(payload);
-    toast.success(`"${activeC.name}" is now Active and used in Cost Sheet`);
+    setHasChanges(false);
+    toast.success("Changes saved successfully");
+  }
+
+  // Set card as active (only one card remains active at a time)
+  function handleSetActive(cardId: string) {
+    const nextCards = cards.map((c) => ({
+      ...c,
+      isActive: c.id === cardId,
+    }));
+    setCards(nextCards);
+    setHasChanges(true);
+    toast.success(`"${nextCards.find((c) => c.id === cardId)?.name}" set as Active (Unsaved)`);
   }
 
   // Create a new card
-  async function handleCreateCard(cardName: string) {
+  function handleCreateCard(cardName: string) {
     const nextSerial = Math.max(0, ...cards.map((c) => c.serialNo || 0)) + 1;
     const newId = `card-${Date.now()}`;
     const name = cardName.trim() || `Card ${nextSerial}`;
 
-    // Fresh rows cloned from template / current
-    const newRows: SimpleRow[] = currentRows.map((r, idx) => ({
-      id: `row-${Date.now()}-${idx}`,
-      values: { ...r.values },
-    }));
+    // Fresh rows cloned from template / current but with empty input values
+    const newRows: SimpleRow[] = currentRows.map((r, idx) => {
+      const emptyValues = { ...r.values };
+      for (const key of Object.keys(emptyValues)) {
+        if (!["description", "customer", "orderType", "useType", "use_type"].includes(key)) {
+          emptyValues[key] = "";
+        }
+      }
+      return {
+        id: `row-${Date.now()}-${idx}`,
+        values: emptyValues,
+      };
+    });
 
     const newCard: SimpleTableCard = {
       id: newId,
@@ -173,18 +226,14 @@ export function SimpleTableEditor({
     };
 
     const nextCards = [...cards, newCard];
-    const payload: SimpleTableData = {
-      ...data,
-      cards: nextCards,
-    };
-
+    setCards(nextCards);
     setSelectedCardId(newId);
-    await onSave(payload);
-    toast.success(`Created "${name}"`);
+    setHasChanges(true);
+    toast.success(`Created "${name}" (Unsaved)`);
   }
 
   // Duplicate current card
-  async function handleDuplicateCard(targetCard?: SimpleTableCard) {
+  function handleDuplicateCard(targetCard?: SimpleTableCard) {
     const cardToDuplicate = targetCard || currentCard;
     const nextSerial = Math.max(0, ...cards.map((c) => c.serialNo || 0)) + 1;
     const newId = `card-${Date.now()}`;
@@ -205,31 +254,23 @@ export function SimpleTableEditor({
     };
 
     const nextCards = [...cards, newCard];
-    const payload: SimpleTableData = {
-      ...data,
-      cards: nextCards,
-    };
-
+    setCards(nextCards);
     setSelectedCardId(newId);
-    await onSave(payload);
-    toast.success(`Duplicated as "${name}"`);
+    setHasChanges(true);
+    toast.success(`Duplicated as "${name}" (Unsaved)`);
   }
 
   // Rename card
-  async function handleRenameCard(newName: string) {
+  function handleRenameCard(newName: string) {
     const trimmed = newName.trim();
     if (!trimmed) return;
 
     const nextCards = cards.map((c) =>
       c.id === currentCard.id ? { ...c, name: trimmed } : c
     );
-    const payload: SimpleTableData = {
-      ...data,
-      cards: nextCards,
-    };
-
-    await onSave(payload);
-    toast.success("Card renamed");
+    setCards(nextCards);
+    setHasChanges(true);
+    toast.success("Card renamed (Unsaved)");
   }
 
   // Delete card
@@ -246,6 +287,9 @@ export function SimpleTableEditor({
       remaining[0].isActive = true;
     }
 
+    setCards(remaining);
+    setSelectedCardId(remaining[0].id);
+
     const activeC = remaining.find((c) => c.isActive) || remaining[0];
     const payload: SimpleTableData = {
       ...data,
@@ -255,12 +299,12 @@ export function SimpleTableEditor({
       activeCardId: activeC.id,
     };
 
-    setSelectedCardId(remaining[0].id);
     await onSave(payload);
-    toast.success("Card deleted");
+    setHasChanges(false);
+    toast.success("Card deleted from Database");
   }
 
-  // Cell editing - ALLOWS BOTH VALUES AT THE SAME TIME
+  // Cell editing
   function updateCell(rowId: string, colKey: string, value: string) {
     const updatedRows = currentRows.map((r) => {
       if (r.id !== rowId) return r;
@@ -271,7 +315,8 @@ export function SimpleTableEditor({
       c.id === currentCard.id ? { ...c, rows: updatedRows } : c
     );
 
-    scheduleSave(nextCards);
+    setCards(nextCards);
+    setHasChanges(true);
   }
 
   // Radio button toggle for SAM vs PER PIECE
@@ -285,18 +330,8 @@ export function SimpleTableEditor({
       c.id === currentCard.id ? { ...c, rows: updatedRows } : c
     );
 
-    const activeC = nextCards.find((c) => c.isActive) || nextCards[0];
-    const payload: SimpleTableData = {
-      ...data,
-      columns: activeC.columns,
-      rows: activeC.rows,
-      cards: nextCards,
-      activeCardId: activeC.id,
-    };
-
-    onSave(payload).then(() => {
-      toast.success(`Set to use ${useType === "sam" ? "Cost/SAM" : "PER PIECE"}`);
-    });
+    setCards(nextCards);
+    setHasChanges(true);
   }
 
   function addRow() {
@@ -311,15 +346,8 @@ export function SimpleTableEditor({
       c.id === currentCard.id ? { ...c, rows: [...c.rows, newRow] } : c
     );
 
-    const activeC = nextCards.find((c) => c.isActive) || nextCards[0];
-    const payload: SimpleTableData = {
-      ...data,
-      columns: activeC.columns,
-      rows: activeC.rows,
-      cards: nextCards,
-      activeCardId: activeC.id,
-    };
-    onSave(payload).then(() => toast.success("Row added"));
+    setCards(nextCards);
+    setHasChanges(true);
   }
 
   function addColumn(label: string) {
@@ -335,15 +363,8 @@ export function SimpleTableEditor({
       rows: c.rows.map((r) => ({ ...r, values: { ...r.values, [key]: "" } })),
     }));
 
-    const activeC = nextCards.find((c) => c.isActive) || nextCards[0];
-    const payload: SimpleTableData = {
-      ...data,
-      columns: activeC.columns,
-      rows: activeC.rows,
-      cards: nextCards,
-      activeCardId: activeC.id,
-    };
-    onSave(payload).then(() => toast.success("Column added"));
+    setCards(nextCards);
+    setHasChanges(true);
   }
 
   function removeRow(rowId: string) {
@@ -353,15 +374,8 @@ export function SimpleTableEditor({
         : c
     );
 
-    const activeC = nextCards.find((c) => c.isActive) || nextCards[0];
-    const payload: SimpleTableData = {
-      ...data,
-      columns: activeC.columns,
-      rows: activeC.rows,
-      cards: nextCards,
-      activeCardId: activeC.id,
-    };
-    onSave(payload).then(() => toast.success("Row deleted"));
+    setCards(nextCards);
+    setHasChanges(true);
   }
 
   function removeColumn(colKey: string) {
@@ -375,15 +389,8 @@ export function SimpleTableEditor({
       }),
     }));
 
-    const activeC = nextCards.find((c) => c.isActive) || nextCards[0];
-    const payload: SimpleTableData = {
-      ...data,
-      columns: activeC.columns,
-      rows: activeC.rows,
-      cards: nextCards,
-      activeCardId: activeC.id,
-    };
-    onSave(payload).then(() => toast.success("Column deleted"));
+    setCards(nextCards);
+    setHasChanges(true);
   }
 
   const deleteColLabel = currentColumns.find((c) => c.key === deleteColKey)?.label;
@@ -470,7 +477,7 @@ export function SimpleTableEditor({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleSetActive(card.id);
+                        setActiveConfirmCardId(card.id);
                       }}
                       className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-0.5"
                       title="Make this card active in cost sheet"
@@ -529,7 +536,7 @@ export function SimpleTableEditor({
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Viewing and editing parameters for {currentCard.name}. Changes are automatically saved to this card.
+                Viewing and editing parameters for {currentCard.name}. {hasChanges && <span className="text-amber-600 font-medium">You have unsaved changes.</span>}
               </p>
             </div>
           </div>
@@ -547,7 +554,7 @@ export function SimpleTableEditor({
                 variant="outline"
                 size="sm"
                 className="h-9 px-3.5 border-emerald-600 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500 dark:text-emerald-300 dark:hover:bg-emerald-950/40 gap-1.5 font-semibold text-xs shadow-xs"
-                onClick={() => handleSetActive(currentCard.id)}
+                onClick={() => setActiveConfirmCardId(currentCard.id)}
               >
                 <Power className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span>Set as Active (Make Active in Cost Sheet)</span>
@@ -698,13 +705,24 @@ export function SimpleTableEditor({
         </div>
 
         {/* Table Action Buttons */}
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={addRow}>
-            <Plus className="mr-1.5 size-4" /> Add row
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setAddColOpen(true)}>
-            <Plus className="mr-1.5 size-4" /> Add field
-          </Button>
+        <div className="flex flex-wrap gap-2 items-center justify-between">
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={addRow}>
+              <Plus className="mr-1.5 size-4" /> Add row
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setAddColOpen(true)}>
+              <Plus className="mr-1.5 size-4" /> Add field
+            </Button>
+          </div>
+          {hasChanges && (
+            <Button 
+              size="sm" 
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold" 
+              onClick={handleManualSave}
+            >
+              <Check className="mr-1.5 size-4" /> Save Changes
+            </Button>
+          )}
         </div>
       </div>
 
@@ -761,6 +779,30 @@ export function SimpleTableEditor({
         description="This will permanently delete this card and its history. This cannot be undone."
         onConfirm={() => deleteCardId && handleDeleteCard(deleteCardId)}
       />
+
+      <AlertDialog open={activeConfirmCardId !== null} onOpenChange={(open) => !open && setActiveConfirmCardId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Make this card active?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to set "{cards.find((c) => c.id === activeConfirmCardId)?.name}" as the active card? This card will be used in the Cost Sheet calculations.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (activeConfirmCardId) {
+                  handleSetActive(activeConfirmCardId);
+                  setActiveConfirmCardId(null);
+                }
+              }}
+            >
+              Set as Active
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
