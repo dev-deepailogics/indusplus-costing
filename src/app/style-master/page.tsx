@@ -50,114 +50,22 @@ import type {
 import { subscribeToTable } from "@/lib/parameters/api";
 import type { DropdownListsData, SimpleTableData } from "@/lib/parameters/types";
 
-// Default options if database list is empty
-const DEFAULT_CUSTOMERS = [
-  "Duer",
-  "Zara",
-  "Mustang",
-  "Miniconf",
-  "Mohito",
-  "Retrojeans",
-];
-const DEFAULT_CATEGORIES = [
-  "Top Ware",
-  "Men's Pant",
-  "Ladies Pant",
-  "Shorts",
-  "Shirt",
-];
-const DEFAULT_WASHES = [
-  "Rinse",
-  "Dyeing",
-  "Softner",
-  "Stone Wash",
-  "EW/Biopolish",
-  "Silicon Ball",
-];
-
-const DEFAULT_ACCESSORIES_TEMPLATES = [
-  { category: "Zipper", itemName: "Zippers" },
-  { category: "Thread", itemName: "Thread" },
-  { category: "Label", itemName: "Labels" },
-  { category: "Trims", itemName: "Trims Mix Materials" },
-  { category: "Poly Bag", itemName: "Poly Bags" },
-  { category: "Tag", itemName: "Tag" },
-  { category: "Carton", itemName: "Cartons" },
-  { category: "Button & Rivets", itemName: "Button & Rivets" },
-  { category: "Packing Mix Materials", itemName: "Packing Mix Materials" },
-  { category: "Sticker", itemName: "Sticker" },
-];
-
-const DEFAULT_CHEMICALS_TEMPLATES = [{ washItem: "Rinse" }];
-
-const DEFAULT_SPECIAL_TEMPLATES = [
-  { itemName: "Embroidery" },
-  { itemName: "Printing Charges" },
-  { itemName: "Testing Charges" },
-  { itemName: "Inspection Charges" },
-];
-
 function mergeAccessories(
   existing: BOMAccessoriesItem[] | undefined,
 ): BOMAccessoriesItem[] {
-  const list = [...(existing || [])];
-  DEFAULT_ACCESSORIES_TEMPLATES.forEach((tmpl) => {
-    const hasCategory = list.some(
-      (item) => item.category?.toLowerCase() === tmpl.category.toLowerCase(),
-    );
-    if (!hasCategory) {
-      list.push({
-        category: tmpl.category,
-        itemName: tmpl.itemName,
-        consPerPc: 0,
-        ratePKR: 0,
-        totalCostPKR: 0,
-      });
-    }
-  });
-  return list;
+  return existing ? [...existing] : [];
 }
 
 function mergeChemicals(
   existing: BOMChemicalsItem[] | undefined,
 ): BOMChemicalsItem[] {
-  const list = [...(existing || [])];
-  DEFAULT_CHEMICALS_TEMPLATES.forEach((tmpl) => {
-    const hasItem = list.some(
-      (item) => item.washItem?.toLowerCase() === tmpl.washItem.toLowerCase(),
-    );
-    if (!hasItem) {
-      list.push({
-        washItem: tmpl.washItem,
-        consPerPc: 0,
-        ratePKR: 0,
-        totalCostPKR: 0,
-      });
-    }
-  });
-  return list;
+  return existing ? [...existing] : [];
 }
 
 function mergeSpecialCharges(
   existing: BOMSpecialChargesItem[] | undefined,
 ): BOMSpecialChargesItem[] {
-  const list = [...(existing || [])];
-  DEFAULT_SPECIAL_TEMPLATES.forEach((tmpl) => {
-    const hasItem = list.some(
-      (item) =>
-        item.itemName?.toLowerCase().replace(/\s+/g, "") ===
-        tmpl.itemName.toLowerCase().replace(/\s+/g, ""),
-    );
-    if (!hasItem) {
-      list.push({
-        itemName: tmpl.itemName,
-        consPerPc: 0,
-        ratePKR: 0,
-        totalCostPKR: 0,
-      });
-    }
-  });
-  return list;
+  return existing ? [...existing] : [];
 }
 
 export default function StyleMasterPage() {

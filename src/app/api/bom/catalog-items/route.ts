@@ -147,32 +147,58 @@ export async function GET() {
       }
     }
 
-    const defaultChemicals: CatalogItemDB[] = [
-      { itemName: "Enzyme Wash", groupName: "Washing Chemicals", ratePKR: 12 },
-      { itemName: "Bleach Wash", groupName: "Washing Chemicals", ratePKR: 8 },
-      { itemName: "Silicon Softener", groupName: "Washing Chemicals", ratePKR: 15 },
-      { itemName: "Tinting Chemical", groupName: "Washing Chemicals", ratePKR: 20 },
-      { itemName: "Resin Spray", groupName: "Washing Chemicals", ratePKR: 25 },
-      { itemName: "PP Spray (Potassium Permanganate)", groupName: "Washing Chemicals", ratePKR: 18 },
-      { itemName: "Neutralizer", groupName: "Washing Chemicals", ratePKR: 6 },
-      { itemName: "Optical Brightener", groupName: "Washing Chemicals", ratePKR: 10 },
-    ];
+    // Also query S_OperationsCatalog for Washing (chemicals/treatments) and Finishing/Special Operations
+    try {
+      const opsResult = await pool.request().query<{
+        Department: string | null;
+        Section: string | null;
+        OperationCode: string | null;
+        OperationName: string | null;
+        PcRate: number | null;
+      }>(
+        `SELECT DISTINCT Department, Section, OperationCode, OperationName, PcRate
+         FROM   S_OperationsCatalog
+         WHERE  OperationName IS NOT NULL AND OperationName <> ''
+         ORDER  BY Department, OperationName`
+      );
 
-    const defaultCharges: CatalogItemDB[] = [
-      { itemName: "Embroidery", groupName: "Special Operations", ratePKR: 35 },
-      { itemName: "Printing", groupName: "Special Operations", ratePKR: 25 },
-      { itemName: "Heat Transfer", groupName: "Special Operations", ratePKR: 15 },
-      { itemName: "Testing Charges", groupName: "Lab / QA", ratePKR: 10 },
-      { itemName: "Special Packaging", groupName: "Packaging", ratePKR: 12 },
-      { itemName: "Tagging & Barcoding", groupName: "Finishing", ratePKR: 5 },
-    ];
+      for (const op of opsResult.recordset) {
+        const dept = (op.Department || "").trim();
+        const section = (op.Section || "").trim();
+        const opName = (op.OperationName || "").trim();
+        const opCode = (op.OperationCode || "").trim();
+        const ratePKR = op.PcRate && !isNaN(Number(op.PcRate)) ? Number(op.PcRate) : 0;
+
+        if (!opName) continue;
+
+        const itemObj: CatalogItemDB = {
+          itemName: opName,
+          itemCode: opCode,
+          groupName: section || dept,
+          category: dept,
+          ratePKR,
+        };
+
+        if (dept.toLowerCase() === "washing" || dept.toLowerCase().includes("chem")) {
+          if (!chemicalsMap.has(opName)) {
+            chemicalsMap.set(opName, itemObj);
+          }
+        } else if (dept.toLowerCase() === "finishing" || section.toLowerCase().includes("special")) {
+          if (!specialChargesMap.has(opName)) {
+            specialChargesMap.set(opName, itemObj);
+          }
+        }
+      }
+    } catch (opsErr) {
+      console.warn("[/api/bom/catalog-items] Error fetching S_OperationsCatalog:", opsErr);
+    }
 
     return NextResponse.json({
       fabrics: Array.from(fabricsMap.values()),
       linings: Array.from(liningsMap.values()),
       trims: Array.from(trimsMap.values()),
-      chemicals: chemicalsMap.size > 0 ? Array.from(chemicalsMap.values()) : defaultChemicals,
-      specialCharges: specialChargesMap.size > 0 ? Array.from(specialChargesMap.values()) : defaultCharges,
+      chemicals: Array.from(chemicalsMap.values()),
+      specialCharges: Array.from(specialChargesMap.values()),
       allRawItemsCount: result.recordset.length,
     });
   } catch (err) {
@@ -183,3 +209,4 @@ export async function GET() {
     );
   }
 }
+

@@ -38,10 +38,8 @@ export default function SavedCostSheetsPage() {
   const [costSheets, setCostSheets] = useState<SavedCostSheetItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter States
+  // Filter State
   const [search, setSearch] = useState("");
-  const [customerFilter, setCustomerFilter] = useState("all");
-  const [stageFilter, setStageFilter] = useState("all");
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -83,10 +81,13 @@ export default function SavedCostSheetsPage() {
         "Are you sure you want to permanently delete this costing snapshot?",
       )
     ) {
+      const prevSheets = [...costSheets];
+      setCostSheets((prev) => prev.filter((item) => item.id !== id));
       try {
         await deleteCostSheet(id);
         toast.success("Costing snapshot deleted");
       } catch (err) {
+        setCostSheets(prevSheets);
         toast.error("Failed to delete cost sheet");
       }
     }
@@ -120,25 +121,18 @@ export default function SavedCostSheetsPage() {
     toast.success("Costing grid exported to Excel");
   }
 
-  // Derive filter list values
-  const uniqueCustomers = Array.from(
-    new Set(costSheets.map((c) => c.customerName)),
-  );
-
   // Filter & Search Logic
   const filteredSheets = costSheets.filter((s) => {
-    const matchesSearch =
-      s.referenceName.toLowerCase().includes(search.toLowerCase()) ||
-      s.styleId.toLowerCase().includes(search.toLowerCase()) ||
-      s.styleName.toLowerCase().includes(search.toLowerCase()) ||
-      s.id.toLowerCase().includes(search.toLowerCase());
-
-    const matchesCustomer =
-      customerFilter === "all" || s.customerName === customerFilter;
-    const matchesStage =
-      stageFilter === "all" || s.costingStage === stageFilter;
-
-    return matchesSearch && matchesCustomer && matchesStage;
+    const q = search.toLowerCase();
+    return (
+      s.referenceName?.toLowerCase().includes(q) ||
+      s.styleId?.toLowerCase().includes(q) ||
+      s.styleName?.toLowerCase().includes(q) ||
+      s.id?.toLowerCase().includes(q) ||
+      s.customerName?.toLowerCase().includes(q) ||
+      s.costingStage?.toLowerCase().includes(q) ||
+      s.workOrderNumber?.toLowerCase().includes(q)
+    );
   });
 
   return (
@@ -174,39 +168,16 @@ export default function SavedCostSheetsPage() {
 
       {/* Filter Control Header */}
       <Card className="bg-card/50 backdrop-blur-sm border-muted/60">
-        <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
+        <CardContent className="p-4">
+          <div className="relative w-full">
             <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
             <Input
               type="text"
               placeholder="Search by ID, Style ID, Name, or Scenario..."
-              className="pl-9 h-9"
+              className="pl-9 h-9 w-full"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-          </div>
-          <div className="flex flex-wrap gap-2 sm:w-auto">
-            <select
-              className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none"
-              value={customerFilter}
-              onChange={(e) => setCustomerFilter(e.target.value)}
-            >
-              <option value="all">All Customers</option>
-              {uniqueCustomers.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none"
-              value={stageFilter}
-              onChange={(e) => setStageFilter(e.target.value)}
-            >
-              <option value="all">All Stages</option>
-              <option value="Quote">Quote</option>
-              <option value="Final">Final</option>
-            </select>
           </div>
         </CardContent>
       </Card>

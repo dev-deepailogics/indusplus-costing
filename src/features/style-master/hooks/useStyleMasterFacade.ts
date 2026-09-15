@@ -18,32 +18,6 @@ import type { SimpleTableData, DropdownListsData } from "@/features/parameters";
 import { ItemCatalogService, FABRIC_COLLECTION, LINING_COLLECTION } from "@/features/item-catalog";
 import type { CatalogItem } from "@/features/item-catalog";
 
-export const DEFAULT_CUSTOMERS = [
-  "Duer",
-  "Zara",
-  "Mustang",
-  "Miniconf",
-  "Mohito",
-  "Retrojeans",
-];
-
-export const DEFAULT_CATEGORIES = [
-  "Top Ware",
-  "Men's Pant",
-  "Ladies Pant",
-  "Shorts",
-  "Shirt",
-];
-
-export const DEFAULT_WASHES = [
-  "Rinse",
-  "Dyeing",
-  "Softner",
-  "Stone Wash",
-  "EW/Biopolish",
-  "Silicon Ball",
-];
-
 interface ImportedStyleRow {
   Style_ID?: string;
   Style_Name?: string;
@@ -62,9 +36,9 @@ export function useStyleMasterFacade() {
   const [exchangeRate, setExchangeRate] = useState<number>(278);
 
   // Dropdowns lists & Catalog items
-  const [customerOptions, setCustomerOptions] = useState<string[]>(DEFAULT_CUSTOMERS);
-  const [categoryOptions, setCategoryOptions] = useState<string[]>(DEFAULT_CATEGORIES);
-  const [washOptions, setWashOptions] = useState<string[]>(DEFAULT_WASHES);
+  const [customerOptions, setCustomerOptions] = useState<string[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
+  const [washOptions, setWashOptions] = useState<string[]>([]);
   const [fabricCatalog, setFabricCatalog] = useState<CatalogItem[]>([]);
   const [liningCatalog, setLiningCatalog] = useState<CatalogItem[]>([]);
 
@@ -78,10 +52,10 @@ export function useStyleMasterFacade() {
     baseSellingPrice: 0,
   });
 
-  const [customerName, setCustomerName] = useState("Duer");
-  const [styleCategory, setStyleCategory] = useState("Top Ware");
+  const [customerName, setCustomerName] = useState("");
+  const [styleCategory, setStyleCategory] = useState("");
   const [orderType, setOrderType] = useState<"Denim" | "Non Denim">("Denim");
-  const [washType, setWashType] = useState("Rinse");
+  const [washType, setWashType] = useState("");
   const [orderQuantity, setOrderQuantity] = useState(1000);
 
   const [formFabric, setFormFabric] = useState<BOMFabricItem[]>([]);

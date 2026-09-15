@@ -99,86 +99,15 @@ const CUSTOM_STYLE: StyleMasterItem = {
   bomSpecialCharges: [],
 };
 
-const DEFAULT_ACCESSORIES_TEMPLATES = [
-  { category: "Zipper", itemName: "Zippers" },
-  { category: "Thread", itemName: "Thread" },
-  { category: "Label", itemName: "Labels" },
-  { category: "Trims", itemName: "Trims Mix Materials" },
-  { category: "Poly Bag", itemName: "Poly Bags" },
-  { category: "Tag", itemName: "Tag" },
-  { category: "Carton", itemName: "Cartons" },
-  { category: "Button & Rivets", itemName: "Button & Rivets" },
-  { category: "Packing Mix Materials", itemName: "Packing Mix Materials" },
-  { category: "Sticker", itemName: "Sticker" },
-];
-
-const DEFAULT_CHEMICALS_TEMPLATES = [{ washItem: "Rinse" }];
-
-const DEFAULT_SPECIAL_TEMPLATES = [
-  { itemName: "Embroidery" },
-  { itemName: "Printing Charges" },
-  { itemName: "Testing Charges" },
-  { itemName: "Inspection Charges" },
-];
-
 function ensureStyleBOMDefaults(style: StyleMasterItem): StyleMasterItem {
-  const merged = { ...style };
-
-  // Accessories
-  const accList = [...(style.bomAccessories || [])];
-  DEFAULT_ACCESSORIES_TEMPLATES.forEach((tmpl) => {
-    const hasCategory = accList.some(
-      (item) => item.category?.toLowerCase() === tmpl.category.toLowerCase(),
-    );
-    if (!hasCategory) {
-      accList.push({
-        category: tmpl.category,
-        itemName: tmpl.itemName,
-        consPerPc: 0,
-        ratePKR: 0,
-        totalCostPKR: 0,
-      });
-    }
-  });
-  merged.bomAccessories = accList;
-
-  // Chemicals
-  const chemList = [...(style.bomChemicals || [])];
-  DEFAULT_CHEMICALS_TEMPLATES.forEach((tmpl) => {
-    const hasItem = chemList.some(
-      (item) => item.washItem?.toLowerCase() === tmpl.washItem.toLowerCase(),
-    );
-    if (!hasItem) {
-      chemList.push({
-        washItem: tmpl.washItem,
-        consPerPc: 0,
-        ratePKR: 0,
-        totalCostPKR: 0,
-      });
-    }
-  });
-  merged.bomChemicals = chemList;
-
-  // Special Charges
-  const specialList = [...(style.bomSpecialCharges || [])];
-  DEFAULT_SPECIAL_TEMPLATES.forEach((tmpl) => {
-    const hasItem = specialList.some(
-      (item) =>
-        item.itemName?.toLowerCase().replace(/\s+/g, "") ===
-        tmpl.itemName.toLowerCase().replace(/\s+/g, ""),
-    );
-    if (!hasItem) {
-      specialList.push({
-        itemName: tmpl.itemName,
-        consPerPc: 0,
-        ratePKR: 0,
-        totalCostPKR: 0,
-      });
-    }
-  });
-  merged.bomSpecialCharges = specialList;
-
-  return merged;
+  return {
+    ...style,
+    bomFabric: style.bomFabric || [],
+    bomLining: style.bomLining || [],
+    bomAccessories: style.bomAccessories || [],
+    bomChemicals: style.bomChemicals || [],
+    bomSpecialCharges: style.bomSpecialCharges || [],
+  };
 }
 
 /**
@@ -762,9 +691,17 @@ function CostSheetContent() {
     }
   }, [costSheetIdParam]);
 
-  // Sync state when activeStyle changes
+  // Ref to track previous style ID and avoid resetting user inputs on local BOM updates
+  const prevStyleIdRef = useRef<string | undefined>(undefined);
+
+  // Sync state ONLY when switching activeStyle ID
   useEffect(() => {
     if (activeStyle && !costSheetIdParam) {
+      if (prevStyleIdRef.current === activeStyle.id) {
+        return; // Style ID hasn't changed; do not wipe user inputs / SMV / FOB
+      }
+      prevStyleIdRef.current = activeStyle.id;
+
       Promise.resolve().then(() => {
         setQuotedPriceInput(
           activeStyle.baseSellingPrice ? activeStyle.baseSellingPrice.toString() : ""
@@ -803,7 +740,7 @@ function CostSheetContent() {
         setRebatePct(0);
       });
     }
-  }, [activeStyle, costSheetIdParam]);
+  }, [activeStyle?.id, costSheetIdParam]);
 
   // Adjust payment days based on payment terms dropdown
   useEffect(() => {
@@ -811,36 +748,13 @@ function CostSheetContent() {
     Promise.resolve().then(() => {
       if (match) {
         setPaymentTermsDays(parseInt(match[1], 10));
-      } else if (paymentTerms.toLowerCase() === "da") {
+      } else if (paymentTerms && paymentTerms.toLowerCase() === "da") {
         setPaymentTermsDays(60); // DA default is 60 in Excel model
       } else {
         setPaymentTermsDays(0);
       }
     });
   }, [paymentTerms]);
-
-  // Keep activeStyle.bomChemicals[0].washItem in sync with washType
-  useEffect(() => {
-    if (
-      activeStyle &&
-      activeStyle.bomChemicals &&
-      activeStyle.bomChemicals.length > 0
-    ) {
-      if (activeStyle.bomChemicals[0].washItem !== washType) {
-        const nextChem = [...activeStyle.bomChemicals];
-        nextChem[0] = {
-          ...nextChem[0],
-          washItem: washType,
-        };
-        Promise.resolve().then(() => {
-          setActiveStyle({
-            ...activeStyle,
-            bomChemicals: nextChem,
-          });
-        });
-      }
-    }
-  }, [washType, activeStyle]);
 
   // Core Style Change Logic
   function executeStyleChange(id: string) {
@@ -1464,7 +1378,7 @@ function CostSheetContent() {
       styleCategory,
       washType,
       orderQuantity,
-      orderType,
+      orderType: (orderType as "Denim" | "Non Denim") || activeStyle.orderType || "Denim",
       smvSewing: parseFloat(smvSewingInput) || activeStyle.smvSewing,
     };
 
@@ -1654,7 +1568,7 @@ function CostSheetContent() {
                 <input
                   type="text"
                   disabled={isDbSelected}
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-left focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                 />
@@ -2197,7 +2111,7 @@ function CostSheetContent() {
                     type="number"
                     step="0.1"
                     className="w-28 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
-                    placeholder={`${(calcs.efficiency * 100).toFixed(1)}%`}
+                    placeholder={`${(calcs.efficiency * 100).toFixed(0)}%`}
                     value={efficiencyOverride}
                     onChange={(e) => setEfficiencyOverride(e.target.value)}
                   />
@@ -2500,10 +2414,10 @@ function CostSheetContent() {
                     <TableRow className="bg-muted/10 font-semibold">
                       <TableCell className="px-2.5 py-1 text-foreground">Selling Price (FOB)</TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-medium">
-                        Rs. {calcs.sellingPricePKR.toFixed(1)}
+                        Rs. {calcs.sellingPricePKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-medium">
-                        ${calcs.sellingPriceUSD.toFixed(3)}
+                        ${calcs.sellingPriceUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap">100.0%</TableCell>
                     </TableRow>
@@ -2514,10 +2428,10 @@ function CostSheetContent() {
                         Tax &amp; EDS ({fmtPct(taxEdsPct, 2)})
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        {calcs.taxEDS_PKR.toFixed(1)}
+                        {calcs.taxEDS_PKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.taxEDS_USD.toFixed(3)}
+                        ${calcs.taxEDS_USD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.taxEDS_Pct, 2)}
@@ -2542,7 +2456,7 @@ function CostSheetContent() {
                         </div>
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.rebateUSD.toFixed(3)}
+                        ${calcs.rebateUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.rebatePct, 2)}
@@ -2553,10 +2467,10 @@ function CostSheetContent() {
                         Inland Freight & Clearing
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        {calcs.freightPKR.toFixed(1)}
+                        {calcs.freightPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.freightUSD.toFixed(3)}
+                        ${calcs.freightUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.freightPct, 2)}
@@ -2567,10 +2481,10 @@ function CostSheetContent() {
                         Local Bank Charges ({fmtPct(localBankChargesPct, 2)})
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        {calcs.bankChargesPKR.toFixed(1)}
+                        {calcs.bankChargesPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.bankChargesUSD.toFixed(3)}
+                        ${calcs.bankChargesUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.bankChargesPct, 2)}
@@ -2604,7 +2518,7 @@ function CostSheetContent() {
                         </div>
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.markupDiscountUSD.toFixed(3)}
+                        ${calcs.markupDiscountUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.markupDiscountPct, 2)}
@@ -2638,7 +2552,7 @@ function CostSheetContent() {
                         </div>
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.factoringUSD.toFixed(3)}
+                        ${calcs.factoringUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.factoringPct, 2)}
@@ -2664,7 +2578,7 @@ function CostSheetContent() {
                         </div>
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.commissionUSD.toFixed(3)}
+                        ${calcs.commissionUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.commissionPct, 2)}
@@ -2691,7 +2605,7 @@ function CostSheetContent() {
                         </div>
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.foreignBankChargesUSD.toFixed(3)}
+                        ${calcs.foreignBankChargesUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.foreignBankChargesPct, 2)}
@@ -2702,10 +2616,10 @@ function CostSheetContent() {
                     <TableRow className="bg-blue-50/30 dark:bg-blue-950/20 font-semibold border-t border-b">
                       <TableCell className="px-2.5 py-1 text-foreground">Net Selling Price</TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
-                        Rs. {calcs.netPricePKR.toFixed(1)}
+                        Rs. {calcs.netPricePKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
-                        ${calcs.netPriceUSD.toFixed(3)}
+                        ${calcs.netPriceUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
                         {fmtPct(calcs.netPricePct, 1)}
@@ -2718,10 +2632,10 @@ function CostSheetContent() {
                         Fabric Cost
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        Rs. {calcs.fabricCostPKR.toFixed(1)}
+                        Rs. {calcs.fabricCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        ${calcs.fabricCostUSD.toFixed(3)}
+                        ${calcs.fabricCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.fabricCostPct, 2)}
@@ -2732,10 +2646,10 @@ function CostSheetContent() {
                         Lining Cost
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        Rs. {calcs.liningCostPKR.toFixed(1)}
+                        Rs. {calcs.liningCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        ${calcs.liningCostUSD.toFixed(3)}
+                        ${calcs.liningCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.liningCostPct, 2)}
@@ -2746,10 +2660,10 @@ function CostSheetContent() {
                         Accessories Cost
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        Rs. {calcs.accessoriesCostPKR.toFixed(1)}
+                        Rs. {calcs.accessoriesCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        ${calcs.accessoriesCostUSD.toFixed(3)}
+                        ${calcs.accessoriesCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.accessoriesCostPct, 2)}
@@ -2760,10 +2674,10 @@ function CostSheetContent() {
                         Chemical &amp; Washing Cost
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        Rs. {calcs.chemicalsCostPKR.toFixed(1)}
+                        Rs. {calcs.chemicalsCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        ${calcs.chemicalsCostUSD.toFixed(3)}
+                        ${calcs.chemicalsCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.chemicalsCostPct, 2)}
@@ -2774,10 +2688,10 @@ function CostSheetContent() {
                         Special Charges Cost
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        Rs. {calcs.specialChargesCostPKR.toFixed(1)}
+                        Rs. {calcs.specialChargesCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        ${calcs.specialChargesCostUSD.toFixed(3)}
+                        ${calcs.specialChargesCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.specialChargesCostPct, 2)}
@@ -2788,10 +2702,10 @@ function CostSheetContent() {
                         Direct Labor Cost (CPM-linked)
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        Rs. {calcs.directLaborCostPKR.toFixed(1)}
+                        Rs. {calcs.directLaborCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        ${calcs.directLaborCostUSD.toFixed(3)}
+                        ${calcs.directLaborCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.directLaborCostPct, 2)}
@@ -2802,10 +2716,10 @@ function CostSheetContent() {
                         Utilities Cost (CPM-linked)
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        Rs. {calcs.utilitiesCostPKR.toFixed(1)}
+                        Rs. {calcs.utilitiesCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        ${calcs.utilitiesCostUSD.toFixed(3)}
+                        ${calcs.utilitiesCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.utilitiesCostPct, 2)}
@@ -2816,10 +2730,10 @@ function CostSheetContent() {
                         Leftover Factor Cost
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        Rs. {calcs.leftoverCostPKR.toFixed(1)}
+                        Rs. {calcs.leftoverCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap">
-                        ${calcs.leftoverCostUSD.toFixed(3)}
+                        ${calcs.leftoverCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.leftoverCostPct, 2)}
@@ -2830,10 +2744,10 @@ function CostSheetContent() {
                     <TableRow className="bg-[#fcf5e3]/60 dark:bg-amber-950/20 font-semibold border-t border-b">
                       <TableCell className="px-2.5 py-1 text-foreground">Total Variable Cost</TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
-                        Rs. {calcs.totalVariableCostPKR.toFixed(1)}
+                        Rs. {calcs.totalVariableCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
-                        ${calcs.totalVariableCostUSD.toFixed(3)}
+                        ${calcs.totalVariableCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
                         {fmtPct(calcs.totalVariableCostPct, 1)}
@@ -2844,10 +2758,10 @@ function CostSheetContent() {
                     <TableRow className="bg-emerald-50/30 dark:bg-emerald-950/10 font-bold text-emerald-800 dark:text-emerald-400">
                       <TableCell className="px-2.5 py-1">Gross CM / PC</TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold">
-                        Rs. {calcs.cmPKR.toFixed(1)}
+                        Rs. {calcs.cmPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold">
-                        ${calcs.cmUSD.toFixed(3)}
+                        ${calcs.cmUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold">
                         {fmtPct(calcs.cmPct, 1)}
@@ -2860,10 +2774,10 @@ function CostSheetContent() {
                         Salaries Cost (CPM-linked)
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        {calcs.salariesCostPKR.toFixed(1)}
+                        {calcs.salariesCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.salariesCostUSD.toFixed(3)}
+                        ${calcs.salariesCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.salariesCostPct, 2)}
@@ -2874,10 +2788,10 @@ function CostSheetContent() {
                         FOH/Admin Cost (CPM-linked)
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        {calcs.fohAdminCostPKR.toFixed(1)}
+                        {calcs.fohAdminCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.fohAdminCostUSD.toFixed(3)}
+                        ${calcs.fohAdminCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.fohAdminCostPct, 2)}
@@ -2888,10 +2802,10 @@ function CostSheetContent() {
                         Repair &amp; Maintenance (CPM-linked)
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        {calcs.repairMtcCostPKR.toFixed(1)}
+                        {calcs.repairMtcCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.repairMtcCostUSD.toFixed(3)}
+                        ${calcs.repairMtcCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.repairMtcCostPct, 2)}
@@ -2902,10 +2816,10 @@ function CostSheetContent() {
                     <TableRow className="font-semibold border-t">
                       <TableCell className="px-2.5 py-1 text-foreground">Total Cost</TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
-                        Rs. {calcs.totalCostPKR.toFixed(1)}
+                        Rs. {calcs.totalCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
-                        ${calcs.totalCostUSD.toFixed(3)}
+                        ${calcs.totalCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
                         {fmtPct(calcs.totalCostPct, 1)}
@@ -2916,7 +2830,7 @@ function CostSheetContent() {
                         Conversion Cost per Minute
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        Rs. {calcs.conversionCostPerMinPKR.toFixed(1)}
+                        Rs. {calcs.conversionCostPerMinPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {calcs.conversionCostPerMinUSD.toFixed(2)}¢
@@ -2932,10 +2846,10 @@ function CostSheetContent() {
                     >
                       <TableCell className="px-2.5 py-1">EBITDA / PC</TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold">
-                        Rs. {calcs.ebitdaPKR.toFixed(1)}
+                        Rs. {calcs.ebitdaPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold">
-                        ${calcs.ebitdaUSD.toFixed(3)}
+                        ${calcs.ebitdaUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold">
                         {fmtPct(calcs.ebitdaPct, 1)}
@@ -2948,10 +2862,10 @@ function CostSheetContent() {
                         Depreciation Cost (CPM-linked)
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        {calcs.depreciationCostPKR.toFixed(1)}
+                        {calcs.depreciationCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
-                        ${calcs.depreciationCostUSD.toFixed(3)}
+                        ${calcs.depreciationCostUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {fmtPct(calcs.depreciationCostPct, 2)}
@@ -2964,10 +2878,10 @@ function CostSheetContent() {
                     >
                       <TableCell className="px-2.5 py-1.5 font-bold">Net Profit / PC</TableCell>
                       <TableCell className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap font-bold">
-                        Rs. {calcs.netProfitPKR.toFixed(1)}
+                        Rs. {calcs.netProfitPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap font-bold">
-                        ${calcs.netProfitUSD.toFixed(3)}
+                        ${calcs.netProfitUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap font-bold">
                         {fmtPct(calcs.netProfitPct, 1)}
@@ -3130,7 +3044,7 @@ function CostSheetContent() {
                           />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          Rs. {item.fabricCostPKR.toFixed(1)}
+                          Rs. {item.fabricCostPKR.toFixed(0)}
                         </TableCell>
                         <TableCell className="p-1.5">
                           {isEditable && (
@@ -3168,7 +3082,7 @@ function CostSheetContent() {
                       Total Fabric Cost:
                     </TableCell>
                     <TableCell className="text-right text-primary pr-4">
-                      Rs. {calcs.fabricCostPKR.toFixed(1)}
+                      Rs. {calcs.fabricCostPKR.toFixed(0)}
                     </TableCell>
                     <TableCell />
                   </TableRow>
@@ -3325,7 +3239,7 @@ function CostSheetContent() {
                           />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          Rs. {item.liningCostPKR.toFixed(1)}
+                          Rs. {item.liningCostPKR.toFixed(0)}
                         </TableCell>
                         <TableCell className="p-1.5">
                           {isEditable && (
@@ -3363,7 +3277,7 @@ function CostSheetContent() {
                       Total Lining Cost:
                     </TableCell>
                     <TableCell className="text-right text-primary pr-4">
-                      Rs. {calcs.liningCostPKR.toFixed(1)}
+                      Rs. {calcs.liningCostPKR.toFixed(0)}
                     </TableCell>
                     <TableCell />
                   </TableRow>
@@ -3604,7 +3518,7 @@ function CostSheetContent() {
                             />
                           </TableCell>
                           <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                            Rs. {(item.totalCostPKR || 0).toFixed(1)}
+                            Rs. {(item.totalCostPKR || 0).toFixed(0)}
                           </TableCell>
                           <TableCell className="p-1.5">
                             {isAccEditable && (
@@ -3643,7 +3557,7 @@ function CostSheetContent() {
                         Total Accessories Cost:
                       </TableCell>
                       <TableCell className="text-right text-primary pr-4">
-                        Rs. {calcs.accessoriesCostPKR.toFixed(1)}
+                        Rs. {calcs.accessoriesCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell />
                     </TableRow>
@@ -3739,7 +3653,7 @@ function CostSheetContent() {
                             />
                           </TableCell>
                           <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                            Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(1)}
+                            Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(0)}
                           </TableCell>
                           <TableCell className="p-1.5">
                             {isChemEditable && (
@@ -3778,7 +3692,7 @@ function CostSheetContent() {
                         Total Chemical Cost:
                       </TableCell>
                       <TableCell className="text-right text-primary pr-4">
-                        Rs. {calcs.chemicalsCostPKR.toFixed(1)}
+                        Rs. {calcs.chemicalsCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell />
                     </TableRow>
@@ -3864,7 +3778,7 @@ function CostSheetContent() {
                             />
                           </TableCell>
                           <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                            Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(1)}
+                            Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(0)}
                           </TableCell>
                           <TableCell className="p-1.5">
                             {isChgEditable && (
@@ -3903,7 +3817,7 @@ function CostSheetContent() {
                         Total Special Charges Cost:
                       </TableCell>
                       <TableCell className="text-right text-primary pr-4">
-                        Rs. {calcs.specialChargesCostPKR.toFixed(1)}
+                        Rs. {calcs.specialChargesCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell />
                     </TableRow>

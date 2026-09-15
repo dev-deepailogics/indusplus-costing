@@ -57,29 +57,50 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
        default_rejection  NVARCHAR(32) NOT NULL DEFAULT '4.00%'
      )`,
 
-    // ── styles (dedicated 2-table schema for dynamic fields) ────────────────
+    // ── styles (dedicated 2-table schema for dynamic fields with multi-card support) ────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='styles_columns')
      CREATE TABLE styles_columns (
-       col_key    NVARCHAR(128) NOT NULL PRIMARY KEY,
+       card_id    NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       col_key    NVARCHAR(128) NOT NULL,
        col_label  NVARCHAR(256) NOT NULL,
        sort_order INT           NOT NULL DEFAULT 0
-     )`,
+     )
+     ELSE
+     BEGIN
+       DECLARE @ConstraintName_styles_columns nvarchar(200);
+       SELECT @ConstraintName_styles_columns = Name FROM sys.key_constraints WHERE type = 'PK' AND parent_object_id = OBJECT_ID('styles_columns');
+       IF @ConstraintName_styles_columns IS NOT NULL
+         EXEC('ALTER TABLE styles_columns DROP CONSTRAINT ' + @ConstraintName_styles_columns);
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('styles_columns') AND name = 'card_id')
+         ALTER TABLE styles_columns ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
+     END`,
 
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='styles_values')
      CREATE TABLE styles_values (
-       row_id    NVARCHAR(128) NOT NULL,
-       col_key   NVARCHAR(128) NOT NULL,
-       col_value NVARCHAR(MAX) NOT NULL DEFAULT '',
-       row_order INT           NOT NULL DEFAULT 0,
-       PRIMARY KEY (row_id, col_key)
-     )`,
-
-    `IF NOT EXISTS (
-       SELECT 1 FROM sys.indexes
-       WHERE name = 'IX_styles_values_order'
-       AND object_id = OBJECT_ID('styles_values')
+       card_id     NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       card_name   NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       is_active   BIT           NOT NULL DEFAULT 1,
+       card_serial INT           NOT NULL DEFAULT 1,
+       row_id      NVARCHAR(128) NOT NULL,
+       col_key     NVARCHAR(128) NOT NULL,
+       col_value   NVARCHAR(MAX) NOT NULL DEFAULT '',
+       row_order   INT           NOT NULL DEFAULT 0
      )
-     CREATE INDEX IX_styles_values_order ON styles_values (row_order, row_id)`,
+     ELSE
+     BEGIN
+       DECLARE @ConstraintName_styles_values nvarchar(200);
+       SELECT @ConstraintName_styles_values = Name FROM sys.key_constraints WHERE type = 'PK' AND parent_object_id = OBJECT_ID('styles_values');
+       IF @ConstraintName_styles_values IS NOT NULL
+         EXEC('ALTER TABLE styles_values DROP CONSTRAINT ' + @ConstraintName_styles_values);
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('styles_values') AND name = 'card_id')
+         ALTER TABLE styles_values ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('styles_values') AND name = 'card_name')
+         ALTER TABLE styles_values ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('styles_values') AND name = 'is_active')
+         ALTER TABLE styles_values ADD is_active BIT NOT NULL DEFAULT 1;
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('styles_values') AND name = 'card_serial')
+         ALTER TABLE styles_values ADD card_serial INT NOT NULL DEFAULT 1;
+     END`,
 
     // ── other_expenses ──────────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='other_expenses')
@@ -493,30 +514,94 @@ async function saveRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>, data
 // ---------------------------------------------------------------------------
 async function getStyles(pool: Awaited<ReturnType<typeof getPool>>): Promise<SimpleTableData> {
   const [colResult, valResult] = await Promise.all([
-    pool.request().query<{ col_key: string; col_label: string; sort_order: number }>(
-      "SELECT col_key, col_label, sort_order FROM styles_columns ORDER BY sort_order"
+    pool.request().query<{ card_id?: string; col_key: string; col_label: string; sort_order: number }>(
+      "SELECT card_id, col_key, col_label, sort_order FROM styles_columns ORDER BY card_id, sort_order"
     ),
-    pool.request().query<{ row_id: string; col_key: string; col_value: string; row_order: number }>(
-      "SELECT row_id, col_key, col_value, row_order FROM styles_values ORDER BY row_order, row_id"
+    pool.request().query<{ card_id?: string; card_name?: string; is_active?: boolean | number; card_serial?: number; row_id: string; col_key: string; col_value: string; row_order: number }>(
+      "SELECT card_id, card_name, is_active, card_serial, row_id, col_key, col_value, row_order FROM styles_values ORDER BY card_serial, card_id, row_order, row_id"
     ),
   ]);
 
-  const columns = colResult.recordset.length > 0
-    ? colResult.recordset.map((r) => ({ key: r.col_key, label: r.col_label }))
-    : [
-        { key: "styleName", label: "Style Category" },
-        { key: "samPcFrom", label: "SAM/PC From" },
-        { key: "samPcTo", label: "SAM/PC To" },
-      ];
+  const defaultColumns = [
+    { key: "styleName", label: "Style Category" },
+    { key: "samPcFrom", label: "SAM/PC From" },
+    { key: "samPcTo", label: "SAM/PC To" },
+  ];
 
-  const rowMap = new Map<string, { order: number; values: Record<string, string> }>();
-  for (const r of valResult.recordset) {
-    if (!rowMap.has(r.row_id)) rowMap.set(r.row_id, { order: r.row_order, values: {} });
-    rowMap.get(r.row_id)!.values[r.col_key] = r.col_value;
+  // Group columns by card_id
+  const colsByCard = new Map<string, Array<{ key: string; label: string }>>();
+  for (const c of colResult.recordset) {
+    const cId = c.card_id || "card-1";
+    if (!colsByCard.has(cId)) colsByCard.set(cId, []);
+    colsByCard.get(cId)!.push({ key: c.col_key, label: c.col_label });
   }
 
-  const rows = [...rowMap.entries()].sort((a, b) => a[1].order - b[1].order).map(([id, { values }]) => ({ id, values }));
-  return { columns, rows };
+  // If no rows exist at all
+  if (valResult.recordset.length === 0) {
+    const cols = colsByCard.get("card-1") || defaultColumns;
+    const initialCard: SimpleTableCard = {
+      id: "card-1",
+      serialNo: 1,
+      name: "Card 1",
+      isActive: true,
+      columns: cols,
+      rows: [],
+    };
+    return { columns: cols, rows: [], cards: [initialCard], activeCardId: "card-1" };
+  }
+
+  // Group values into cards
+  const cardMap = new Map<string, {
+    serial: number;
+    name: string;
+    isActive: boolean;
+    rowMap: Map<string, { order: number; values: Record<string, string> }>;
+  }>();
+
+  for (const r of valResult.recordset) {
+    const cId = r.card_id || "card-1";
+    if (!cardMap.has(cId)) {
+      cardMap.set(cId, {
+        serial: r.card_serial ?? (cardMap.size + 1),
+        name: r.card_name || `Card ${cardMap.size + 1}`,
+        isActive: r.is_active === true || r.is_active === 1,
+        rowMap: new Map(),
+      });
+    }
+    const cardEntry = cardMap.get(cId)!;
+    if (!cardEntry.rowMap.has(r.row_id)) {
+      cardEntry.rowMap.set(r.row_id, { order: r.row_order, values: {} });
+    }
+    cardEntry.rowMap.get(r.row_id)!.values[r.col_key] = r.col_value;
+  }
+
+  const cards: SimpleTableCard[] = Array.from(cardMap.entries()).map(([cId, entry]) => {
+    const cardCols = colsByCard.get(cId) || defaultColumns;
+    const cardRows = [...entry.rowMap.entries()]
+      .sort((a, b) => a[1].order - b[1].order)
+      .map(([id, { values }]) => ({ id, values }));
+    return {
+      id: cId,
+      serialNo: entry.serial,
+      name: entry.name,
+      isActive: entry.isActive,
+      columns: cardCols,
+      rows: cardRows,
+    };
+  });
+
+  let activeCard = cards.find((c) => c.isActive);
+  if (!activeCard) {
+    cards[0].isActive = true;
+    activeCard = cards[0];
+  }
+
+  return {
+    columns: activeCard.columns || defaultColumns,
+    rows: activeCard.rows,
+    cards,
+    activeCardId: activeCard.id,
+  };
 }
 
 async function saveStyles(pool: Awaited<ReturnType<typeof getPool>>, data: SimpleTableData): Promise<void> {
@@ -526,26 +611,58 @@ async function saveStyles(pool: Awaited<ReturnType<typeof getPool>>, data: Simpl
     await new sql.Request(tx).query("DELETE FROM styles_values");
     await new sql.Request(tx).query("DELETE FROM styles_columns");
 
-    for (let i = 0; i < data.columns.length; i++) {
-      const col = data.columns[i];
-      await new sql.Request(tx)
-        .input("col_key", sql.NVarChar(128), col.key)
-        .input("col_label", sql.NVarChar(256), col.label)
-        .input("sort_order", sql.Int, i)
-        .query("INSERT INTO styles_columns (col_key, col_label, sort_order) VALUES (@col_key, @col_label, @sort_order)");
-    }
+    const cardsToSave: SimpleTableCard[] =
+      data.cards && data.cards.length > 0
+        ? data.cards
+        : [
+            {
+              id: "card-1",
+              serialNo: 1,
+              name: "Card 1",
+              isActive: true,
+              columns: data.columns,
+              rows: data.rows,
+            },
+          ];
 
-    for (let i = 0; i < data.rows.length; i++) {
-      const row = data.rows[i];
-      for (const col of data.columns) {
+    for (const card of cardsToSave) {
+      const cardId = card.id || "card-1";
+      const cardName = card.name || `Card ${card.serialNo || 1}`;
+      const isActive = card.isActive ? 1 : 0;
+      const cardSerial = card.serialNo || 1;
+      const cols = card.columns && card.columns.length > 0 ? card.columns : data.columns;
+
+      for (let i = 0; i < cols.length; i++) {
+        const col = cols[i];
         await new sql.Request(tx)
-          .input("row_id", sql.NVarChar(128), row.id)
+          .input("card_id", sql.NVarChar(128), cardId)
           .input("col_key", sql.NVarChar(128), col.key)
-          .input("col_value", sql.NVarChar(sql.MAX), row.values[col.key] ?? "")
-          .input("row_order", sql.Int, i)
-          .query("INSERT INTO styles_values (row_id, col_key, col_value, row_order) VALUES (@row_id, @col_key, @col_value, @row_order)");
+          .input("col_label", sql.NVarChar(256), col.label)
+          .input("sort_order", sql.Int, i)
+          .query(
+            "INSERT INTO styles_columns (card_id, col_key, col_label, sort_order) VALUES (@card_id, @col_key, @col_label, @sort_order)"
+          );
+      }
+
+      for (let i = 0; i < card.rows.length; i++) {
+        const row = card.rows[i];
+        for (const col of cols) {
+          await new sql.Request(tx)
+            .input("card_id", sql.NVarChar(128), cardId)
+            .input("card_name", sql.NVarChar(256), cardName)
+            .input("is_active", sql.Bit, isActive)
+            .input("card_serial", sql.Int, cardSerial)
+            .input("row_id", sql.NVarChar(128), row.id)
+            .input("col_key", sql.NVarChar(128), col.key)
+            .input("col_value", sql.NVarChar(sql.MAX), row.values[col.key] ?? "")
+            .input("row_order", sql.Int, i)
+            .query(
+              "INSERT INTO styles_values (card_id, card_name, is_active, card_serial, row_id, col_key, col_value, row_order) VALUES (@card_id, @card_name, @is_active, @card_serial, @row_id, @col_key, @col_value, @row_order)"
+            );
+        }
       }
     }
+
     await tx.commit();
   } catch (err) {
     await tx.rollback();

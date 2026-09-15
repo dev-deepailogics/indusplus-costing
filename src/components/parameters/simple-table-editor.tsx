@@ -186,18 +186,27 @@ export function SimpleTableEditor({
   }
 
   // Set card as active (only one card remains active at a time)
-  function handleSetActive(cardId: string) {
+  async function handleSetActive(cardId: string) {
     const nextCards = cards.map((c) => ({
       ...c,
       isActive: c.id === cardId,
     }));
     setCards(nextCards);
-    setHasChanges(true);
-    toast.success(`"${nextCards.find((c) => c.id === cardId)?.name}" set as Active (Unsaved)`);
+    const activeC = nextCards.find((c) => c.id === cardId) || nextCards[0];
+    const payload: SimpleTableData = {
+      ...data,
+      columns: activeC.columns,
+      rows: activeC.rows,
+      cards: nextCards,
+      activeCardId: activeC.id,
+    };
+    await onSave(payload);
+    setHasChanges(false);
+    toast.success(`"${activeC.name}" set as Active (Saved to DB)`);
   }
 
   // Create a new card
-  function handleCreateCard(cardName: string) {
+  async function handleCreateCard(cardName: string) {
     const nextSerial = Math.max(0, ...cards.map((c) => c.serialNo || 0)) + 1;
     const newId = `card-${Date.now()}`;
     const name = cardName.trim() || `Card ${nextSerial}`;
@@ -228,12 +237,23 @@ export function SimpleTableEditor({
     const nextCards = [...cards, newCard];
     setCards(nextCards);
     setSelectedCardId(newId);
-    setHasChanges(true);
-    toast.success(`Created "${name}" (Unsaved)`);
+
+    const activeC = nextCards.find((c) => c.isActive) || nextCards[0];
+    const payload: SimpleTableData = {
+      ...data,
+      columns: activeC.columns,
+      rows: activeC.rows,
+      cards: nextCards,
+      activeCardId: activeC.id,
+    };
+
+    await onSave(payload);
+    setHasChanges(false);
+    toast.success(`Created "${name}" (Saved to DB)`);
   }
 
   // Duplicate current card
-  function handleDuplicateCard(targetCard?: SimpleTableCard) {
+  async function handleDuplicateCard(targetCard?: SimpleTableCard) {
     const cardToDuplicate = targetCard || currentCard;
     const nextSerial = Math.max(0, ...cards.map((c) => c.serialNo || 0)) + 1;
     const newId = `card-${Date.now()}`;
@@ -256,12 +276,23 @@ export function SimpleTableEditor({
     const nextCards = [...cards, newCard];
     setCards(nextCards);
     setSelectedCardId(newId);
-    setHasChanges(true);
-    toast.success(`Duplicated as "${name}" (Unsaved)`);
+
+    const activeC = nextCards.find((c) => c.isActive) || nextCards[0];
+    const payload: SimpleTableData = {
+      ...data,
+      columns: activeC.columns,
+      rows: activeC.rows,
+      cards: nextCards,
+      activeCardId: activeC.id,
+    };
+
+    await onSave(payload);
+    setHasChanges(false);
+    toast.success(`Duplicated as "${name}" (Saved to DB)`);
   }
 
   // Rename card
-  function handleRenameCard(newName: string) {
+  async function handleRenameCard(newName: string) {
     const trimmed = newName.trim();
     if (!trimmed) return;
 
@@ -269,8 +300,19 @@ export function SimpleTableEditor({
       c.id === currentCard.id ? { ...c, name: trimmed } : c
     );
     setCards(nextCards);
-    setHasChanges(true);
-    toast.success("Card renamed (Unsaved)");
+
+    const activeC = nextCards.find((c) => c.isActive) || nextCards[0];
+    const payload: SimpleTableData = {
+      ...data,
+      columns: activeC.columns,
+      rows: activeC.rows,
+      cards: nextCards,
+      activeCardId: activeC.id,
+    };
+
+    await onSave(payload);
+    setHasChanges(false);
+    toast.success("Card renamed (Saved to DB)");
   }
 
   // Delete card

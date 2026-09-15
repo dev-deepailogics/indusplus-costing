@@ -3,6 +3,23 @@ import type { SavedCostSheetItem } from "../types";
 const BASE = "/api/cost-sheets";
 const POLL_INTERVAL_MS = 30_000;
 
+const subscribers = new Set<(items: SavedCostSheetItem[]) => void>();
+
+async function notifyAllSubscribers() {
+  if (subscribers.size === 0) return;
+  try {
+    const res = await fetch(BASE, { cache: "no-store" });
+    if (res.ok) {
+      const data: SavedCostSheetItem[] = await res.json();
+      for (const cb of subscribers) {
+        cb(data);
+      }
+    }
+  } catch (err) {
+    console.error("[CostSheetService.notifyAllSubscribers] error:", err);
+  }
+}
+
 export class CostSheetService {
   public static async getNextCostSheetId(styleId: string): Promise<string> {
     const res = await fetch(
@@ -20,6 +37,8 @@ export class CostSheetService {
   ): () => void {
     let cancelled = false;
     let abortController: AbortController | null = null;
+
+    subscribers.add(callback);
 
     async function fetchAndNotify() {
       try {
@@ -50,6 +69,7 @@ export class CostSheetService {
 
     return () => {
       cancelled = true;
+      subscribers.delete(callback);
       if (abortController) abortController.abort();
       clearInterval(timerId);
     };
@@ -88,6 +108,8 @@ export class CostSheetService {
       const text = await res.text();
       throw new Error(`Failed to save cost sheet: ${text}`);
     }
+
+    notifyAllSubscribers();
   }
 
   public static async delete(id: string): Promise<void> {
@@ -98,5 +120,7 @@ export class CostSheetService {
       const text = await res.text();
       throw new Error(`Failed to delete cost sheet: ${text}`);
     }
+
+    notifyAllSubscribers();
   }
 }
