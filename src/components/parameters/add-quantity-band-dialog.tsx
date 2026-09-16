@@ -77,6 +77,24 @@ export function parseQtyBandValidation(label: string): {
   };
 }
 
+export function sortQtyRowLabels(rowLabels: string[]): string[] {
+  return [...rowLabels].sort((a, b) => {
+    const resA = parseQtyBandValidation(a);
+    const resB = parseQtyBandValidation(b);
+
+    const fromA = resA.isValid && resA.from !== undefined ? resA.from : 999999999;
+    const fromB = resB.isValid && resB.from !== undefined ? resB.from : 999999999;
+
+    if (fromA !== fromB) {
+      return fromA - fromB;
+    }
+
+    const toA = resA.isValid && resA.to !== undefined ? resA.to : 999999999;
+    const toB = resB.isValid && resB.to !== undefined ? resB.to : 999999999;
+    return toA - toB;
+  });
+}
+
 export function AddQuantityBandDialog({
   open,
   onOpenChange,

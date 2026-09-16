@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import type { MatrixTableData } from "@/lib/parameters/types";
 import { PromptDialog } from "./prompt-dialog";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
-import { AddQuantityBandDialog, parseQtyBandValidation } from "./add-quantity-band-dialog";
+import { AddQuantityBandDialog, parseQtyBandValidation, sortQtyRowLabels } from "./add-quantity-band-dialog";
 
 function validateQtyBands(rowLabels: string[]): {
   isValid: boolean;
@@ -145,18 +145,25 @@ export function MatrixTableEditor({
   onSave: (data: MatrixTableData) => Promise<void>;
   rowLabelHeader?: string;
 }) {
-  const [localData, setLocalData] = useState<MatrixTableData>(data);
+  const [localData, setLocalData] = useState<MatrixTableData>(() => {
+    if (!data) return data;
+    const rowLabels = rowLabelHeader === "Qty."
+      ? sortQtyRowLabels(data.rowLabels || [])
+      : (data.rowLabels || []);
+    return { ...data, rowLabels };
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [addRowOpen, setAddRowOpen] = useState(false);
-  const [addColOpen, setAddColOpen] = useState(false);
   const [deleteRow, setDeleteRow] = useState<string | null>(null);
-  const [deleteCol, setDeleteCol] = useState<string | null>(null);
 
   useEffect(() => {
     if (data) {
-      setLocalData(data);
+      const rowLabels = rowLabelHeader === "Qty."
+        ? sortQtyRowLabels(data.rowLabels || [])
+        : (data.rowLabels || []);
+      setLocalData({ ...data, rowLabels });
     }
-  }, [data]);
+  }, [data, rowLabelHeader]);
 
   const hasChanges = useMemo(() => {
     if (!data || !localData) return false;
@@ -205,7 +212,11 @@ export function MatrixTableEditor({
       return;
     }
 
-    const nextRowLabels = localData.rowLabels.map((r) => (r === oldLabel ? trimmed : r));
+    let nextRowLabels = localData.rowLabels.map((r) => (r === oldLabel ? trimmed : r));
+    if (rowLabelHeader === "Qty.") {
+      nextRowLabels = sortQtyRowLabels(nextRowLabels);
+    }
+
     const nextCells: MatrixTableData["cells"] = {};
     for (const r of localData.rowLabels) {
       if (r === oldLabel) {
@@ -239,9 +250,14 @@ export function MatrixTableEditor({
       return;
     }
 
+    let nextRowLabels = [...localData.rowLabels, trimmed];
+    if (rowLabelHeader === "Qty.") {
+      nextRowLabels = sortQtyRowLabels(nextRowLabels);
+    }
+
     const nextData: MatrixTableData = {
       ...localData,
-      rowLabels: [...localData.rowLabels, trimmed],
+      rowLabels: nextRowLabels,
       cells: {
         ...localData.cells,
         [trimmed]: Object.fromEntries(localData.columnLabels.map((c) => [c, ""])),
@@ -251,7 +267,7 @@ export function MatrixTableEditor({
     setIsSaving(true);
     try {
       await onSave(nextData);
-      toast.success(`Row "${trimmed}" added and saved`);
+      toast.success(`Row "${trimmed}" added and saved in order`);
       const testValidation = validateQtyBands(nextData.rowLabels);
       if (!testValidation.isValid) {
         toast.warning(testValidation.errors[0]);
@@ -428,9 +444,6 @@ export function MatrixTableEditor({
           <Button variant="outline" size="sm" onClick={() => setAddRowOpen(true)}>
             <Plus className="size-3.5 mr-1" /> Add row
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setAddColOpen(true)}>
-            <Plus className="size-3.5 mr-1" /> Add column
-          </Button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -475,26 +488,12 @@ export function MatrixTableEditor({
           onSubmit={addRow}
         />
       )}
-      <PromptDialog
-        open={addColOpen}
-        onOpenChange={setAddColOpen}
-        title="Add style category"
-        label="e.g. Premium Fashion"
-        onSubmit={addColumn}
-      />
       <ConfirmDeleteDialog
         open={deleteRow !== null}
         onOpenChange={(open) => !open && setDeleteRow(null)}
         title={`Delete row "${deleteRow}"?`}
         description="This removes the row and all its values. This cannot be undone."
         onConfirm={() => deleteRow && removeRow(deleteRow)}
-      />
-      <ConfirmDeleteDialog
-        open={deleteCol !== null}
-        onOpenChange={(open) => !open && setDeleteCol(null)}
-        title={`Delete column "${deleteCol}"?`}
-        description="This removes the column and its values from every row. This cannot be undone."
-        onConfirm={() => deleteCol && removeColumn(deleteCol)}
       />
     </div>
   );

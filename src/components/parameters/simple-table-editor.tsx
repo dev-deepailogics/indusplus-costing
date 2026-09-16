@@ -42,29 +42,38 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-function parseBound(val: string, isFrom: boolean): { val: number; inclusive: boolean } {
+function isValidSamBound(val: string): boolean {
+  const trimmed = (val || "").trim();
+  if (!trimmed || trimmed === "-" || trimmed === "null") return true;
+  return /^([<>]=?)?\s*\d+(\.\d+)?$/.test(trimmed);
+}
+
+function parseBound(val: string, isFrom: boolean): { val: number; inclusive: boolean; isValid: boolean } {
   const trimmed = (val || "").trim();
   if (!trimmed || trimmed === "-" || trimmed === "null") {
-    return { val: isFrom ? -Infinity : Infinity, inclusive: true };
+    return { val: isFrom ? -Infinity : Infinity, inclusive: true, isValid: true };
+  }
+  if (!isValidSamBound(trimmed)) {
+    return { val: isFrom ? -Infinity : Infinity, inclusive: true, isValid: false };
   }
   if (trimmed.startsWith(">=")) {
-    const num = parseFloat(trimmed.replace(">=", ""));
-    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: true };
+    const num = parseFloat(trimmed.replace(">=", "").trim());
+    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: true, isValid: !isNaN(num) };
   }
   if (trimmed.startsWith(">")) {
-    const num = parseFloat(trimmed.replace(">", ""));
-    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: false };
+    const num = parseFloat(trimmed.replace(">", "").trim());
+    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: false, isValid: !isNaN(num) };
   }
   if (trimmed.startsWith("<=")) {
-    const num = parseFloat(trimmed.replace("<=", ""));
-    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: true };
+    const num = parseFloat(trimmed.replace("<=", "").trim());
+    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: true, isValid: !isNaN(num) };
   }
   if (trimmed.startsWith("<")) {
-    const num = parseFloat(trimmed.replace("<", ""));
-    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: false };
+    const num = parseFloat(trimmed.replace("<", "").trim());
+    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: false, isValid: !isNaN(num) };
   }
   const parsed = parseFloat(trimmed);
-  return { val: isNaN(parsed) ? (isFrom ? -Infinity : Infinity) : parsed, inclusive: true };
+  return { val: isNaN(parsed) ? (isFrom ? -Infinity : Infinity) : parsed, inclusive: true, isValid: !isNaN(parsed) };
 }
 
 function validateSamRanges(
@@ -110,7 +119,16 @@ function validateSamRanges(
     const fromBound = parseBound(rawFrom, true);
     const toBound = parseBound(rawTo, false);
 
-    if (fromBound.val > toBound.val) {
+    if (!fromBound.isValid) {
+      errors.push(`"${label}": Invalid 'SAM/PC From' value ("${rawFrom}"). Only numbers or operators (e.g. 19, >=37, -) are allowed.`);
+      conflictingRowIds.add(r.id);
+    }
+    if (!toBound.isValid) {
+      errors.push(`"${label}": Invalid 'SAM/PC To' value ("${rawTo}"). Only numbers or operators (e.g. 23, <=18, -) are allowed.`);
+      conflictingRowIds.add(r.id);
+    }
+
+    if (fromBound.isValid && toBound.isValid && fromBound.val > toBound.val) {
       errors.push(`"${label}": 'From' (${rawFrom}) cannot be greater than 'To' (${rawTo}).`);
       conflictingRowIds.add(r.id);
     }
@@ -213,6 +231,8 @@ export function SimpleTableEditor({
   const [renameCardOpen, setRenameCardOpen] = useState(false);
   const [deleteCardId, setDeleteCardId] = useState<string | null>(null);
   const [activeConfirmCardId, setActiveConfirmCardId] = useState<string | null>(null);
+  const [addRowOpen, setAddRowOpen] = useState(false);
+  const [deleteRowId, setDeleteRowId] = useState<string | null>(null);
 
   // Sync local cards if data prop changes externally
   useEffect(() => {
@@ -514,11 +534,35 @@ export function SimpleTableEditor({
     toast.success("Card deleted from Database");
   }
 
+  function sanitizeSimpleTableInput(colKey: string, val: string): string {
+    const isSamCol = colKey === "samPcFrom" || colKey === "samPcTo";
+    const isNumericCol =
+      isSamCol ||
+      colKey.toLowerCase().includes("cost") ||
+      colKey.toLowerCase().includes("price") ||
+      colKey.toLowerCase().includes("rate") ||
+      colKey.toLowerCase().includes("percent") ||
+      colKey.toLowerCase().includes("pct") ||
+      colKey.toLowerCase().includes("piece") ||
+      colKey.toLowerCase().includes("sam");
+
+    if (isSamCol) {
+      // Allow only digits, comparison operators, dashes, dots, spaces
+      return val.replace(/[^0-9><=\-\.\s]/g, "");
+    }
+    if (isNumericCol) {
+      // Allow only digits, dots, percent, dashes, commas, spaces
+      return val.replace(/[^0-9\.\%\-\,\s]/g, "");
+    }
+    return val;
+  }
+
   // Cell editing
   function updateCell(rowId: string, colKey: string, value: string) {
+    const sanitizedValue = sanitizeSimpleTableInput(colKey, value);
     const updatedRows = currentRows.map((r) => {
       if (r.id !== rowId) return r;
-      return { ...r, values: { ...r.values, [colKey]: value } };
+      return { ...r, values: { ...r.values, [colKey]: sanitizedValue } };
     });
 
     const nextCards = cards.map((c) =>
@@ -527,6 +571,53 @@ export function SimpleTableEditor({
 
     setCards(nextCards);
     setHasChanges(true);
+  }
+
+  // Row Management
+  function handleAddRow(rowName: string) {
+    const trimmed = rowName.trim();
+    if (!trimmed) return;
+    const firstKey = currentColumns[0]?.key || "styleName";
+
+    if (
+      currentRows.some(
+        (r) => (r.values[firstKey] || "").trim().toLowerCase() === trimmed.toLowerCase()
+      )
+    ) {
+      toast.error(`A row with name "${trimmed}" already exists.`);
+      return;
+    }
+
+    const newRowId = `row-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newValues: Record<string, string> = {
+      [firstKey]: trimmed,
+    };
+    for (const col of currentColumns) {
+      if (newValues[col.key] === undefined) {
+        newValues[col.key] = "";
+      }
+    }
+
+    const updatedRows = [...currentRows, { id: newRowId, values: newValues }];
+    const nextCards = cards.map((c) =>
+      c.id === currentCard.id ? { ...c, rows: updatedRows } : c
+    );
+
+    setCards(nextCards);
+    setHasChanges(true);
+    toast.success(`Row "${trimmed}" added. Remember to click Save Changes.`);
+  }
+
+  function handleDeleteRow(rowId: string) {
+    const updatedRows = currentRows.filter((r) => r.id !== rowId);
+    const nextCards = cards.map((c) =>
+      c.id === currentCard.id ? { ...c, rows: updatedRows } : c
+    );
+
+    setCards(nextCards);
+    setHasChanges(true);
+    setDeleteRowId(null);
+    toast.info("Row removed from draft. Click Save Changes to apply to Database.");
   }
 
   // Radio button toggle for SAM vs PER PIECE
@@ -746,6 +837,7 @@ export function SimpleTableEditor({
                     </span>
                   </TableHead>
                 )}
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -825,6 +917,19 @@ export function SimpleTableEditor({
                         </div>
                       </TableCell>
                     )}
+
+                    {/* Delete Row Button */}
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleteRowId(row.id)}
+                        title="Delete row"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -833,33 +938,61 @@ export function SimpleTableEditor({
         </div>
 
         {/* Table Action Buttons */}
-        <div className="flex flex-wrap gap-2 items-center justify-end">
-          {hasChanges && (
-            <Button 
-              size="sm" 
-              disabled={!samValidation.isValid || isSaving}
-              className={
-                samValidation.isValid
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5"
-                  : "bg-muted text-muted-foreground cursor-not-allowed gap-1.5"
-              }
-              onClick={handleManualSave}
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" /> Saving...
-                </>
-              ) : (
-                <>
-                  <Check className="size-4" /> Save Changes
-                </>
-              )}
-            </Button>
-          )}
+        <div className="flex flex-wrap gap-2 items-center justify-between pt-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAddRowOpen(true)}
+            className="gap-1.5"
+          >
+            <Plus className="size-3.5" /> Add row
+          </Button>
+
+          <div className="flex items-center gap-2">
+            {hasChanges && (
+              <Button 
+                size="sm" 
+                disabled={!samValidation.isValid || isSaving}
+                className={
+                  samValidation.isValid
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-sm"
+                    : "bg-muted text-muted-foreground cursor-not-allowed gap-1.5"
+                }
+                onClick={handleManualSave}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" /> Saving...
+                  </>
+                ) : (
+                  <>
+                    <Check className="size-4" /> Save Changes
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Modals */}
+      <PromptDialog
+        open={addRowOpen}
+        onOpenChange={setAddRowOpen}
+        title={`Add ${currentColumns[0]?.label || "Row"}`}
+        description="Enter the name for the new row."
+        label="e.g. Super High Fashion"
+        confirmLabel="Add Row"
+        onSubmit={handleAddRow}
+      />
+
+      <ConfirmDeleteDialog
+        open={deleteRowId !== null}
+        onOpenChange={(open) => !open && setDeleteRowId(null)}
+        title="Delete row?"
+        description="This will remove the row and its values from this card. Click Save Changes to commit."
+        onConfirm={() => deleteRowId && handleDeleteRow(deleteRowId)}
+      />
       <PromptDialog
         open={newCardOpen}
         onOpenChange={setNewCardOpen}

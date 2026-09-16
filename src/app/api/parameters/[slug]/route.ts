@@ -292,13 +292,16 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
 // 1. CUT-TO-SHIP GRID
 // ---------------------------------------------------------------------------
 async function getCutToShipGrid(pool: Awaited<ReturnType<typeof getPool>>): Promise<MatrixTableData> {
-  const result = await pool.request().query<{
-    qty_band: string;
-    style_category: string;
-    value: string;
-    row_order: number;
-    col_order: number;
-  }>("SELECT qty_band, style_category, value, row_order, col_order FROM cut_to_ship_grid ORDER BY row_order, col_order");
+  const [result, stylesData] = await Promise.all([
+    pool.request().query<{
+      qty_band: string;
+      style_category: string;
+      value: string;
+      row_order: number;
+      col_order: number;
+    }>("SELECT qty_band, style_category, value, row_order, col_order FROM cut_to_ship_grid ORDER BY row_order, col_order"),
+    getStyles(pool).catch(() => null),
+  ]);
 
   const rowMap = new Map<string, number>();
   const colMap = new Map<string, number>();
@@ -311,8 +314,61 @@ async function getCutToShipGrid(pool: Awaited<ReturnType<typeof getPool>>): Prom
     cells[r.qty_band][r.style_category] = r.value;
   }
 
-  const rowLabels = [...rowMap.entries()].sort((a, b) => a[1] - b[1]).map(([k]) => k);
-  const columnLabels = [...colMap.entries()].sort((a, b) => a[1] - b[1]).map(([k]) => k);
+  function parseNumericBand(label: string): { from: number; to: number } {
+    const clean = label.trim().toLowerCase().replace(/,/g, "");
+    if (clean === "capacity qty" || clean === "capacity") return { from: 125000, to: Infinity };
+    if (clean.startsWith("<=")) {
+      const max = parseFloat(clean.replace("<=", "").trim());
+      return !isNaN(max) ? { from: 1, to: max } : { from: 999999999, to: 999999999 };
+    }
+    if (clean.startsWith("<")) {
+      const max = parseFloat(clean.replace("<", "").trim());
+      return !isNaN(max) ? { from: 1, to: max - 1 } : { from: 999999999, to: 999999999 };
+    }
+    if (clean.startsWith(">=")) {
+      const min = parseFloat(clean.replace(">=", "").trim());
+      return !isNaN(min) ? { from: min, to: Infinity } : { from: 999999999, to: 999999999 };
+    }
+    if (clean.startsWith(">")) {
+      const min = parseFloat(clean.replace(">", "").trim());
+      return !isNaN(min) ? { from: min + 1, to: Infinity } : { from: 999999999, to: 999999999 };
+    }
+    if (clean.includes("-") || clean.includes("to")) {
+      const parts = clean.includes("-") ? clean.split("-") : clean.split("to");
+      const min = parseFloat(parts[0]?.trim() || "");
+      const max = parseFloat(parts[1]?.trim() || "");
+      if (!isNaN(min) && !isNaN(max)) return { from: min, to: max };
+      if (!isNaN(min)) return { from: min, to: Infinity };
+    }
+    const single = parseFloat(clean);
+    if (!isNaN(single)) return { from: single, to: single };
+    return { from: 999999999, to: 999999999 };
+  }
+
+  const rawRowLabels = [...rowMap.entries()].sort((a, b) => a[1] - b[1]).map(([k]) => k);
+  const rowLabels = [...rawRowLabels].sort((a, b) => {
+    const pA = parseNumericBand(a);
+    const pB = parseNumericBand(b);
+    if (pA.from !== pB.from) return pA.from - pB.from;
+    return pA.to - pB.to;
+  });
+
+  // Dynamically synchronize columns from the active card in Style Categories (SAM Range)
+  let columnLabels: string[] = [];
+  if (stylesData) {
+    const activeRows = stylesData.cards?.find((c) => c.isActive)?.rows ?? stylesData.rows ?? [];
+    for (const r of activeRows) {
+      const name = (r.values.styleName || r.values.description || "").trim();
+      if (name && !columnLabels.includes(name)) {
+        columnLabels.push(name);
+      }
+    }
+  }
+
+  // Fallback to existing saved columns if styles table hasn't populated categories yet
+  if (columnLabels.length === 0) {
+    columnLabels = [...colMap.entries()].sort((a, b) => a[1] - b[1]).map(([k]) => k);
+  }
 
   return { rowLabels, columnLabels, cells };
 }
