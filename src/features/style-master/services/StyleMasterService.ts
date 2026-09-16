@@ -1,6 +1,7 @@
 import { collection, doc, getDocs, onSnapshot, setDoc, deleteDoc } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import { db } from "@/lib/firebase";
+import { calculateSizeBracket as formulaCalculateSizeBracket } from "@/features/cost-sheet/services/CostSheetFormulaEngine";
 import type {
   StyleMasterItem,
   BOMAccessoriesItem,
@@ -11,17 +12,8 @@ import type {
 const COLLECTION = "styles_master";
 
 export class StyleMasterService {
-  public static calculateSizeBracket(qty: number): string {
-    if (qty >= 125000) return "Capacity Qty";
-    if (qty <= 500) return "<=500";
-    if (qty <= 1000) return "501-1000";
-    if (qty <= 2000) return "1001-2000";
-    if (qty <= 3000) return "2001-3000";
-    if (qty <= 4000) return "3001-4000";
-    if (qty <= 5000) return "4001-5000";
-    if (qty <= 10000) return "5001-10000";
-    if (qty <= 25000) return "10001-25000";
-    return ">25000";
+  public static calculateSizeBracket(qty: number, availableBrackets?: string[]): string {
+    return formulaCalculateSizeBracket(qty, availableBrackets);
   }
 
   public static mergeAccessories(existing: BOMAccessoriesItem[] | undefined): BOMAccessoriesItem[] {

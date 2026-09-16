@@ -4,6 +4,7 @@ export interface BOMFabricItem {
   rateUSD: number;
   ratePKR: number;
   fabricCostPKR: number;
+  wastagePct?: number;
 }
 
 export interface BOMLiningItem {
@@ -12,6 +13,7 @@ export interface BOMLiningItem {
   rateUSD: number;
   ratePKR: number;
   liningCostPKR: number;
+  wastagePct?: number;
 }
 
 export interface BOMAccessoriesItem {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import {
   Plus,
   Trash2,
@@ -12,6 +12,8 @@ import {
   FileSpreadsheet,
   Check,
   FolderOpen,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -39,6 +41,131 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+function parseBound(val: string, isFrom: boolean): { val: number; inclusive: boolean } {
+  const trimmed = (val || "").trim();
+  if (!trimmed || trimmed === "-" || trimmed === "null") {
+    return { val: isFrom ? -Infinity : Infinity, inclusive: true };
+  }
+  if (trimmed.startsWith(">=")) {
+    const num = parseFloat(trimmed.replace(">=", ""));
+    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: true };
+  }
+  if (trimmed.startsWith(">")) {
+    const num = parseFloat(trimmed.replace(">", ""));
+    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: false };
+  }
+  if (trimmed.startsWith("<=")) {
+    const num = parseFloat(trimmed.replace("<=", ""));
+    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: true };
+  }
+  if (trimmed.startsWith("<")) {
+    const num = parseFloat(trimmed.replace("<", ""));
+    return { val: isNaN(num) ? (isFrom ? -Infinity : Infinity) : num, inclusive: false };
+  }
+  const parsed = parseFloat(trimmed);
+  return { val: isNaN(parsed) ? (isFrom ? -Infinity : Infinity) : parsed, inclusive: true };
+}
+
+function validateSamRanges(
+  rows: SimpleRow[],
+  columns: SimpleColumn[],
+  templateCard?: SimpleTableCard
+): {
+  isValid: boolean;
+  errors: string[];
+  conflictingRowIds: Set<string>;
+} {
+  const isSamRange =
+    columns.some((c) => c.key === "samPcFrom") &&
+    columns.some((c) => c.key === "samPcTo");
+  if (!isSamRange) return { isValid: true, errors: [], conflictingRowIds: new Set() };
+
+  const parsedRanges: {
+    rowId: string;
+    label: string;
+    min: number;
+    max: number;
+    inclusiveMin: boolean;
+    inclusiveMax: boolean;
+    rawFrom: string;
+    rawTo: string;
+  }[] = [];
+  const errors: string[] = [];
+  const conflictingRowIds = new Set<string>();
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const firstKey = columns[0]?.key;
+    const label =
+      r.values[firstKey] ||
+      templateCard?.rows[i]?.values[firstKey] ||
+      `Row ${i + 1}`;
+
+    const rawFrom = (r.values.samPcFrom || "").trim();
+    const rawTo = (r.values.samPcTo || "").trim();
+
+    if (!rawFrom && !rawTo && !r.values[firstKey]) continue;
+
+    const fromBound = parseBound(rawFrom, true);
+    const toBound = parseBound(rawTo, false);
+
+    if (fromBound.val > toBound.val) {
+      errors.push(`"${label}": 'From' (${rawFrom}) cannot be greater than 'To' (${rawTo}).`);
+      conflictingRowIds.add(r.id);
+    }
+
+    parsedRanges.push({
+      rowId: r.id,
+      label,
+      min: fromBound.val,
+      max: toBound.val,
+      inclusiveMin: fromBound.inclusive,
+      inclusiveMax: toBound.inclusive,
+      rawFrom,
+      rawTo,
+    });
+  }
+
+  for (let i = 0; i < parsedRanges.length; i++) {
+    for (let j = i + 1; j < parsedRanges.length; j++) {
+      const a = parsedRanges[i];
+      const b = parsedRanges[j];
+
+      const maxMin = Math.max(a.min, b.min);
+      const minMax = Math.min(a.max, b.max);
+
+      let overlaps = false;
+      if (maxMin < minMax) {
+        overlaps = true;
+      } else if (maxMin === minMax && maxMin !== -Infinity && maxMin !== Infinity) {
+        const aIncludesPoint =
+          (a.min === maxMin ? a.inclusiveMin : true) &&
+          (a.max === maxMin ? a.inclusiveMax : true);
+        const bIncludesPoint =
+          (b.min === maxMin ? b.inclusiveMin : true) &&
+          (b.max === maxMin ? b.inclusiveMax : true);
+        if (aIncludesPoint && bIncludesPoint) {
+          overlaps = true;
+        }
+      }
+
+      if (overlaps) {
+        errors.push(
+          `Overlapping range: "${a.label}" (${a.rawFrom || "-"} to ${a.rawTo || "-"}) overlaps with "${b.label}" (${b.rawFrom || "-"} to ${b.rawTo || "-"}).`
+        );
+        conflictingRowIds.add(a.rowId);
+        conflictingRowIds.add(b.rowId);
+      }
+    }
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    conflictingRowIds,
+  };
+}
 
 function slugifyKey(label: string): string {
   return label
@@ -73,6 +200,7 @@ export function SimpleTableEditor({
         ]
   );
   const [hasChanges, setHasChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const initialSelectedId =
     data.activeCardId ||
@@ -81,11 +209,8 @@ export function SimpleTableEditor({
     "card-1";
 
   const [selectedCardId, setSelectedCardId] = useState<string>(initialSelectedId);
-  const [addColOpen, setAddColOpen] = useState(false);
   const [newCardOpen, setNewCardOpen] = useState(false);
   const [renameCardOpen, setRenameCardOpen] = useState(false);
-  const [deleteRowId, setDeleteRowId] = useState<string | null>(null);
-  const [deleteColKey, setDeleteColKey] = useState<string | null>(null);
   const [deleteCardId, setDeleteCardId] = useState<string | null>(null);
   const [activeConfirmCardId, setActiveConfirmCardId] = useState<string | null>(null);
 
@@ -171,18 +296,54 @@ export function SimpleTableEditor({
         c.label.toLowerCase().includes("per piece")
     );
 
+  const samValidation = useMemo(() => {
+    return validateSamRanges(currentRows, currentColumns, cards[0]);
+  }, [currentRows, currentColumns, cards]);
+
   async function handleManualSave() {
-    const activeC = cards.find((c) => c.isActive) || cards[0];
-    const payload: SimpleTableData = {
-      ...data,
-      columns: activeC.columns,
-      rows: activeC.rows,
-      cards: cards,
-      activeCardId: activeC.id,
-    };
-    await onSave(payload);
-    setHasChanges(false);
-    toast.success("Changes saved successfully");
+    if (!samValidation.isValid) {
+      toast.error(samValidation.errors[0] || "Overlapping or invalid SAM ranges detected. Please fix before saving.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const activeC = cards.find((c) => c.isActive) || cards[0];
+      const templateC = cards[0];
+      const firstKey = currentColumns[0]?.key;
+
+      const sanitizedCards = cards.map((c) => ({
+        ...c,
+        rows: c.rows.map((r, idx) => ({
+          ...r,
+          values: {
+            ...r.values,
+            ...(firstKey && (!r.values[firstKey] || r.values[firstKey].trim() === "") && templateC?.rows[idx]?.values[firstKey]
+              ? { [firstKey]: templateC.rows[idx].values[firstKey] }
+              : {}),
+          },
+        })),
+      }));
+
+      const sanitizedActiveC = sanitizedCards.find((c) => c.id === activeC.id) || sanitizedCards[0];
+
+      const payload: SimpleTableData = {
+        ...data,
+        columns: sanitizedActiveC.columns,
+        rows: sanitizedActiveC.rows,
+        cards: sanitizedCards,
+        activeCardId: sanitizedActiveC.id,
+      };
+      await onSave(payload);
+      setCards(sanitizedCards);
+      setHasChanges(false);
+      toast.success("Changes saved successfully");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to save changes");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   // Set card as active (only one card remains active at a time)
@@ -211,11 +372,18 @@ export function SimpleTableEditor({
     const newId = `card-${Date.now()}`;
     const name = cardName.trim() || `Card ${nextSerial}`;
 
-    // Fresh rows cloned from template / current but with empty input values
-    const newRows: SimpleRow[] = currentRows.map((r, idx) => {
+    const firstColKey = currentColumns[0]?.key;
+    const templateCard = cards.find((c) => c.isActive) || cards[0] || currentCard;
+    const templateRows = (templateCard.rows && templateCard.rows.length > 0) ? templateCard.rows : currentRows;
+
+    // Fresh rows cloned from template / current with descriptor column preserved
+    const newRows: SimpleRow[] = templateRows.map((r, idx) => {
       const emptyValues = { ...r.values };
       for (const key of Object.keys(emptyValues)) {
-        if (!["description", "customer", "orderType", "useType", "use_type"].includes(key)) {
+        if (
+          key !== firstColKey &&
+          !["styleName", "styleCategory", "description", "customer", "orderType", "useType", "use_type"].includes(key)
+        ) {
           emptyValues[key] = "";
         }
       }
@@ -376,67 +544,6 @@ export function SimpleTableEditor({
     setHasChanges(true);
   }
 
-  function addRow() {
-    const newRow: SimpleRow = {
-      id: `row-${Date.now()}`,
-      values: {
-        ...Object.fromEntries(currentColumns.map((c) => [c.key, ""])),
-        useType: "sam",
-      },
-    };
-    const nextCards = cards.map((c) =>
-      c.id === currentCard.id ? { ...c, rows: [...c.rows, newRow] } : c
-    );
-
-    setCards(nextCards);
-    setHasChanges(true);
-  }
-
-  function addColumn(label: string) {
-    const key = slugifyKey(label) || `field${currentColumns.length}`;
-    if (currentColumns.some((c) => c.key === key)) {
-      toast.error("A column with that name already exists");
-      return;
-    }
-
-    const nextCards = cards.map((c) => ({
-      ...c,
-      columns: [...c.columns, { key, label }],
-      rows: c.rows.map((r) => ({ ...r, values: { ...r.values, [key]: "" } })),
-    }));
-
-    setCards(nextCards);
-    setHasChanges(true);
-  }
-
-  function removeRow(rowId: string) {
-    const nextCards = cards.map((c) =>
-      c.id === currentCard.id
-        ? { ...c, rows: c.rows.filter((r) => r.id !== rowId) }
-        : c
-    );
-
-    setCards(nextCards);
-    setHasChanges(true);
-  }
-
-  function removeColumn(colKey: string) {
-    const nextCards = cards.map((c) => ({
-      ...c,
-      columns: c.columns.filter((col) => col.key !== colKey),
-      rows: c.rows.map((r) => {
-        const rest = { ...r.values };
-        delete rest[colKey];
-        return { ...r, values: rest };
-      }),
-    }));
-
-    setCards(nextCards);
-    setHasChanges(true);
-  }
-
-  const deleteColLabel = currentColumns.find((c) => c.key === deleteColKey)?.label;
-
   return (
     <div className="space-y-6">
       {/* ── Visual Cards Deck Section ── */}
@@ -455,7 +562,7 @@ export function SimpleTableEditor({
             className="gap-1.5 shadow-sm font-medium"
           >
             <Plus className="size-4" />
-            <span>+ New Card</span>
+            <span>New Card</span>
           </Button>
         </div>
 
@@ -502,7 +609,7 @@ export function SimpleTableEditor({
                   </div>
                 </div>
 
-                {/* Card Footer: Opened Status & Quick Actions */}
+                {/* Card Footer: Opened Status */}
                 <div className="flex items-center justify-between pt-3 border-t border-border/60 text-xs">
                   {isOpened ? (
                     <span className="font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
@@ -513,40 +620,10 @@ export function SimpleTableEditor({
                       Click to Open
                     </span>
                   )}
-
-                  {!card.isActive ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveConfirmCardId(card.id);
-                      }}
-                      className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-0.5"
-                      title="Make this card active in cost sheet"
-                    >
-                      <Power className="size-3" /> Set Active
-                    </button>
-                  ) : (
-                    <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                      In Cost Sheet
-                    </span>
-                  )}
                 </div>
               </div>
             );
           })}
-
-          {/* "+ Add New Card" Placeholder Box */}
-          <button
-            type="button"
-            onClick={() => setNewCardOpen(true)}
-            className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/80 hover:border-emerald-600/60 hover:bg-emerald-50/10 p-5 text-center transition-all cursor-pointer min-h-[120px] text-muted-foreground hover:text-emerald-700 dark:hover:text-emerald-400"
-          >
-            <div className="size-9 rounded-full bg-muted flex items-center justify-center mb-2 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-950/50">
-              <Plus className="size-5" />
-            </div>
-            <span className="text-xs font-semibold">+ Add New Card</span>
-          </button>
         </div>
       </div>
 
@@ -631,6 +708,21 @@ export function SimpleTableEditor({
           </div>
         </div>
 
+        {/* Validation Warning Alert */}
+        {!samValidation.isValid && (
+          <div className="rounded-lg border border-rose-300 dark:border-rose-900 bg-rose-50/95 dark:bg-rose-950/40 p-3 text-xs text-rose-900 dark:text-rose-200 space-y-1.5 shadow-2xs">
+            <div className="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-400">
+              <AlertTriangle className="size-4 shrink-0 text-rose-600 dark:text-rose-400" />
+              <span>Invalid Range Configuration: Overlapping Boundaries Detected</span>
+            </div>
+            <ul className="list-disc list-inside space-y-0.5 text-[11px] text-rose-800 dark:text-rose-300 pl-1">
+              {samValidation.errors.map((err, idx) => (
+                <li key={idx}>{err}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Table Editor */}
         <div className="rounded-lg border shadow-xs overflow-hidden">
           <Table>
@@ -642,16 +734,6 @@ export function SimpleTableEditor({
                       <span className="font-semibold text-foreground text-xs">
                         {col.label}
                       </span>
-                      {currentColumns.length > 1 && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-6 text-muted-foreground hover:text-destructive"
-                          onClick={() => setDeleteColKey(col.key)}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      )}
                     </div>
                   </TableHead>
                 ))}
@@ -664,25 +746,40 @@ export function SimpleTableEditor({
                     </span>
                   </TableHead>
                 )}
-
-                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {currentRows.map((row) => {
+              {currentRows.map((row, rowIdx) => {
                 const currentUseType = (row.values.useType || row.values.use_type || "sam").toLowerCase();
                 const isPiece = currentUseType === "piece" || currentUseType === "perpiece";
                 const isSam = !isPiece;
+                const templateCard = cards[0];
+                const isConflicting = samValidation.conflictingRowIds.has(row.id);
 
                 return (
                   <TableRow key={row.id}>
-                    {currentColumns.map((col) => {
+                    {currentColumns.map((col, colIndex) => {
+                      const isDescription = colIndex === 0;
+                      const cellValue =
+                        isDescription && (!row.values[col.key] || row.values[col.key].trim() === "")
+                          ? templateCard?.rows[rowIdx]?.values[col.key] || row.values[col.key] || ""
+                          : row.values[col.key] ?? "";
+
                       return (
                         <TableCell key={col.key}>
                           <Input
-                            className="h-8 text-sm"
-                            value={row.values[col.key] ?? ""}
+                            className={`h-8 text-sm ${
+                              isDescription
+                                ? isConflicting
+                                  ? "bg-rose-50/60 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200 font-semibold cursor-not-allowed opacity-95 select-none"
+                                  : "bg-muted/50 text-foreground font-semibold cursor-not-allowed opacity-90 select-none"
+                                : isConflicting
+                                ? "border-rose-400 dark:border-rose-700 bg-rose-50/30 dark:bg-rose-950/20 text-rose-950 dark:text-rose-100 font-medium focus-visible:ring-rose-400"
+                                : ""
+                            }`}
+                            value={cellValue}
                             placeholder="-"
+                            disabled={isDescription}
                             onChange={(e) => updateCell(row.id, col.key, e.target.value)}
                           />
                         </TableCell>
@@ -728,17 +825,6 @@ export function SimpleTableEditor({
                         </div>
                       </TableCell>
                     )}
-
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteRowId(row.id)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -747,22 +833,27 @@ export function SimpleTableEditor({
         </div>
 
         {/* Table Action Buttons */}
-        <div className="flex flex-wrap gap-2 items-center justify-between">
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={addRow}>
-              <Plus className="mr-1.5 size-4" /> Add row
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setAddColOpen(true)}>
-              <Plus className="mr-1.5 size-4" /> Add field
-            </Button>
-          </div>
+        <div className="flex flex-wrap gap-2 items-center justify-end">
           {hasChanges && (
             <Button 
               size="sm" 
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold" 
+              disabled={!samValidation.isValid || isSaving}
+              className={
+                samValidation.isValid
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5"
+                  : "bg-muted text-muted-foreground cursor-not-allowed gap-1.5"
+              }
               onClick={handleManualSave}
             >
-              <Check className="mr-1.5 size-4" /> Save Changes
+              {isSaving ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> Saving...
+                </>
+              ) : (
+                <>
+                  <Check className="size-4" /> Save Changes
+                </>
+              )}
             </Button>
           )}
         </div>
@@ -788,30 +879,6 @@ export function SimpleTableEditor({
         defaultValue={currentCard.name}
         confirmLabel="Save"
         onSubmit={handleRenameCard}
-      />
-
-      <PromptDialog
-        open={addColOpen}
-        onOpenChange={setAddColOpen}
-        title="Add field"
-        label="Field name"
-        onSubmit={addColumn}
-      />
-
-      <ConfirmDeleteDialog
-        open={deleteRowId !== null}
-        onOpenChange={(open) => !open && setDeleteRowId(null)}
-        title="Delete row?"
-        description="This removes the row and its values. This cannot be undone."
-        onConfirm={() => deleteRowId && removeRow(deleteRowId)}
-      />
-
-      <ConfirmDeleteDialog
-        open={deleteColKey !== null}
-        onOpenChange={(open) => !open && setDeleteColKey(null)}
-        title={`Delete field "${deleteColLabel}"?`}
-        description="This removes the field and its values from every row. This cannot be undone."
-        onConfirm={() => deleteColKey && removeColumn(deleteColKey)}
       />
 
       <ConfirmDeleteDialog

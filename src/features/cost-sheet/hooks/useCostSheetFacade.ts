@@ -464,6 +464,14 @@ export function useCostSheetFacade() {
       toast.error("Please enter a reference name for this costing scenario");
       return;
     }
+    if (results.isSmvOutOfRange) {
+      toast.error("Cannot save: SMV does not match any configured SAM range in Parameters.");
+      return;
+    }
+    if (results.isQtyOutOfRange) {
+      toast.error("Cannot save: Order Quantity does not match any configured Quantity Band in Parameters.");
+      return;
+    }
 
     setIsSaving(true);
     try {

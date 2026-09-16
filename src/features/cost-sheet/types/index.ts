@@ -20,6 +20,10 @@ export interface CostSheetCalculations {
   efficiency: number;
   rejectionPct: number;
   lineTarget: number;
+  isSmvOutOfRange?: boolean;
+  smvRangeError?: string;
+  isQtyOutOfRange?: boolean;
+  qtyRangeError?: string;
 }
 
 export interface SavedCostSheetItem {

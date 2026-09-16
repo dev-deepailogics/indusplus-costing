@@ -270,7 +270,7 @@ function CostSheetContent() {
   });
   const [inhouseOrSubcontract, setInhouseOrSubcontract] =
     useState("");
-  const [rebatePct, setRebatePct] = useState<number>(0);
+  const [rebateInput, setRebateInput] = useState<string>("0");
 
   // Operational Inputs
   const [manpower, setManpower] = useState(60);
@@ -278,15 +278,15 @@ function CostSheetContent() {
   const [rejectionOverride, setRejectionOverride] = useState<string>("");
   const [lineTargetOverride, setLineTargetOverride] = useState<string>("");
 
-  // Financial Parameters
-  const [discountRate, setDiscountRate] = useState(0.12);
-  const [taxEdsPct, setTaxEdsPct] = useState(0.025);
-  const [inlandFreightPct, setInlandFreightPct] = useState(0.0125);
-  const [localBankChargesPct, setLocalBankChargesPct] = useState(0.0085);
-  const [paymentTermsDays, setPaymentTermsDays] = useState(60);
-  const [factoringDays, setFactoringDays] = useState(0);
-  const [commissionPct, setCommissionPct] = useState(0);
-  const [foreignBankCharges, setForeignBankCharges] = useState(0);
+  // Financial Parameters (stored as string inputs so user typing is never interrupted or auto-rounded)
+  const [discountRateInput, setDiscountRateInput] = useState<string>("12");
+  const [taxEdsInput, setTaxEdsInput] = useState<string>("2.50");
+  const [inlandFreightInput, setInlandFreightInput] = useState<string>("0.65");
+  const [localBankChargesInput, setLocalBankChargesInput] = useState<string>("0.85");
+  const [paymentTermsDaysInput, setPaymentTermsDaysInput] = useState<string>("60");
+  const [factoringDaysInput, setFactoringDaysInput] = useState<string>("0");
+  const [commissionInput, setCommissionInput] = useState<string>("1.00");
+  const [foreignBankChargesInput, setForeignBankChargesInput] = useState<string>("0");
 
   // Order FOB / Quoted Price / Freight & Insurance inputs
   const [quotedPriceInput, setQuotedPriceInput] = useState<string>("");
@@ -365,6 +365,8 @@ function CostSheetContent() {
   const [merchGroupList, setMerchGroupList] = useState<string[]>([]);
   const [delvDestinationList, setDelvDestinationList] = useState<string[]>([]);
   const [inhouseSubcontractList, setInhouseSubcontractList] = useState<string[]>([]);
+  const [chemicalsList, setChemicalsList] = useState<string[]>([]);
+  const [specialChargesList, setSpecialChargesList] = useState<string[]>([]);
 
   // indus-plus: Styles & Work Orders from S_StyleAndWorkOrdersView
   const [indusStyleRows, setIndusStyleRows] = useState<StyleWorkOrderRow[]>([]);
@@ -512,12 +514,22 @@ function CostSheetContent() {
           const mGroup = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "merchgroup")?.items;
           const dDest = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "deliverydestination")?.items;
           const inhSub = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "inhouseorsubcontract")?.items;
+          const chems = data.lists.find((l) => {
+            const k = l.key.toLowerCase().replace(/[^a-z0-9]/g, "");
+            return k === "chemicalcosts" || k === "chemicals" || k === "chemical";
+          })?.items;
+          const spCharges = data.lists.find((l) => {
+            const k = l.key.toLowerCase().replace(/[^a-z0-9]/g, "");
+            return k === "specialcharges" || k === "specialcharge";
+          })?.items;
 
           if (cStage) setCostingStageList(cStage);
           if (sMode) setShipmentModeList(sMode);
           if (mGroup) setMerchGroupList(mGroup);
           if (dDest) setDelvDestinationList(dDest);
           if (inhSub) setInhouseSubcontractList(inhSub);
+          if (chems) setChemicalsList(chems);
+          if (spCharges) setSpecialChargesList(spCharges);
         }
       },
     );
@@ -548,23 +560,23 @@ function CostSheetContent() {
           if (!costSheetIdParam) {
             if (eds !== null || taxes !== null) {
               const totalTaxEds = (taxes || 0) + (eds || 0);
-              if (totalTaxEds > 0) setTaxEdsPct(totalTaxEds / 100);
+              if (totalTaxEds > 0) setTaxEdsInput(totalTaxEds.toString());
             }
             if (exchangeRate !== null && exchangeRate > 0) {
               setParitySale(exchangeRate);
               setParityProcurement(exchangeRate);
             }
             if (rebate !== null && rebate > 0) {
-              setRebatePct(rebate);
+              setRebateInput(rebate.toString());
             }
             if (inlandFreight !== null && inlandFreight > 0) {
-              setInlandFreightPct(inlandFreight / 100);
+              setInlandFreightInput(inlandFreight.toString());
             }
             if (localBankCharges !== null && localBankCharges > 0) {
-              setLocalBankChargesPct(localBankCharges / 100);
+              setLocalBankChargesInput(localBankCharges.toString());
             }
             if (discountRateVal !== null && discountRateVal > 0) {
-              setDiscountRate(discountRateVal / 100);
+              setDiscountRateInput(discountRateVal.toString());
             }
           }
         }
@@ -643,11 +655,31 @@ function CostSheetContent() {
               : "",
           );
 
-          setDiscountRate(sheet.discountRate);
-          setPaymentTermsDays(sheet.paymentTermsDays);
-          setFactoringDays(sheet.factoringDays);
-          setCommissionPct(sheet.commissionPct * 100);
-          setForeignBankCharges(sheet.foreignBankCharges);
+          setDiscountRateInput(
+            sheet.discountRate !== undefined
+              ? (sheet.discountRate * 100).toString()
+              : "12",
+          );
+          setPaymentTermsDaysInput(
+            sheet.paymentTermsDays !== undefined
+              ? sheet.paymentTermsDays.toString()
+              : "60",
+          );
+          setFactoringDaysInput(
+            sheet.factoringDays !== undefined
+              ? sheet.factoringDays.toString()
+              : "0",
+          );
+          setCommissionInput(
+            sheet.commissionPct !== undefined
+              ? (sheet.commissionPct * 100).toString()
+              : "0",
+          );
+          setForeignBankChargesInput(
+            sheet.foreignBankCharges !== undefined
+              ? sheet.foreignBankCharges.toString()
+              : "0",
+          );
 
           const qPrice =
             sheet.quotedPrice !== undefined
@@ -680,8 +712,10 @@ function CostSheetContent() {
             sheet.exFactoryDate || new Date().toISOString().split("T")[0],
           );
           setInhouseOrSubcontract(sheet.inhouseOrSubcontract || "INHOUSE");
-          setRebatePct(
-            sheet.rebatePct !== undefined ? sheet.rebatePct * 100 : 0,
+          setRebateInput(
+            sheet.rebatePct !== undefined
+              ? (sheet.rebatePct * 100).toString()
+              : "0",
           );
         } else {
           toast.error("Saved Cost Sheet not found");
@@ -737,7 +771,7 @@ function CostSheetContent() {
           return d.toISOString().split("T")[0];
         });
         setInhouseOrSubcontract("INHOUSE");
-        setRebatePct(0);
+        setRebateInput("0");
       });
     }
   }, [activeStyle?.id, costSheetIdParam]);
@@ -747,11 +781,11 @@ function CostSheetContent() {
     const match = paymentTerms?.match(/(\d+)\s*days/i);
     Promise.resolve().then(() => {
       if (match) {
-        setPaymentTermsDays(parseInt(match[1], 10));
+        setPaymentTermsDaysInput(match[1]);
       } else if (paymentTerms && paymentTerms.toLowerCase() === "da") {
-        setPaymentTermsDays(60); // DA default is 60 in Excel model
+        setPaymentTermsDaysInput("60"); // DA default is 60 in Excel model
       } else {
-        setPaymentTermsDays(0);
+        setPaymentTermsDaysInput("0");
       }
     });
   }, [paymentTerms]);
@@ -1132,6 +1166,14 @@ function CostSheetContent() {
   // Save new snapshot
   async function handleSaveNew(name: string) {
     if (!activeStyle || !calcs) return;
+    if (calcs.isSmvOutOfRange) {
+      toast.error("Cannot save: SMV does not match any configured SAM range in Parameters.");
+      return;
+    }
+    if (calcs.isQtyOutOfRange) {
+      toast.error("Cannot save: Order Quantity does not match any configured Quantity Band in Parameters.");
+      return;
+    }
     if (!name.trim()) {
       toast.error("Please enter a scenario reference name");
       return;
@@ -1156,7 +1198,7 @@ function CostSheetContent() {
       deliveryDestination,
       exFactoryDate,
       inhouseOrSubcontract,
-      rebatePct: rebatePct / 100,
+      rebatePct: (parseFloat(rebateInput) || 0) / 100,
 
       costingDate,
       costingStage,
@@ -1174,11 +1216,11 @@ function CostSheetContent() {
       lineTargetOverride:
         lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
 
-      discountRate,
-      paymentTermsDays,
-      factoringDays,
-      commissionPct: commissionPct / 100,
-      foreignBankCharges,
+      discountRate: (parseFloat(discountRateInput) || 0) / 100,
+      paymentTermsDays: parseFloat(paymentTermsDaysInput) || 0,
+      factoringDays: parseFloat(factoringDaysInput) || 0,
+      commissionPct: (parseFloat(commissionInput) || 0) / 100,
+      foreignBankCharges: parseFloat(foreignBankChargesInput) || 0,
       orderFOB: (() => {
         const q =
           quotedPriceInput !== ""
@@ -1223,27 +1265,13 @@ function CostSheetContent() {
     };
 
     try {
+      setIsSaving(true);
       await saveCostSheet(snapshot);
       setLoadedCostSheet(snapshot);
       setSaveDialogOpen(false);
-      setNewSnapshotName("");
-      toast.success(`Cost Sheet snapshot "${name}" saved successfully`);
       setIsDirty(false);
-
-      if (pendingNavigation) {
-        const nav = pendingNavigation;
-        setPendingNavigation(null);
-        if (nav.type === "url" && nav.target) {
-          router.push(nav.target);
-        } else if (nav.type === "style" && nav.target) {
-          executeStyleChange(nav.target);
-        } else if (nav.type === "reset") {
-          executeReset();
-        }
-      } else {
-        router.push(`/cost-sheet?costSheetId=${nextId}`);
-      }
-    } catch (e) {
+      toast.success(`Cost Sheet snapshot "${name}" saved successfully`);
+    } catch {
       toast.error("Failed to save cost sheet");
     } finally {
       setIsSaving(false);
@@ -1252,9 +1280,16 @@ function CostSheetContent() {
 
   // Update existing snapshot
   async function handleUpdateExisting() {
-    if (!activeStyle || !calcs || !loadedCostSheet) return;
+    if (!loadedCostSheet || !calcs || !activeStyle) return;
+    if (calcs.isSmvOutOfRange) {
+      toast.error("Cannot save: SMV does not match any configured SAM range in Parameters.");
+      return;
+    }
+    if (calcs.isQtyOutOfRange) {
+      toast.error("Cannot save: Order Quantity does not match any configured Quantity Band in Parameters.");
+      return;
+    }
 
-    setIsSaving(true);
     const snapshot: SavedCostSheetItem = {
       ...loadedCostSheet,
       customerName,
@@ -1269,7 +1304,7 @@ function CostSheetContent() {
       deliveryDestination,
       exFactoryDate,
       inhouseOrSubcontract,
-      rebatePct: rebatePct / 100,
+      rebatePct: (parseFloat(rebateInput) || 0) / 100,
       costingDate,
       costingStage,
       country,
@@ -1286,11 +1321,11 @@ function CostSheetContent() {
       lineTargetOverride:
         lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
 
-      discountRate,
-      paymentTermsDays,
-      factoringDays,
-      commissionPct: commissionPct / 100,
-      foreignBankCharges,
+      discountRate: (parseFloat(discountRateInput) || 0) / 100,
+      paymentTermsDays: parseFloat(paymentTermsDaysInput) || 0,
+      factoringDays: parseFloat(factoringDaysInput) || 0,
+      commissionPct: (parseFloat(commissionInput) || 0) / 100,
+      foreignBankCharges: parseFloat(foreignBankChargesInput) || 0,
       orderFOB: (() => {
         const q =
           quotedPriceInput !== ""
@@ -1394,16 +1429,16 @@ function CostSheetContent() {
         lineTargetOverride: tgtOv,
         costingStage,
         paymentTerms,
-        discountRate,
-        paymentTermsDays,
-        factoringDays,
-        commissionPct: commissionPct / 100,
-        foreignBankCharges,
-        taxEdsPct,
-        inlandFreightPct,
-        localBankChargesPct,
+        discountRate: (parseFloat(discountRateInput) || 0) / 100,
+        paymentTermsDays: parseFloat(paymentTermsDaysInput) || 0,
+        factoringDays: parseFloat(factoringDaysInput) || 0,
+        commissionPct: (parseFloat(commissionInput) || 0) / 100,
+        foreignBankCharges: parseFloat(foreignBankChargesInput) || 0,
+        taxEdsPct: (parseFloat(taxEdsInput) || 0) / 100,
+        inlandFreightPct: (parseFloat(inlandFreightInput) || 0) / 100,
+        localBankChargesPct: (parseFloat(localBankChargesInput) || 0) / 100,
         inhouseOrSubcontract,
-        rebatePct: rebatePct / 100,
+        rebatePct: (parseFloat(rebateInput) || 0) / 100,
       },
       {
         directLabourFoh,
@@ -1431,16 +1466,16 @@ function CostSheetContent() {
     lineTargetOverride,
     costingStage,
     paymentTerms,
-    discountRate,
-    taxEdsPct,
-    inlandFreightPct,
-    localBankChargesPct,
-    paymentTermsDays,
-    factoringDays,
-    commissionPct,
-    foreignBankCharges,
+    discountRateInput,
+    taxEdsInput,
+    inlandFreightInput,
+    localBankChargesInput,
+    paymentTermsDaysInput,
+    factoringDaysInput,
+    commissionInput,
+    foreignBankChargesInput,
     inhouseOrSubcontract,
-    rebatePct,
+    rebateInput,
     directLabourFoh,
     cutToShipGrid,
     rejectionGrid,
@@ -1504,7 +1539,46 @@ function CostSheetContent() {
             with style specifications and factory overheads.
           </p>
         </div>
-        <div className="flex gap-2 print:hidden">
+        <div className="flex items-center gap-2 print:hidden">
+          {loadedCostSheet ? (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSaveDialogOpen(true)}
+                className="h-9"
+              >
+                <Copy className="mr-1.5 size-4" /> Save as New
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleUpdateExisting}
+                disabled={isSaving}
+                className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
+              >
+                {isSaving ? (
+                  <RefreshCw className="mr-1.5 size-4 animate-spin" />
+                ) : (
+                  <Save className="mr-1.5 size-4" />
+                )}
+                {isSaving ? "Updating…" : "Update Cost Sheet"}
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => setSaveDialogOpen(true)}
+              disabled={isSaving}
+              className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
+            >
+              {isSaving ? (
+                <RefreshCw className="mr-1.5 size-4 animate-spin" />
+              ) : (
+                <Save className="mr-1.5 size-4" />
+              )}
+              Save Cost Sheet
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -1513,25 +1587,6 @@ function CostSheetContent() {
           >
             <Printer className="mr-1.5 size-4" /> Print
           </Button>
-          {loadedCostSheet && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const targetUrl = `/cost-sheet?styleId=${activeStyle.id}`;
-                if (isDirtyRef.current) {
-                  setPendingNavigation({ type: "url", target: targetUrl });
-                  setUnsavedModalOpen(true);
-                } else {
-                  setLoadedCostSheet(null);
-                  router.push(targetUrl);
-                }
-              }}
-              className="h-9"
-            >
-              Exit Snapshot Mode
-            </Button>
-          )}
         </div>
       </div>{" "}
       {/* ZONE 1: 4-COLUMN PARAMETERS SPREADSHEET LAYOUT */}
@@ -1702,8 +1757,8 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Order Size
                 </span>
-                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {calcs.sizeBracket}
+                <span className={`font-bold pr-2 ${!calcs.sizeBracket && orderQuantity > 0 ? "text-red-600 dark:text-red-400" : "text-slate-800 dark:text-slate-200"}`}>
+                  {calcs.sizeBracket || (orderQuantity > 0 ? "Out of Range" : "—")}
                 </span>
               </div>
 
@@ -1714,7 +1769,11 @@ function CostSheetContent() {
                 <input
                   type="number"
                   disabled={isDbSelected}
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
+                  className={`w-32 h-7 px-2 text-xs font-semibold rounded text-right focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors ${
+                    calcs.isQtyOutOfRange
+                      ? "border-2 border-red-500 bg-red-50/80 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-500"
+                      : "border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95"
+                  }`}
                   value={orderQuantity || ""}
                   onChange={(e) => setOrderQuantity(Number(e.target.value))}
                 />
@@ -1947,10 +2006,7 @@ function CostSheetContent() {
                   EBITDA/Min-Cents
                 </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {(
-                    (calcs.ebitdaUSD * 100) /
-                    (parseFloat(smvSewingInput) || 1)
-                  ).toFixed(2)}
+                  {calcs.ebitdaMinCents.toFixed(2)}
                 </span>
               </div>
 
@@ -1991,10 +2047,7 @@ function CostSheetContent() {
                   Net Profit/Min-Cents
                 </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {(
-                    (calcs.netProfitUSD * 100) /
-                    (parseFloat(smvSewingInput) || 1)
-                  ).toFixed(2)}
+                  {calcs.netProfitMinCents.toFixed(2)}
                 </span>
               </div>
 
@@ -2003,10 +2056,7 @@ function CostSheetContent() {
                   Target CM/SMV-Cents
                 </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {(
-                    ((calcs.targetFobUSD - bomCostUSD) * 100) /
-                    (parseFloat(smvSewingInput) || 1)
-                  ).toFixed(2)}
+                  {calcs.targetCmSmvCents.toFixed(2)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-2">
@@ -2025,10 +2075,7 @@ function CostSheetContent() {
                   Order CM-SMV-Cents
                 </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {(
-                    (calcs.cmUSD * 100) /
-                    (parseFloat(smvSewingInput) || 1)
-                  ).toFixed(2)}
+                  {calcs.orderCmSmvCents.toFixed(2)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-2">
@@ -2045,15 +2092,33 @@ function CostSheetContent() {
               <div className="border-t border-slate-700 self-end" />
               <div className="border-t border-slate-700 self-end" />
 
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">SMV</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
-                  value={smvSewingInput}
-                  onChange={(e) => setSmvSewingInput(e.target.value)}
-                />
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-muted-foreground">SMV</span>
+                    {calcs.isSmvOutOfRange && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900 leading-none">
+                        Out of Range
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className={`w-32 h-7 px-2 text-xs font-semibold rounded text-right focus:bg-white focus:outline-none transition-colors ${
+                      calcs.isSmvOutOfRange
+                        ? "border-2 border-red-500 bg-red-50/80 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-500"
+                        : "border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95"
+                    }`}
+                    value={smvSewingInput}
+                    onChange={(e) => setSmvSewingInput(e.target.value)}
+                  />
+                </div>
+                {calcs.isSmvOutOfRange && (
+                  <p className="text-[11px] font-medium text-red-600 dark:text-red-400 text-right leading-tight">
+                    ⚠️ SMV {smvSewingInput} does not match any table range
+                  </p>
+                )}
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
@@ -2064,12 +2129,11 @@ function CostSheetContent() {
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={
-                      commissionPct ? (commissionPct * 100).toFixed(2) : ""
-                    }
-                    onChange={(e) =>
-                      setCommissionPct(Number(e.target.value) / 100)
-                    }
+                    value={commissionInput}
+                    onChange={(e) => {
+                      markDirty();
+                      setCommissionInput(e.target.value);
+                    }}
                   />
                   <span className="text-yellow-750 font-bold">%</span>
                 </div>
@@ -2095,8 +2159,11 @@ function CostSheetContent() {
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={taxEdsPct ? (taxEdsPct * 100).toFixed(2) : ""}
-                    onChange={(e) => setTaxEdsPct(Number(e.target.value) / 100)}
+                    value={taxEdsInput}
+                    onChange={(e) => {
+                      markDirty();
+                      setTaxEdsInput(e.target.value);
+                    }}
                   />
                   <span className="text-yellow-750 font-bold">%</span>
                 </div>
@@ -2127,14 +2194,11 @@ function CostSheetContent() {
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={
-                      inlandFreightPct
-                        ? (inlandFreightPct * 100).toFixed(2)
-                        : ""
-                    }
-                    onChange={(e) =>
-                      setInlandFreightPct(Number(e.target.value) / 100)
-                    }
+                    value={inlandFreightInput}
+                    onChange={(e) => {
+                      markDirty();
+                      setInlandFreightInput(e.target.value);
+                    }}
                   />
                   <span className="text-yellow-750 font-bold">%</span>
                 </div>
@@ -2161,14 +2225,11 @@ function CostSheetContent() {
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={
-                      localBankChargesPct
-                        ? (localBankChargesPct * 100).toFixed(2)
-                        : ""
-                    }
-                    onChange={(e) =>
-                      setLocalBankChargesPct(Number(e.target.value) / 100)
-                    }
+                    value={localBankChargesInput}
+                    onChange={(e) => {
+                      markDirty();
+                      setLocalBankChargesInput(e.target.value);
+                    }}
                   />
                   <span className="text-yellow-750 font-bold">%</span>
                 </div>
@@ -2184,10 +2245,11 @@ function CostSheetContent() {
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-300 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={discountRate ? (discountRate * 100).toFixed(0) : ""}
-                    onChange={(e) =>
-                      setDiscountRate(Number(e.target.value) / 100)
-                    }
+                    value={discountRateInput}
+                    onChange={(e) => {
+                      markDirty();
+                      setDiscountRateInput(e.target.value);
+                    }}
                   />
                   <span className="text-yellow-700 font-bold">%</span>
                 </div>
@@ -2425,7 +2487,12 @@ function CostSheetContent() {
                     {/* DEDUCTIONS */}
                     <TableRow>
                       <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
-                        Tax &amp; EDS ({fmtPct(taxEdsPct, 2)})
+                        Tax &amp; EDS (
+                        {fmtPct(
+                          (parseFloat(taxEdsInput) || 0) / 100,
+                          2,
+                        )}
+                        )
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {calcs.taxEDS_PKR.toFixed(0)}
@@ -2450,8 +2517,11 @@ function CostSheetContent() {
                             type="number"
                             step="0.01"
                             className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                            value={rebatePct || ""}
-                            onChange={(e) => setRebatePct(Number(e.target.value))}
+                            value={rebateInput}
+                            onChange={(e) => {
+                              markDirty();
+                              setRebateInput(e.target.value);
+                            }}
                           />
                         </div>
                       </TableCell>
@@ -2478,7 +2548,12 @@ function CostSheetContent() {
                     </TableRow>
                     <TableRow>
                       <TableCell className="pl-3.5 pr-1.5 py-1 text-muted-foreground truncate">
-                        Local Bank Charges ({fmtPct(localBankChargesPct, 2)})
+                        Local Bank Charges (
+                        {fmtPct(
+                          (parseFloat(localBankChargesInput) || 0) / 100,
+                          2,
+                        )}
+                        )
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap">
                         {calcs.bankChargesPKR.toFixed(0)}
@@ -2510,10 +2585,11 @@ function CostSheetContent() {
                           <input
                             type="number"
                             className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                            value={paymentTermsDays || ""}
-                            onChange={(e) =>
-                              setPaymentTermsDays(Number(e.target.value))
-                            }
+                            value={paymentTermsDaysInput}
+                            onChange={(e) => {
+                              markDirty();
+                              setPaymentTermsDaysInput(e.target.value);
+                            }}
                           />
                         </div>
                       </TableCell>
@@ -2544,10 +2620,11 @@ function CostSheetContent() {
                           <input
                             type="number"
                             className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                            value={factoringDays || ""}
-                            onChange={(e) =>
-                              setFactoringDays(Number(e.target.value))
-                            }
+                            value={factoringDaysInput}
+                            onChange={(e) => {
+                              markDirty();
+                              setFactoringDaysInput(e.target.value);
+                            }}
                           />
                         </div>
                       </TableCell>
@@ -2569,11 +2646,13 @@ function CostSheetContent() {
                           </span>
                           <input
                             type="number"
+                            step="0.01"
                             className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                            value={commissionPct || ""}
-                            onChange={(e) =>
-                              setCommissionPct(Number(e.target.value))
-                            }
+                            value={commissionInput}
+                            onChange={(e) => {
+                              markDirty();
+                              setCommissionInput(e.target.value);
+                            }}
                           />
                         </div>
                       </TableCell>
@@ -2597,10 +2676,11 @@ function CostSheetContent() {
                             type="number"
                             step="0.01"
                             className="w-12 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                            value={foreignBankCharges || ""}
-                            onChange={(e) =>
-                              setForeignBankCharges(Number(e.target.value))
-                            }
+                            value={foreignBankChargesInput}
+                            onChange={(e) => {
+                              markDirty();
+                              setForeignBankChargesInput(e.target.value);
+                            }}
                           />
                         </div>
                       </TableCell>
@@ -2903,42 +2983,17 @@ function CostSheetContent() {
                 <Layers className="size-4 text-primary" /> Fabric Details (USD
                 input)
               </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => {
-                  markDirty();
-                  const newIdx = activeStyle.bomFabric.length;
-                  setActiveStyle({
-                    ...activeStyle,
-                    bomFabric: [
-                      ...activeStyle.bomFabric,
-                      {
-                        itemName: "",
-                        consumptionPerPc: 0,
-                        rateUSD: 0,
-                        ratePKR: 0,
-                        fabricCostPKR: 0,
-                      },
-                    ],
-                  });
-                  setNewFabricRows((prev) => new Set(prev).add(newIdx));
-                }}
-              >
-                <Plus className="mr-1 size-3.5" /> Add Fabric
-              </Button>
             </div>
             <CardContent className="p-0 text-xs">
-              <Table>
+              <Table className="table-fixed w-full text-xs">
                 <TableHeader className="bg-muted/30">
                   <TableRow>
-                    <TableHead>Fabric Item Name</TableHead>
-                    <TableHead className="w-20">Cons. (Mtr)</TableHead>
-                    <TableHead className="w-24">Rate ($)</TableHead>
-                    <TableHead className="w-24 text-right">Rate (Rs)</TableHead>
-                    <TableHead className="w-28 text-right">Cost (Rs)</TableHead>
-                    <TableHead className="w-10"></TableHead>
+                    <TableHead className="w-[36%]">Fabric Item Name</TableHead>
+                    <TableHead className="w-[14%] text-center">Cons. (Mtr)</TableHead>
+                    <TableHead className="w-[15%] text-center">Rate ($)</TableHead>
+                    <TableHead className="w-[15%] text-center">Rate (Rs)</TableHead>
+                    <TableHead className="w-[16%] text-right">Cost (Rs)</TableHead>
+                    <TableHead className="w-[4%] text-center"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -2986,8 +3041,9 @@ function CostSheetContent() {
                               type="text"
                               disabled
                               placeholder={`Fabric ${idx + 1}`}
-                              className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed truncate"
                               value={item.itemName}
+                              title={item.itemName}
                               onChange={(e) =>
                                 updateFabricBOM(idx, "itemName", e.target.value)
                               }
@@ -2999,7 +3055,7 @@ function CostSheetContent() {
                             type="number"
                             step="0.01"
                             placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.consumptionPerPc || ""}
                             onChange={(e) =>
                               updateFabricBOM(
@@ -3013,17 +3069,16 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled
-                            readOnly
                             step="0.0001"
                             placeholder="0.0000"
-                            className="w-full h-7 px-2 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
-                            value={
-                              item.rateUSD !== undefined && item.rateUSD > 0
-                                ? Number(item.rateUSD.toFixed(4))
-                                : item.ratePKR && parityProcurement && parityProcurement > 0
-                                ? Number((item.ratePKR / parityProcurement).toFixed(4))
-                                : ""
+                            className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            value={item.rateUSD || ""}
+                            onChange={(e) =>
+                              updateFabricBOM(
+                                idx,
+                                "rateUSD",
+                                Number(e.target.value),
+                              )
                             }
                           />
                         </TableCell>
@@ -3031,9 +3086,13 @@ function CostSheetContent() {
                           <input
                             type="number"
                             step="0.01"
-                            placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
-                            value={item.ratePKR || ""}
+                            placeholder="0"
+                            className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            value={
+                              item.ratePKR
+                                ? Number(item.ratePKR.toFixed(0))
+                                : ""
+                            }
                             onChange={(e) =>
                               updateFabricBOM(
                                 idx,
@@ -3043,45 +3102,70 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
+                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4 whitespace-nowrap">
                           Rs. {item.fabricCostPKR.toFixed(0)}
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          {isEditable && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-6 text-destructive"
-                              onClick={() => {
-                                markDirty();
-                                setActiveStyle({
-                                  ...activeStyle,
-                                  bomFabric: activeStyle.bomFabric.filter(
-                                    (_, i) => i !== idx,
-                                  ),
+                        <TableCell className="p-1.5 w-8 text-center">
+                          <button
+                            type="button"
+                            title="Remove fabric"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-1 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                            onClick={() => {
+                              markDirty();
+                              setActiveStyle({
+                                ...activeStyle,
+                                bomFabric: activeStyle.bomFabric.filter(
+                                  (_, i) => i !== idx,
+                                ),
+                              });
+                              setNewFabricRows((prev) => {
+                                const next = new Set<number>();
+                                prev.forEach((i) => {
+                                  if (i < idx) next.add(i);
+                                  else if (i > idx) next.add(i - 1);
                                 });
-                                setNewFabricRows((prev) => {
-                                  const next = new Set<number>();
-                                  prev.forEach((i) => {
-                                    if (i < idx) next.add(i);
-                                    else if (i > idx) next.add(i - 1);
-                                  });
-                                  return next;
-                                });
-                              }}
-                            >
-                              <X className="size-3.5" />
-                            </Button>
-                          )}
+                                return next;
+                              });
+                            }}
+                          >
+                            <X className="size-4 stroke-[2.5]" />
+                          </button>
                         </TableCell>
                       </TableRow>
                     );
                   })}
                   <TableRow className="bg-muted/10 font-bold">
-                    <TableCell colSpan={4} className="text-right">
+                    <TableCell colSpan={2} className="p-1.5 pl-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          markDirty();
+                          const newIdx = activeStyle.bomFabric.length;
+                          setActiveStyle({
+                            ...activeStyle,
+                            bomFabric: [
+                              ...activeStyle.bomFabric,
+                              {
+                                itemName: "",
+                                consumptionPerPc: 0,
+                                rateUSD: 0,
+                                ratePKR: 0,
+                                fabricCostPKR: 0,
+                              },
+                            ],
+                          });
+                          setNewFabricRows((prev) => new Set(prev).add(newIdx));
+                        }}
+                      >
+                        <Plus className="mr-1 size-3.5" /> Add Fabric
+                      </Button>
+                    </TableCell>
+                    <TableCell colSpan={2} className="text-right align-middle">
                       Total Fabric Cost:
                     </TableCell>
-                    <TableCell className="text-right text-primary pr-4">
+                    <TableCell className="text-right text-primary pr-4 align-middle whitespace-nowrap">
                       Rs. {calcs.fabricCostPKR.toFixed(0)}
                     </TableCell>
                     <TableCell />
@@ -3098,42 +3182,17 @@ function CostSheetContent() {
                 <Layers className="size-4 text-primary" /> Pocket Lining Details
                 (USD input)
               </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => {
-                  markDirty();
-                  const newIdx = activeStyle.bomLining.length;
-                  setActiveStyle({
-                    ...activeStyle,
-                    bomLining: [
-                      ...activeStyle.bomLining,
-                      {
-                        itemName: "",
-                        consumptionPerPc: 0,
-                        rateUSD: 0,
-                        ratePKR: 0,
-                        liningCostPKR: 0,
-                      },
-                    ],
-                  });
-                  setNewLiningRows((prev) => new Set(prev).add(newIdx));
-                }}
-              >
-                <Plus className="mr-1 size-3.5" /> Add Lining
-              </Button>
             </div>
             <CardContent className="p-0 text-xs">
-              <Table>
+              <Table className="table-fixed w-full text-xs">
                 <TableHeader className="bg-muted/30">
                   <TableRow>
-                    <TableHead>Lining Item Name</TableHead>
-                    <TableHead className="w-20">Cons. (Mtr)</TableHead>
-                    <TableHead className="w-24">Rate ($)</TableHead>
-                    <TableHead className="w-24 text-right">Rate (Rs)</TableHead>
-                    <TableHead className="w-28 text-right">Cost (Rs)</TableHead>
-                    <TableHead className="w-10"></TableHead>
+                    <TableHead className="w-[36%]">Lining Item Name</TableHead>
+                    <TableHead className="w-[14%] text-center">Cons. (Mtr)</TableHead>
+                    <TableHead className="w-[15%] text-center">Rate ($)</TableHead>
+                    <TableHead className="w-[15%] text-center">Rate (Rs)</TableHead>
+                    <TableHead className="w-[16%] text-right">Cost (Rs)</TableHead>
+                    <TableHead className="w-[4%] text-center"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -3160,7 +3219,7 @@ function CostSheetContent() {
                               value={item.itemName}
                               onChange={(val) => {
                                 const chosen = val;
-                                const found = liningCatalog.find(
+                                const found = fabricCatalog.find(
                                   (c) => c.itemName === chosen,
                                 );
                                 updateLiningBOM(idx, {
@@ -3170,7 +3229,7 @@ function CostSheetContent() {
                               }}
                               options={[
                                 { value: "", label: "-- Select Lining --" },
-                                ...liningCatalog.map((c) => ({
+                                ...fabricCatalog.map((c) => ({
                                   value: c.itemName,
                                   label: c.itemName,
                                 })),
@@ -3181,8 +3240,9 @@ function CostSheetContent() {
                               type="text"
                               disabled
                               placeholder={`Lining ${idx + 1}`}
-                              className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed truncate"
                               value={item.itemName}
+                              title={item.itemName}
                               onChange={(e) =>
                                 updateLiningBOM(idx, "itemName", e.target.value)
                               }
@@ -3194,7 +3254,7 @@ function CostSheetContent() {
                             type="number"
                             step="0.01"
                             placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.consumptionPerPc || ""}
                             onChange={(e) =>
                               updateLiningBOM(
@@ -3208,17 +3268,16 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            disabled
-                            readOnly
                             step="0.0001"
                             placeholder="0.0000"
-                            className="w-full h-7 px-2 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
-                            value={
-                              item.rateUSD !== undefined && item.rateUSD > 0
-                                ? Number(item.rateUSD.toFixed(4))
-                                : item.ratePKR && parityProcurement && parityProcurement > 0
-                                ? Number((item.ratePKR / parityProcurement).toFixed(4))
-                                : ""
+                            className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            value={item.rateUSD || ""}
+                            onChange={(e) =>
+                              updateLiningBOM(
+                                idx,
+                                "rateUSD",
+                                Number(e.target.value),
+                              )
                             }
                           />
                         </TableCell>
@@ -3226,9 +3285,13 @@ function CostSheetContent() {
                           <input
                             type="number"
                             step="0.01"
-                            placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
-                            value={item.ratePKR || ""}
+                            placeholder="0"
+                            className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            value={
+                              item.ratePKR
+                                ? Number(item.ratePKR.toFixed(0))
+                                : ""
+                            }
                             onChange={(e) =>
                               updateLiningBOM(
                                 idx,
@@ -3238,45 +3301,70 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
+                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4 whitespace-nowrap">
                           Rs. {item.liningCostPKR.toFixed(0)}
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          {isEditable && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-6 text-destructive"
-                              onClick={() => {
-                                markDirty();
-                                setActiveStyle({
-                                  ...activeStyle,
-                                  bomLining: activeStyle.bomLining.filter(
-                                    (_, i) => i !== idx,
-                                  ),
+                        <TableCell className="p-1.5 w-8 text-center">
+                          <button
+                            type="button"
+                            title="Remove lining"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-1 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                            onClick={() => {
+                              markDirty();
+                              setActiveStyle({
+                                ...activeStyle,
+                                bomLining: activeStyle.bomLining.filter(
+                                  (_, i) => i !== idx,
+                                ),
+                              });
+                              setNewLiningRows((prev) => {
+                                const next = new Set<number>();
+                                prev.forEach((i) => {
+                                  if (i < idx) next.add(i);
+                                  else if (i > idx) next.add(i - 1);
                                 });
-                                setNewLiningRows((prev) => {
-                                  const next = new Set<number>();
-                                  prev.forEach((i) => {
-                                    if (i < idx) next.add(i);
-                                    else if (i > idx) next.add(i - 1);
-                                  });
-                                  return next;
-                                });
-                              }}
-                            >
-                              <X className="size-3.5" />
-                            </Button>
-                          )}
+                                return next;
+                              });
+                            }}
+                          >
+                            <X className="size-4 stroke-[2.5]" />
+                          </button>
                         </TableCell>
                       </TableRow>
                     );
                   })}
                   <TableRow className="bg-muted/10 font-bold">
-                    <TableCell colSpan={4} className="text-right">
+                    <TableCell colSpan={2} className="p-1.5 pl-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          markDirty();
+                          const newIdx = activeStyle.bomLining.length;
+                          setActiveStyle({
+                            ...activeStyle,
+                            bomLining: [
+                              ...activeStyle.bomLining,
+                              {
+                                itemName: "",
+                                consumptionPerPc: 0,
+                                rateUSD: 0,
+                                ratePKR: 0,
+                                liningCostPKR: 0,
+                              },
+                            ],
+                          });
+                          setNewLiningRows((prev) => new Set(prev).add(newIdx));
+                        }}
+                      >
+                        <Plus className="mr-1 size-3.5" /> Add Lining
+                      </Button>
+                    </TableCell>
+                    <TableCell colSpan={2} className="text-right align-middle">
                       Total Lining Cost:
                     </TableCell>
-                    <TableCell className="text-right text-primary pr-4">
+                    <TableCell className="text-right text-primary pr-4 align-middle whitespace-nowrap">
                       Rs. {calcs.liningCostPKR.toFixed(0)}
                     </TableCell>
                     <TableCell />
@@ -3288,108 +3376,30 @@ function CostSheetContent() {
 
           {/* ACCESSORIES, CHEMICALS, & SPECIAL CHARGES */}
           <Card className="shadow-md border-muted/60 bg-card overflow-visible">
-            <div className="bg-muted/40 px-4 py-3 border-b flex flex-wrap justify-between items-center gap-2">
+            <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center">
               <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
                 <Layers className="size-4 text-primary" /> Trims, Chemicals &
                 Special Charges (PKR Input)
               </h2>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    markDirty();
-                    const newIdx = activeStyle.bomAccessories.length;
-                    setActiveStyle({
-                      ...activeStyle,
-                      bomAccessories: [
-                        ...activeStyle.bomAccessories,
-                        {
-                          category: "Trims Mix Materials",
-                          itemName: "",
-                          consPerPc: 0,
-                          rateUSD: 0,
-                          ratePKR: 0,
-                          totalCostPKR: 0,
-                        },
-                      ],
-                    });
-                    setNewAccessoryRows((prev) => new Set(prev).add(newIdx));
-                  }}
-                >
-                  <Plus className="mr-1 size-3.5" /> Add Trim
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    markDirty();
-                    const newIdx = activeStyle.bomChemicals.length;
-                    setActiveStyle({
-                      ...activeStyle,
-                      bomChemicals: [
-                        ...activeStyle.bomChemicals,
-                        {
-                          washItem: "",
-                          consPerPc: 0,
-                          rateUSD: 0,
-                          ratePKR: 0,
-                          totalCostPKR: 0,
-                        },
-                      ],
-                    });
-                    setNewChemicalRows((prev) => new Set(prev).add(newIdx));
-                  }}
-                >
-                  <Plus className="mr-1 size-3.5" /> Add Chemical
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    markDirty();
-                    const newIdx = activeStyle.bomSpecialCharges.length;
-                    setActiveStyle({
-                      ...activeStyle,
-                      bomSpecialCharges: [
-                        ...activeStyle.bomSpecialCharges,
-                        {
-                          itemName: "",
-                          consPerPc: 0,
-                          rateUSD: 0,
-                          ratePKR: 0,
-                          totalCostPKR: 0,
-                        },
-                      ],
-                    });
-                    setNewSpecialChargeRows((prev) => new Set(prev).add(newIdx));
-                  }}
-                >
-                  <Plus className="mr-1 size-3.5" /> Add Special Charge
-                </Button>
-              </div>
             </div>
             <CardContent className="p-0 text-xs">
               <div>
-                <Table>
+                <Table className="table-fixed w-full text-xs">
                   <TableHeader className="bg-muted/30 sticky top-0 z-10">
                     <TableRow>
-                      <TableHead className="w-32">Category</TableHead>
-                      <TableHead>Item Name</TableHead>
-                      <TableHead className="w-16">Cons.</TableHead>
-                      <TableHead className="w-24 text-center">
+                      <TableHead className="w-[20%]">Category</TableHead>
+                      <TableHead className="w-[32%]">Item Name</TableHead>
+                      <TableHead className="w-[11%] text-center">Cons.</TableHead>
+                      <TableHead className="w-[11%] text-center">
                         Rate ($)
                       </TableHead>
-                      <TableHead className="w-24 text-center">
+                      <TableHead className="w-[11%] text-center">
                         Rate (Rs)
                       </TableHead>
-                      <TableHead className="w-28 text-right">
+                      <TableHead className="w-[11%] text-right">
                         Cost (Rs)
                       </TableHead>
-                      <TableHead className="w-10"></TableHead>
+                      <TableHead className="w-[4%] text-center"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -3405,11 +3415,11 @@ function CostSheetContent() {
                         newAccessoryRows.has(idx);
                       return (
                         <TableRow key={`acc-${idx}`}>
-                          <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
+                          <TableCell className="p-1.5 pl-3">
                             {isAccEditable ? (
                               <input
                                 type="text"
-                                className="w-full h-7 px-1.5 text-[10px] border rounded bg-background"
+                                className="w-full h-7 px-1.5 text-[10px] border rounded bg-background truncate"
                                 value={item.category}
                                 placeholder="Category"
                                 onChange={(e) =>
@@ -3421,7 +3431,9 @@ function CostSheetContent() {
                                 }
                               />
                             ) : (
-                              item.category
+                              <div className="truncate text-[10px] text-muted-foreground font-semibold uppercase" title={item.category}>
+                                {item.category}
+                              </div>
                             )}
                           </TableCell>
                           <TableCell className="p-1.5">
@@ -3453,8 +3465,9 @@ function CostSheetContent() {
                               <input
                                 type="text"
                                 disabled
-                                className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                                className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed truncate"
                                 value={item.itemName}
+                                title={item.itemName}
                                 onChange={(e) =>
                                   updateAccessoriesBOM(
                                     idx,
@@ -3487,7 +3500,7 @@ function CostSheetContent() {
                               readOnly
                               step="0.0001"
                               placeholder="0.0000"
-                              className="w-full h-7 px-2 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                              className="w-full h-7 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
                               value={
                                 item.rateUSD !== undefined && item.rateUSD > 0
                                   ? Number(item.rateUSD.toFixed(4))
@@ -3506,7 +3519,7 @@ function CostSheetContent() {
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
+                              className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                               value={item.ratePKR || ""}
                               onChange={(e) =>
                                 updateAccessoriesBOM(
@@ -3517,46 +3530,74 @@ function CostSheetContent() {
                               }
                             />
                           </TableCell>
-                          <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
+                          <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4 whitespace-nowrap">
                             Rs. {(item.totalCostPKR || 0).toFixed(0)}
                           </TableCell>
-                          <TableCell className="p-1.5">
-                            {isAccEditable && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-6 text-destructive"
-                                onClick={() => {
-                                  markDirty();
-                                  setActiveStyle({
-                                    ...activeStyle,
-                                    bomAccessories:
-                                      activeStyle.bomAccessories.filter(
-                                        (_, i) => i !== idx,
-                                      ),
+                          <TableCell className="p-1.5 w-8 text-center">
+                            <button
+                              type="button"
+                              title="Remove accessory"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-1 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                              onClick={() => {
+                                markDirty();
+                                setActiveStyle({
+                                  ...activeStyle,
+                                  bomAccessories:
+                                    activeStyle.bomAccessories.filter(
+                                      (_, i) => i !== idx,
+                                    ),
+                                });
+                                setNewAccessoryRows((prev) => {
+                                  const next = new Set<number>();
+                                  prev.forEach((i) => {
+                                    if (i < idx) next.add(i);
+                                    else if (i > idx) next.add(i - 1);
                                   });
-                                  setNewAccessoryRows((prev) => {
-                                    const next = new Set<number>();
-                                    prev.forEach((i) => {
-                                      if (i < idx) next.add(i);
-                                      else if (i > idx) next.add(i - 1);
-                                    });
-                                    return next;
-                                  });
-                                }}
-                              >
-                                <X className="size-3.5" />
-                              </Button>
-                            )}
+                                  return next;
+                                });
+                              }}
+                            >
+                              <X className="size-4 stroke-[2.5]" />
+                            </button>
                           </TableCell>
                         </TableRow>
                       );
                     })}
                     <TableRow className="bg-muted/10 font-bold">
-                      <TableCell colSpan={5} className="text-right">
+                      <TableCell colSpan={2} className="p-1.5 pl-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            markDirty();
+                            const newIdx = activeStyle.bomAccessories.length;
+                            setActiveStyle({
+                              ...activeStyle,
+                              bomAccessories: [
+                                ...activeStyle.bomAccessories,
+                                {
+                                  category: "Trims Mix Materials",
+                                  itemName: "",
+                                  consPerPc: 0,
+                                  rateUSD: 0,
+                                  ratePKR: 0,
+                                  totalCostPKR: 0,
+                                },
+                              ],
+                            });
+                            setNewAccessoryRows((prev) =>
+                              new Set(prev).add(newIdx),
+                            );
+                          }}
+                        >
+                          <Plus className="mr-1 size-3.5" /> Add Trim
+                        </Button>
+                      </TableCell>
+                      <TableCell colSpan={3} className="text-right align-middle">
                         Total Accessories Cost:
                       </TableCell>
-                      <TableCell className="text-right text-primary pr-4">
+                      <TableCell className="text-right text-primary pr-4 align-middle whitespace-nowrap">
                         Rs. {calcs.accessoriesCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell />
@@ -3567,53 +3608,27 @@ function CostSheetContent() {
                       <TableCell colSpan={7}>Chemical Costs</TableCell>
                     </TableRow>
                     {activeStyle.bomChemicals.map((item, idx) => {
-                      const isChemEditable =
-                        activeStyle.id === "custom" ||
-                        newChemicalRows.has(idx);
                       return (
                         <TableRow key={`chem-${idx}`}>
-                          <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
+                          <TableCell className="p-1.5 pl-3 text-[10px] text-muted-foreground font-semibold uppercase truncate">
                             Chemicals
                           </TableCell>
                           <TableCell colSpan={2} className="p-1.5">
-                            {isChemEditable ? (
-                              <SearchableSelect
-                                className="w-full"
-                                placeholder="Search chemical…"
-                                value={item.washItem}
-                                onChange={(val) => {
-                                  const chosen = val;
-                                  const found = chemicalsCatalog.find(
-                                    (c) => c.itemName === chosen,
-                                  );
-                                  updateChemicalsBOM(idx, {
-                                    washItem: chosen,
-                                    ...(found && found.ratePKR ? { ratePKR: found.ratePKR } : {}),
-                                  });
-                                }}
-                                options={[
-                                  { value: "", label: "-- Select Chemical --" },
-                                  ...chemicalsCatalog.map((c) => ({
-                                    value: c.itemName,
-                                    label: c.itemName,
-                                  })),
-                                ]}
-                              />
-                            ) : (
-                              <input
-                                type="text"
-                                disabled
-                                className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                                value={item.washItem}
-                                onChange={(e) =>
-                                  updateChemicalsBOM(
-                                    idx,
-                                    "washItem",
-                                    e.target.value,
-                                  )
-                                }
-                              />
-                            )}
+                            <SearchableSelect
+                              className="w-full"
+                              placeholder="Select chemical…"
+                              value={item.washItem}
+                              onChange={(val) => {
+                                updateChemicalsBOM(idx, "washItem", val);
+                              }}
+                              options={[
+                                { value: "", label: "-- Select Chemical --" },
+                                ...chemicalsList.map((c) => ({
+                                  value: c,
+                                  label: c,
+                                })),
+                              ]}
+                            />
                           </TableCell>
                           <TableCell className="p-1.5">
                             <input
@@ -3622,7 +3637,7 @@ function CostSheetContent() {
                               readOnly
                               step="0.0001"
                               placeholder="0.0000"
-                              className="w-full h-7 px-2 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                              className="w-full h-7 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
                               value={
                                 item.rateUSD !== undefined && item.rateUSD > 0
                                   ? Number(item.rateUSD.toFixed(4))
@@ -3641,7 +3656,8 @@ function CostSheetContent() {
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
+                              placeholder="0"
+                              className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                               value={item.ratePKR || ""}
                               onChange={(e) =>
                                 updateChemicalsBOM(
@@ -3652,46 +3668,73 @@ function CostSheetContent() {
                               }
                             />
                           </TableCell>
-                          <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
+                          <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4 whitespace-nowrap">
                             Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(0)}
                           </TableCell>
-                          <TableCell className="p-1.5">
-                            {isChemEditable && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-6 text-destructive"
-                                onClick={() => {
-                                  markDirty();
-                                  setActiveStyle({
-                                    ...activeStyle,
-                                    bomChemicals:
-                                      activeStyle.bomChemicals.filter(
-                                        (_, i) => i !== idx,
-                                      ),
+                          <TableCell className="p-1.5 w-8 text-center">
+                            <button
+                              type="button"
+                              title="Remove chemical"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-1 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                              onClick={() => {
+                                markDirty();
+                                setActiveStyle({
+                                  ...activeStyle,
+                                  bomChemicals:
+                                    activeStyle.bomChemicals.filter(
+                                      (_, i) => i !== idx,
+                                    ),
+                                });
+                                setNewChemicalRows((prev) => {
+                                  const next = new Set<number>();
+                                  prev.forEach((i) => {
+                                    if (i < idx) next.add(i);
+                                    else if (i > idx) next.add(i - 1);
                                   });
-                                  setNewChemicalRows((prev) => {
-                                    const next = new Set<number>();
-                                    prev.forEach((i) => {
-                                      if (i < idx) next.add(i);
-                                      else if (i > idx) next.add(i - 1);
-                                    });
-                                    return next;
-                                  });
-                                }}
-                              >
-                                <X className="size-3.5" />
-                              </Button>
-                            )}
+                                  return next;
+                                });
+                              }}
+                            >
+                              <X className="size-4 stroke-[2.5]" />
+                            </button>
                           </TableCell>
                         </TableRow>
                       );
                     })}
                     <TableRow className="bg-muted/10 font-bold">
-                      <TableCell colSpan={5} className="text-right">
+                      <TableCell colSpan={2} className="p-1.5 pl-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            markDirty();
+                            const newIdx = activeStyle.bomChemicals.length;
+                            setActiveStyle({
+                              ...activeStyle,
+                              bomChemicals: [
+                                ...activeStyle.bomChemicals,
+                                {
+                                  washItem: "",
+                                  consPerPc: 0,
+                                  rateUSD: 0,
+                                  ratePKR: 0,
+                                  totalCostPKR: 0,
+                                },
+                              ],
+                            });
+                            setNewChemicalRows((prev) =>
+                              new Set(prev).add(newIdx),
+                            );
+                          }}
+                        >
+                          <Plus className="mr-1 size-3.5" /> Add Chemical
+                        </Button>
+                      </TableCell>
+                      <TableCell colSpan={3} className="text-right align-middle">
                         Total Chemical Cost:
                       </TableCell>
-                      <TableCell className="text-right text-primary pr-4">
+                      <TableCell className="text-right text-primary pr-4 align-middle whitespace-nowrap">
                         Rs. {calcs.chemicalsCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell />
@@ -3704,41 +3747,27 @@ function CostSheetContent() {
                       </TableCell>
                     </TableRow>
                     {activeStyle.bomSpecialCharges.map((item, idx) => {
-                      const isChgEditable =
-                        activeStyle.id === "custom" ||
-                        newSpecialChargeRows.has(idx);
                       return (
                         <TableRow key={`chg-${idx}`}>
-                          <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
-                            {item.itemName || "Charges"}
+                          <TableCell className="p-1.5 pl-3 text-[10px] text-muted-foreground font-semibold uppercase truncate">
+                            Charges
                           </TableCell>
-                          <TableCell colSpan={2} className="p-1.5 font-medium text-xs align-middle">
-                            {isChgEditable ? (
-                              <SearchableSelect
-                                className="w-full"
-                                placeholder="Search charge…"
-                                value={item.itemName}
-                                onChange={(val) => {
-                                  const chosen = val;
-                                  const found = specialChargesCatalog.find(
-                                    (c) => c.itemName === chosen,
-                                  );
-                                  updateSpecialChargesBOM(idx, {
-                                    itemName: chosen,
-                                    ...(found && found.ratePKR ? { ratePKR: found.ratePKR } : {}),
-                                  });
-                                }}
-                                options={[
-                                  { value: "", label: "-- Select Charge --" },
-                                  ...specialChargesCatalog.map((c) => ({
-                                    value: c.itemName,
-                                    label: c.itemName,
-                                  })),
-                                ]}
-                              />
-                            ) : (
-                              `${item.itemName} Charges`
-                            )}
+                          <TableCell colSpan={2} className="p-1.5">
+                            <SearchableSelect
+                              className="w-full"
+                              placeholder="Select charge…"
+                              value={item.itemName}
+                              onChange={(val) => {
+                                updateSpecialChargesBOM(idx, "itemName", val);
+                              }}
+                              options={[
+                                { value: "", label: "-- Select Charge --" },
+                                ...specialChargesList.map((c) => ({
+                                  value: c,
+                                  label: c,
+                                })),
+                              ]}
+                            />
                           </TableCell>
                           <TableCell className="p-1.5">
                             <input
@@ -3747,7 +3776,7 @@ function CostSheetContent() {
                               readOnly
                               step="0.0001"
                               placeholder="0.0000"
-                              className="w-full h-7 px-2 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                              className="w-full h-7 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
                               value={
                                 item.rateUSD !== undefined && item.rateUSD > 0
                                   ? Number(item.rateUSD.toFixed(4))
@@ -3766,7 +3795,8 @@ function CostSheetContent() {
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
+                              placeholder="0"
+                              className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                               value={item.ratePKR || ""}
                               onChange={(e) =>
                                 updateSpecialChargesBOM(
@@ -3777,46 +3807,73 @@ function CostSheetContent() {
                               }
                             />
                           </TableCell>
-                          <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
+                          <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4 whitespace-nowrap">
                             Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(0)}
                           </TableCell>
-                          <TableCell className="p-1.5">
-                            {isChgEditable && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-6 text-destructive"
-                                onClick={() => {
-                                  markDirty();
-                                  setActiveStyle({
-                                    ...activeStyle,
-                                    bomSpecialCharges:
-                                      activeStyle.bomSpecialCharges.filter(
-                                        (_, i) => i !== idx,
-                                      ),
+                          <TableCell className="p-1.5 w-8 text-center">
+                            <button
+                              type="button"
+                              title="Remove special charge"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-1 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                              onClick={() => {
+                                markDirty();
+                                setActiveStyle({
+                                  ...activeStyle,
+                                  bomSpecialCharges:
+                                    activeStyle.bomSpecialCharges.filter(
+                                      (_, i) => i !== idx,
+                                    ),
+                                });
+                                setNewSpecialChargeRows((prev) => {
+                                  const next = new Set<number>();
+                                  prev.forEach((i) => {
+                                    if (i < idx) next.add(i);
+                                    else if (i > idx) next.add(i - 1);
                                   });
-                                  setNewSpecialChargeRows((prev) => {
-                                    const next = new Set<number>();
-                                    prev.forEach((i) => {
-                                      if (i < idx) next.add(i);
-                                      else if (i > idx) next.add(i - 1);
-                                    });
-                                    return next;
-                                  });
-                                }}
-                              >
-                                <X className="size-3.5" />
-                              </Button>
-                            )}
+                                  return next;
+                                });
+                              }}
+                            >
+                              <X className="size-4 stroke-[2.5]" />
+                            </button>
                           </TableCell>
                         </TableRow>
                       );
                     })}
                     <TableRow className="bg-muted/10 font-bold">
-                      <TableCell colSpan={5} className="text-right">
+                      <TableCell colSpan={2} className="p-1.5 pl-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            markDirty();
+                            const newIdx = activeStyle.bomSpecialCharges.length;
+                            setActiveStyle({
+                              ...activeStyle,
+                              bomSpecialCharges: [
+                                ...activeStyle.bomSpecialCharges,
+                                {
+                                  itemName: "",
+                                  consPerPc: 0,
+                                  rateUSD: 0,
+                                  ratePKR: 0,
+                                  totalCostPKR: 0,
+                                },
+                              ],
+                            });
+                            setNewSpecialChargeRows((prev) =>
+                              new Set(prev).add(newIdx),
+                            );
+                          }}
+                        >
+                          <Plus className="mr-1 size-3.5" /> Add Special Charge
+                        </Button>
+                      </TableCell>
+                      <TableCell colSpan={3} className="text-right align-middle">
                         Total Special Charges Cost:
                       </TableCell>
-                      <TableCell className="text-right text-primary pr-4">
+                      <TableCell className="text-right text-primary pr-4 align-middle whitespace-nowrap">
                         Rs. {calcs.specialChargesCostPKR.toFixed(0)}
                       </TableCell>
                       <TableCell />
@@ -3851,7 +3908,7 @@ function CostSheetContent() {
                   size="sm"
                   onClick={handleUpdateExisting}
                   disabled={isSaving}
-                  className="h-9"
+                  className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
                 >
                   {isSaving ? (
                     <RefreshCw className="mr-1.5 size-4 animate-spin" />
@@ -3865,9 +3922,15 @@ function CostSheetContent() {
               <Button
                 size="sm"
                 onClick={() => setSaveDialogOpen(true)}
-                className="h-9"
+                disabled={isSaving}
+                className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
               >
-                <Save className="mr-1.5 size-4" /> Save Cost Sheet
+                {isSaving ? (
+                  <RefreshCw className="mr-1.5 size-4 animate-spin" />
+                ) : (
+                  <Save className="mr-1.5 size-4" />
+                )}
+                Save Cost Sheet
               </Button>
             )}
           </div>

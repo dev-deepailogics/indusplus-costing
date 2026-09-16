@@ -1,54 +1,28 @@
 import type { StyleMasterItem } from "@/features/style-master/types";
 import type { SimpleTableData, MatrixTableData, ProcessMatrixTableData } from "@/features/parameters/types";
 
-const FALLBACK_CPMS = {
-  directLabour: 8.928,
-  salaries: 12.492,
-  utilities: 4.5,
-  repair: 1.224,
-  fohAdmin: 6.876,
-  depreciation: 1.764,
-};
-
-const FALLBACK_CUT_TO_SHIP: Record<string, Record<string, string>> = {
-  "<=500": { "Basic": "54", "Semi Fashion": "50", "Fashion": "47", "High Fashion": "45" },
-  "501-1000": { "Basic": "56", "Semi Fashion": "52", "Fashion": "48", "High Fashion": "46" },
-  "1001-2000": { "Basic": "58", "Semi Fashion": "53", "Fashion": "50", "High Fashion": "48" },
-  "2001-3000": { "Basic": "60", "Semi Fashion": "55", "Fashion": "52", "High Fashion": "50" },
-  "3001-4000": { "Basic": "62", "Semi Fashion": "57", "Fashion": "54", "High Fashion": "52" },
-  "4001-5000": { "Basic": "65", "Semi Fashion": "59", "Fashion": "56", "High Fashion": "54" },
-  "5001-10000": { "Basic": "68", "Semi Fashion": "62", "Fashion": "58", "High Fashion": "56" },
-  "10001-25000": { "Basic": "72", "Semi Fashion": "65", "Fashion": "60", "High Fashion": "58" },
-  ">25000": { "Basic": "75", "Semi Fashion": "66", "Fashion": "62", "High Fashion": "60" },
-};
-
-function findRate(tableData: SimpleTableData | undefined, description: string, fallback: number): number {
-  if (!tableData?.rows) return fallback;
+function findRate(tableData: SimpleTableData | undefined, description: string): number {
+  if (!tableData?.rows) return 0;
   const row = tableData.rows.find(
     (r) => r.values.description?.toLowerCase().replace(/\s+/g, "") === description.toLowerCase().replace(/\s+/g, "")
   );
-  if (!row) return fallback;
-  return parseFloat(row.values.costPerSam) || fallback;
+  if (!row) return 0;
+  return parseFloat(row.values.costPerSam) || 0;
 }
 
 function findLaborOrFohCost(
   tableData: SimpleTableData | undefined,
   description: string,
-  fallbackCPM: number,
   smv: number,
   efficiency: number
 ): number {
-  if (!tableData?.rows) {
-    return efficiency > 0 ? (fallbackCPM * smv) / efficiency : 0;
-  }
+  if (!tableData?.rows) return 0;
   const row = tableData.rows.find(
     (r) =>
       r.values.description?.toLowerCase().replace(/\s+/g, "") ===
       description.toLowerCase().replace(/\s+/g, "")
   );
-  if (!row) {
-    return efficiency > 0 ? (fallbackCPM * smv) / efficiency : 0;
-  }
+  if (!row) return 0;
 
   const useType = (
     row.values.useType ??
@@ -69,7 +43,7 @@ function findLaborOrFohCost(
     row.values.cost_per_sam ??
     ""
   ).toString().trim();
-  const cpm = parseFloat(costPerSamStr) || fallbackCPM;
+  const cpm = parseFloat(costPerSamStr) || 0;
 
   // 1. If explicit radio button selection is PER PIECE
   if (useType === "piece" || useType === "perpiece") {
@@ -81,7 +55,7 @@ function findLaborOrFohCost(
     return efficiency > 0 ? (cpm * smv) / efficiency : 0;
   }
 
-  // 3. Fallback if no radio button selection is stored
+  // 3. If no radio button selection is stored
   if (!isNaN(perPieceVal) && perPieceStr !== "" && perPieceVal > 0) {
     return perPieceVal;
   }
@@ -89,8 +63,12 @@ function findLaborOrFohCost(
 }
 
 export function mapSMVToCategory(smv: number, stylesGrid?: SimpleTableData): string {
-  if (stylesGrid?.rows && stylesGrid.rows.length > 0) {
-    for (const row of stylesGrid.rows) {
+  if (smv <= 0 || isNaN(smv)) {
+    return "";
+  }
+  const rows = stylesGrid?.cards?.find((c) => c.isActive)?.rows ?? stylesGrid?.rows;
+  if (rows && rows.length > 0) {
+    for (const row of rows) {
       const cat = row.values.styleName;
       if (!cat) continue;
 
@@ -135,13 +113,74 @@ export function mapSMVToCategory(smv: number, stylesGrid?: SimpleTableData): str
     }
   }
 
-  if (smv <= 18) return "Basic";
-  if (smv <= 23) return "Semi Fashion";
-  if (smv <= 36) return "Fashion";
-  return "High Fashion";
+  return "";
 }
 
-export function calculateSizeBracket(qty: number): string {
+export function matchQtyToBracket(qty: number, label: string): boolean {
+  if (qty <= 0 || isNaN(qty)) return false;
+  const clean = label.trim().toLowerCase();
+
+  if (clean === "capacity qty" || clean === "capacity") {
+    return qty >= 125000;
+  }
+
+  // Handle <= X or < X
+  if (clean.startsWith("<=")) {
+    const max = parseFloat(clean.replace("<=", "").replace(/,/g, "").trim());
+    return !isNaN(max) && qty <= max;
+  }
+  if (clean.startsWith("<")) {
+    const max = parseFloat(clean.replace("<", "").replace(/,/g, "").trim());
+    return !isNaN(max) && qty < max;
+  }
+
+  // Handle >= X or > X
+  if (clean.startsWith(">=")) {
+    const min = parseFloat(clean.replace(">=", "").replace(/,/g, "").trim());
+    return !isNaN(min) && qty >= min;
+  }
+  if (clean.startsWith(">")) {
+    const min = parseFloat(clean.replace(">", "").replace(/,/g, "").trim());
+    return !isNaN(min) && qty > min;
+  }
+
+  // Handle Range "501-1000" or "501 - 1000" or "501 to 1000"
+  if (clean.includes("-") || clean.includes("to")) {
+    const parts = clean.includes("-") ? clean.split("-") : clean.split("to");
+    if (parts.length === 2) {
+      const min = parseFloat(parts[0].replace(/,/g, "").trim());
+      const max = parseFloat(parts[1].replace(/,/g, "").trim());
+      if (!isNaN(min) && !isNaN(max)) {
+        return qty >= min && qty <= max;
+      }
+      if (!isNaN(min) && isNaN(max)) {
+        return qty >= min;
+      }
+      if (isNaN(min) && !isNaN(max)) {
+        return qty <= max;
+      }
+    }
+  }
+
+  // Handle exact single number if any
+  const single = parseFloat(clean.replace(/,/g, "").trim());
+  if (!isNaN(single)) {
+    return qty === single;
+  }
+
+  return false;
+}
+
+export function calculateSizeBracket(qty: number, availableBrackets?: string[]): string {
+  if (availableBrackets && availableBrackets.length > 0) {
+    for (const bracket of availableBrackets) {
+      if (matchQtyToBracket(qty, bracket)) {
+        return bracket;
+      }
+    }
+    return "";
+  }
+
   if (qty >= 125000) return "Capacity Qty";
   if (qty <= 500) return "<=500";
   if (qty <= 1000) return "501-1000";
@@ -180,6 +219,10 @@ export interface CalculationResult {
   efficiency: number;
   rejectionPct: number;
   lineTarget: number;
+  isSmvOutOfRange?: boolean;
+  smvRangeError?: string;
+  isQtyOutOfRange?: boolean;
+  qtyRangeError?: string;
 
   sellingPricePKR: number;
   sellingPriceUSD: number;
@@ -298,6 +341,8 @@ export interface CalculationResult {
   ebitdaMinCents: number;
   ebitdaPcUSD: number;
   netProfitMinCents: number;
+  targetCmSmvCents: number;
+  orderCmSmvCents: number;
 }
 
 export function runFormulaEngine(
@@ -346,27 +391,42 @@ export function runFormulaEngine(
     taxEdsPct,
     inlandFreightPct,
     localBankChargesPct,
-    rebatePct: inputRebatePct,
+    rebatePct = 0.015,
   } = inputs;
 
   const smv = style.smvSewing;
   const qty = style.orderQuantity;
-  const sizeBracket = calculateSizeBracket(qty);
+  const availableBrackets = params.cutToShipGrid?.rowLabels;
+  const sizeBracket = calculateSizeBracket(qty, availableBrackets);
   const styleCategory = mapSMVToCategory(smv, params.stylesCategoryGrid);
 
-  let efficiency = 0.47;
+  const isSmvOutOfRange = smv > 0 && !styleCategory;
+  const smvRangeError = isSmvOutOfRange
+    ? `SMV ${smv} does not match any configured Style Category (SAM Range).`
+    : undefined;
+
+  const isQtyOutOfRange = qty > 0 && !sizeBracket;
+  const qtyRangeError = isQtyOutOfRange
+    ? `Order Quantity (${qty}) does not match any configured Qty Band in Cut-to-Ship Grid.`
+    : undefined;
+
+  let efficiency = 0;
   if (efficiencyOverride !== null) {
     efficiency = efficiencyOverride;
-  } else {
+  } else if (styleCategory && sizeBracket) {
     const dbVal = params.cutToShipGrid?.cells?.[sizeBracket]?.[styleCategory];
-    const fallbackVal = FALLBACK_CUT_TO_SHIP[sizeBracket]?.[styleCategory];
-    const cellVal = dbVal || fallbackVal || "47";
-    efficiency = parseFloat(cellVal.replace("%", "")) / 100;
+    if (dbVal !== undefined && dbVal !== null && dbVal.trim() !== "") {
+      efficiency = parseFloat(dbVal.replace("%", "")) / 100;
+    } else {
+      efficiency = 0;
+    }
+  } else {
+    efficiency = 0;
   }
 
   const lineTarget = lineTargetOverride !== null
     ? lineTargetOverride
-    : (manpower * 480 / smv) * efficiency;
+    : (smv > 0 && efficiency > 0 ? (manpower * 480 / smv) * efficiency : 0);
 
   let rejectionPct = 0.0415;
   if (rejectionOverride !== null) {
@@ -424,13 +484,6 @@ export function runFormulaEngine(
     }
   }
 
-  const cpmDirectLabour = findRate(params.directLabourFoh, "Direct Labour", FALLBACK_CPMS.directLabour);
-  const cpmSalaries = findRate(params.directLabourFoh, "Fixed Salaries", FALLBACK_CPMS.salaries);
-  const cpmUtilities = findRate(params.directLabourFoh, "Utilities Cost", FALLBACK_CPMS.utilities);
-  const cpmRepair = findRate(params.directLabourFoh, "Repair and Maintenance", FALLBACK_CPMS.repair);
-  const cpmFohAdmin = findRate(params.directLabourFoh, "Manufacturing FOH", FALLBACK_CPMS.fohAdmin);
-  const cpmDepreciation = findRate(params.directLabourFoh, "Depreciation", FALLBACK_CPMS.depreciation);
-
   const sellingPriceUSD = orderFOB;
   const sellingPricePKR = orderFOB * paritySale;
 
@@ -438,7 +491,6 @@ export function runFormulaEngine(
   const taxEDS_USD = taxEDS_PKR / paritySale;
   const taxEDS_Pct = taxEDS_USD / sellingPriceUSD;
 
-  const rebatePct = inputRebatePct ?? 0;
   const rebatePKR = sellingPricePKR * rebatePct;
   const rebateUSD = rebatePKR / paritySale;
 
@@ -476,13 +528,11 @@ export function runFormulaEngine(
     const pkrRate = (f.rateUSD && f.rateUSD > 0)
       ? f.rateUSD * parityProcurement
       : (f.ratePKR || 0);
-    const itemCost = (f.fabricCostPKR && f.fabricCostPKR > 0)
-      ? f.fabricCostPKR
-      : cons * pkrRate;
-    return acc + itemCost;
+    const waste = 1 + (f.wastagePct || 0);
+    return acc + (cons * pkrRate * waste);
   }, 0);
-  const fabricCostUSD = paritySale > 0 ? fabricCostPKR / paritySale : 0;
-  const fabricCostPct = netPriceUSD > 0 ? fabricCostUSD / netPriceUSD : 0;
+  const fabricCostUSD = fabricCostPKR / paritySale;
+  const fabricCostPct = fabricCostUSD / netPriceUSD;
 
   const liningCostPKR = (style.bomLining || []).reduce((acc, l) => {
     if (!l) return acc;
@@ -490,16 +540,20 @@ export function runFormulaEngine(
     const pkrRate = (l.rateUSD && l.rateUSD > 0)
       ? l.rateUSD * parityProcurement
       : (l.ratePKR || 0);
-    const itemCost = (l.liningCostPKR && l.liningCostPKR > 0)
-      ? l.liningCostPKR
-      : cons * pkrRate;
-    return acc + itemCost;
+    const waste = 1 + (l.wastagePct || 0);
+    return acc + (cons * pkrRate * waste);
   }, 0);
-  const liningCostUSD = paritySale > 0 ? liningCostPKR / paritySale : 0;
-  const liningCostPct = netPriceUSD > 0 ? liningCostUSD / netPriceUSD : 0;
+  const liningCostUSD = liningCostPKR / paritySale;
+  const liningCostPct = liningCostUSD / netPriceUSD;
 
   const accessoriesCostPKR = (style.bomAccessories || []).reduce(
-    (acc, a) => acc + (a ? (a.consPerPc || 0) * (a.ratePKR || 0) : 0),
+    (acc, a) => {
+      if (!a) return acc;
+      const cost = a.totalCostPKR !== undefined && a.totalCostPKR > 0
+        ? a.totalCostPKR
+        : (a.ratePKR || 0) * (a.consPerPc && a.consPerPc > 0 ? a.consPerPc : 1);
+      return acc + cost;
+    },
     0
   );
   const accessoriesCostUSD = accessoriesCostPKR / paritySale;
@@ -531,11 +585,11 @@ export function runFormulaEngine(
   const specialChargesCostUSD = specialChargesCostPKR / paritySale;
   const specialChargesCostPct = specialChargesCostUSD / netPriceUSD;
 
-  const directLaborCostPKR = findLaborOrFohCost(params.directLabourFoh, "Direct Labour", FALLBACK_CPMS.directLabour, smv, efficiency);
+  const directLaborCostPKR = findLaborOrFohCost(params.directLabourFoh, "Direct Labour", smv, efficiency);
   const directLaborCostUSD = directLaborCostPKR / paritySale;
   const directLaborCostPct = directLaborCostUSD / netPriceUSD;
 
-  const utilitiesCostPKR = findLaborOrFohCost(params.directLabourFoh, "Utilities Cost", FALLBACK_CPMS.utilities, smv, efficiency);
+  const utilitiesCostPKR = findLaborOrFohCost(params.directLabourFoh, "Utilities Cost", smv, efficiency);
   const utilitiesCostUSD = utilitiesCostPKR / paritySale;
   const utilitiesCostPct = utilitiesCostUSD / netPriceUSD;
 
@@ -553,18 +607,18 @@ export function runFormulaEngine(
   const cmUSD = cmPKR / paritySale;
   const cmPct = cmUSD / netPriceUSD;
 
-  const cmMinutePKR = (cmPKR * efficiency) / smv;
-  const cmMinuteUSD = (cmUSD * efficiency / smv) * 100;
+  const cmMinutePKR = smv > 0 ? (cmPKR * efficiency) / smv : 0;
+  const cmMinuteUSD = smv > 0 ? (cmUSD * efficiency / smv) * 100 : 0;
 
-  const salariesCostPKR = findLaborOrFohCost(params.directLabourFoh, "Fixed Salaries", FALLBACK_CPMS.salaries, smv, efficiency);
+  const salariesCostPKR = findLaborOrFohCost(params.directLabourFoh, "Fixed Salaries", smv, efficiency);
   const salariesCostUSD = salariesCostPKR / paritySale;
   const salariesCostPct = salariesCostUSD / netPriceUSD;
 
-  const fohAdminCostPKR = findLaborOrFohCost(params.directLabourFoh, "Manufacturing FOH", FALLBACK_CPMS.fohAdmin, smv, efficiency);
+  const fohAdminCostPKR = findLaborOrFohCost(params.directLabourFoh, "Manufacturing FOH", smv, efficiency);
   const fohAdminCostUSD = fohAdminCostPKR / paritySale;
   const fohAdminCostPct = fohAdminCostUSD / netPriceUSD;
 
-  const repairMtcCostPKR = findLaborOrFohCost(params.directLabourFoh, "Repair and Maintenance", FALLBACK_CPMS.repair, smv, efficiency);
+  const repairMtcCostPKR = findLaborOrFohCost(params.directLabourFoh, "Repair and Maintenance", smv, efficiency);
   const repairMtcCostUSD = repairMtcCostPKR / paritySale;
   const repairMtcCostPct = repairMtcCostUSD / netPriceUSD;
 
@@ -572,14 +626,14 @@ export function runFormulaEngine(
   const totalCostUSD = totalCostPKR / paritySale;
   const totalCostPct = totalCostUSD / netPriceUSD;
 
-  const conversionCostPerMinPKR = (totalCostPKR * efficiency) / smv;
-  const conversionCostPerMinUSD = (totalCostUSD * efficiency / smv) * 100;
+  const conversionCostPerMinPKR = smv > 0 ? (totalCostPKR * efficiency) / smv : 0;
+  const conversionCostPerMinUSD = smv > 0 ? (totalCostUSD * efficiency / smv) * 100 : 0;
 
   const ebitdaPKR = cmPKR - totalCostPKR;
   const ebitdaUSD = ebitdaPKR / paritySale;
   const ebitdaPct = ebitdaUSD / netPriceUSD;
 
-  const depreciationCostPKR = findLaborOrFohCost(params.directLabourFoh, "Depreciation", FALLBACK_CPMS.depreciation, smv, efficiency);
+  const depreciationCostPKR = findLaborOrFohCost(params.directLabourFoh, "Depreciation", smv, efficiency);
   const depreciationCostUSD = depreciationCostPKR / paritySale;
   const depreciationCostPct = depreciationCostUSD / netPriceUSD;
 
@@ -590,9 +644,14 @@ export function runFormulaEngine(
   const deductionSum = taxEdsPct + inlandFreightPct + localBankChargesPct + (commissionPct) + (discountRate * paymentTermsDays / 365) + (discountRate * factoringDays / 365);
   const targetFobUSD = ((sellingPriceUSD - netProfitUSD) + (sellingPriceUSD - netProfitUSD - sellingPriceUSD) * deductionSum) / 0.9;
 
-  const ebitdaMinCents = (ebitdaUSD * efficiency / smv) / (1 + rejectionPct) * 100;
+  const targetNetProfitUSD = targetFobUSD * 0.10;
+  const targetCmUSD = totalCostUSD + depreciationCostUSD + targetNetProfitUSD;
+  const targetCmSmvCents = smv > 0 ? (targetCmUSD * efficiency / smv) * 100 : 0;
+  const orderCmSmvCents = cmMinuteUSD;
+
+  const ebitdaMinCents = smv > 0 && (1 + rejectionPct) !== 0 ? (ebitdaUSD * efficiency / smv) / (1 + rejectionPct) * 100 : 0;
   const ebitdaPcUSD = ebitdaUSD;
-  const netProfitMinCents = (netProfitUSD * efficiency / smv) * 100;
+  const netProfitMinCents = smv > 0 ? (netProfitUSD * efficiency / smv) * 100 : 0;
 
   return {
     sizeBracket,
@@ -600,6 +659,10 @@ export function runFormulaEngine(
     efficiency,
     rejectionPct,
     lineTarget,
+    isSmvOutOfRange,
+    smvRangeError,
+    isQtyOutOfRange,
+    qtyRangeError,
     sellingPricePKR,
     sellingPriceUSD,
     taxEDS_PKR,
@@ -688,5 +751,7 @@ export function runFormulaEngine(
     ebitdaMinCents,
     ebitdaPcUSD,
     netProfitMinCents,
+    targetCmSmvCents,
+    orderCmSmvCents,
   };
 }

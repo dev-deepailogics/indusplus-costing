@@ -245,7 +245,8 @@ export function ProcessMatrixEditor({
     const defaultRejVal = defaultRejPercent / 100;
 
     return styles.map((style) => {
-      const sizeBracket = calculateSizeBracket(style.orderQuantity);
+      const availableBrackets = data.processes.length > 0 ? data.tables[data.processes[0]]?.rowLabels : undefined;
+      const sizeBracket = calculateSizeBracket(style.orderQuantity, availableBrackets);
       const styleCategoryClass = mapSMVToCategory(style.smvSewing);
 
       // Check if customer has single rate
