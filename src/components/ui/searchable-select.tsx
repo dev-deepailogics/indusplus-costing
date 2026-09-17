@@ -123,11 +123,11 @@ export function SearchableSelect({
       ref={containerRef}
       className={cn("relative inline-block", className || "w-32")}
     >
-      <div className="relative flex items-center w-full h-7">
+      <div className="relative flex items-center w-full h-6">
         <input
           ref={inputRef}
           type="text"
-          className="w-full h-7 pl-2 pr-6 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-left truncate focus:bg-white focus:outline-none transition-colors disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
+          className="w-full h-6 pl-1.5 pr-5 text-xs border border-slate-200 dark:border-slate-700 bg-slate-50/80 hover:bg-slate-100/90 font-normal rounded text-left truncate focus:bg-white dark:focus:bg-slate-900 focus:outline-none transition-colors disabled:bg-slate-100/60 disabled:text-slate-500 disabled:cursor-not-allowed"
           placeholder={placeholder}
           value={displayVal}
           disabled={disabled}
@@ -136,8 +136,8 @@ export function SearchableSelect({
           onClick={handleOpen}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-          <ChevronDown className="w-3.5 h-3.5" />
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+          <ChevronDown className="w-3 h-3" />
         </div>
       </div>
 

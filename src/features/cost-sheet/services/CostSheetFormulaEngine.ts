@@ -641,17 +641,19 @@ export function runFormulaEngine(
   const netProfitUSD = netProfitPKR / paritySale;
   const netProfitPct = netProfitUSD / netPriceUSD;
 
-  const deductionSum = taxEdsPct + inlandFreightPct + localBankChargesPct + (commissionPct) + (discountRate * paymentTermsDays / 365) + (discountRate * factoringDays / 365) - rebatePct;
+  // Exact Excel formula for J5 (Target FOB/PC):
+  // ((E20 - E56) + (E20 - E56 - J6) * (O12 + O13 + O14 + S5)) / 90% * 100%
+  // Where O12 = Tax & EDS, O13 = Inland Freight, O14 = Local Bank Charges, S5 = 0
+  const deductionSum = taxEdsPct + inlandFreightPct + localBankChargesPct;
 
-  // Exact Excel formula: ((E20 - E56) + (E20 - E56 - J6) * (O12 + O13 + O14 + S5)) / 90% * 100%
-  // E20 = sellingPriceUSD, E56 = netProfitUSD, J6 = orderFOB, O12..S5 = deductionSum
   const targetFobUSD = orderFOB > 0
     ? ((sellingPriceUSD - netProfitUSD) + (sellingPriceUSD - netProfitUSD - orderFOB) * deductionSum) / 0.90
     : 0;
 
-  // Exact Excel formula: ((J5 - (J5 * SUM(O12:O14))) - E40) * (J13 / J11) * 100
-  // J5 = targetFobUSD, SUM(O12:O14) = commission + tax/eds + freight, E40 = totalVariableCostUSD, J13 = efficiency, J11 = smv
-  const cmDeductionSum = commissionPct + taxEdsPct + inlandFreightPct;
+  // Exact Excel formula for J8 (Target CM/SMV-Cents):
+  // ((J5 - (J5 * SUM(O12:O14))) - E40) * (J13 / J11) * 100
+  // Where J5 = targetFobUSD, SUM(O12:O14) = Tax (O12) + Freight (O13) + Local Bank (O14), E40 = totalVariableCostUSD, J13 = efficiency, J11 = smv
+  const cmDeductionSum = taxEdsPct + inlandFreightPct + localBankChargesPct;
   const targetNetPriceUSD = targetFobUSD - (targetFobUSD * cmDeductionSum);
   const targetCmUSD = targetNetPriceUSD - totalVariableCostUSD;
   const targetCmSmvCents = smv > 0 ? (targetCmUSD * (efficiency / smv)) * 100 : 0;
