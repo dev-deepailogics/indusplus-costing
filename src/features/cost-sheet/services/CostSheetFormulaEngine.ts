@@ -641,12 +641,21 @@ export function runFormulaEngine(
   const netProfitUSD = netProfitPKR / paritySale;
   const netProfitPct = netProfitUSD / netPriceUSD;
 
-  const deductionSum = taxEdsPct + inlandFreightPct + localBankChargesPct + (commissionPct) + (discountRate * paymentTermsDays / 365) + (discountRate * factoringDays / 365);
-  const targetFobUSD = ((sellingPriceUSD - netProfitUSD) + (sellingPriceUSD - netProfitUSD - sellingPriceUSD) * deductionSum) / 0.9;
+  const deductionSum = taxEdsPct + inlandFreightPct + localBankChargesPct + (commissionPct) + (discountRate * paymentTermsDays / 365) + (discountRate * factoringDays / 365) - rebatePct;
 
+  // Exact Excel formula: ((E20 - E56) + (E20 - E56 - J6) * (O12 + O13 + O14 + S5)) / 90% * 100%
+  // E20 = sellingPriceUSD, E56 = netProfitUSD, J6 = orderFOB, O12..S5 = deductionSum
+  const targetFobUSD = orderFOB > 0
+    ? ((sellingPriceUSD - netProfitUSD) + (sellingPriceUSD - netProfitUSD - orderFOB) * deductionSum) / 0.90
+    : 0;
+
+  // Exact Excel formula: ((J5 - (J5 * SUM(O12:O14))) - E40) * (J13 / J11) * 100
+  // J5 = targetFobUSD, SUM(O12:O14) = commission + tax/eds + freight, E40 = totalVariableCostUSD, J13 = efficiency, J11 = smv
+  const cmDeductionSum = commissionPct + taxEdsPct + inlandFreightPct;
+  const targetNetPriceUSD = targetFobUSD - (targetFobUSD * cmDeductionSum);
+  const targetCmUSD = targetNetPriceUSD - totalVariableCostUSD;
+  const targetCmSmvCents = smv > 0 ? (targetCmUSD * (efficiency / smv)) * 100 : 0;
   const targetNetProfitUSD = targetFobUSD * 0.10;
-  const targetCmUSD = totalCostUSD + depreciationCostUSD + targetNetProfitUSD;
-  const targetCmSmvCents = smv > 0 ? (targetCmUSD * efficiency / smv) * 100 : 0;
   const orderCmSmvCents = cmMinuteUSD;
 
   const ebitdaMinCents = smv > 0 && (1 + rejectionPct) !== 0 ? (ebitdaUSD * efficiency / smv) / (1 + rejectionPct) * 100 : 0;

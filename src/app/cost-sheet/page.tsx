@@ -278,14 +278,14 @@ function CostSheetContent() {
   const [rejectionOverride, setRejectionOverride] = useState<string>("");
   const [lineTargetOverride, setLineTargetOverride] = useState<string>("");
 
-  // Financial Parameters (stored as string inputs so user typing is never interrupted or auto-rounded)
-  const [discountRateInput, setDiscountRateInput] = useState<string>("12");
-  const [taxEdsInput, setTaxEdsInput] = useState<string>("2.50");
-  const [inlandFreightInput, setInlandFreightInput] = useState<string>("0.65");
-  const [localBankChargesInput, setLocalBankChargesInput] = useState<string>("0.85");
-  const [paymentTermsDaysInput, setPaymentTermsDaysInput] = useState<string>("60");
+  // Financial Parameters (initialized to 0 and populated strictly from active database parameter tables)
+  const [discountRateInput, setDiscountRateInput] = useState<string>("0");
+  const [taxEdsInput, setTaxEdsInput] = useState<string>("0");
+  const [inlandFreightInput, setInlandFreightInput] = useState<string>("0");
+  const [localBankChargesInput, setLocalBankChargesInput] = useState<string>("0");
+  const [paymentTermsDaysInput, setPaymentTermsDaysInput] = useState<string>("0");
   const [factoringDaysInput, setFactoringDaysInput] = useState<string>("0");
-  const [commissionInput, setCommissionInput] = useState<string>("1.00");
+  const [commissionInput, setCommissionInput] = useState<string>("0");
   const [foreignBankChargesInput, setForeignBankChargesInput] = useState<string>("0");
 
   // Order FOB / Quoted Price / Freight & Insurance inputs
@@ -534,23 +534,45 @@ function CostSheetContent() {
       },
     );
 
+    const unsubCustomerCommission = subscribeToTable<SimpleTableData>(
+      "customer-commission",
+      (data) => {
+        const activeRows =
+          data?.cards?.find((c) => c.isActive)?.rows ?? data?.rows ?? [];
+        if (activeRows.length && !costSheetIdParam) {
+          const row = activeRows[0];
+          const val = row?.values?.commissionPercent;
+          if (val && val.trim() !== "" && val.trim() !== "-") {
+            const parsed = parseFloat(val);
+            setCommissionInput(!isNaN(parsed) && parsed > 0 ? parsed.toString() : "0");
+          } else {
+            setCommissionInput("0");
+          }
+        }
+      },
+    );
+
     const unsubCostOfSales = subscribeToTable<SimpleTableData>(
       "cost-as-percent-of-sales",
       (data) => {
-        if (data?.rows?.length) {
+        const activeRows =
+          data?.cards?.find((c) => c.isActive)?.rows ?? data?.rows ?? [];
+        if (activeRows.length) {
           const getVal = (desc: string) => {
-            const row = data.rows.find(
+            const row = activeRows.find(
               (r) =>
                 r.values.description?.toLowerCase().trim() ===
                 desc.toLowerCase().trim(),
             );
-            return row?.values.percentOfSales
-              ? parseFloat(row.values.percentOfSales)
-              : null;
+            const val = row?.values?.percentOfSales;
+            if (!val || val.trim() === "" || val.trim() === "-") return null;
+            const parsed = parseFloat(val);
+            return isNaN(parsed) ? null : parsed;
           };
 
+          const combinedTaxEds = getVal("Tax & EDS") ?? getVal("Taxes & EDS") ?? getVal("Tax and EDS");
           const eds = getVal("EDS");
-          const taxes = getVal("Taxes");
+          const taxes = getVal("Taxes") ?? getVal("Tax");
           const rebate = getVal("Rebate");
           const exchangeRate = getVal("Exchange Rate");
           const inlandFreight = getVal("Inland Freight");
@@ -558,26 +580,17 @@ function CostSheetContent() {
           const discountRateVal = getVal("Discount Rate");
 
           if (!costSheetIdParam) {
-            if (eds !== null || taxes !== null) {
-              const totalTaxEds = (taxes || 0) + (eds || 0);
-              if (totalTaxEds > 0) setTaxEdsInput(totalTaxEds.toString());
-            }
+            const totalTaxEds = combinedTaxEds !== null ? combinedTaxEds : ((taxes || 0) + (eds || 0));
+            setTaxEdsInput(totalTaxEds > 0 ? totalTaxEds.toString() : "0");
+
             if (exchangeRate !== null && exchangeRate > 0) {
               setParitySale(exchangeRate);
               setParityProcurement(exchangeRate);
             }
-            if (rebate !== null && rebate > 0) {
-              setRebateInput(rebate.toString());
-            }
-            if (inlandFreight !== null && inlandFreight > 0) {
-              setInlandFreightInput(inlandFreight.toString());
-            }
-            if (localBankCharges !== null && localBankCharges > 0) {
-              setLocalBankChargesInput(localBankCharges.toString());
-            }
-            if (discountRateVal !== null && discountRateVal > 0) {
-              setDiscountRateInput(discountRateVal.toString());
-            }
+            setRebateInput(rebate !== null && rebate > 0 ? rebate.toString() : "0");
+            setInlandFreightInput(inlandFreight !== null && inlandFreight > 0 ? inlandFreight.toString() : "0");
+            setLocalBankChargesInput(localBankCharges !== null && localBankCharges > 0 ? localBankCharges.toString() : "0");
+            setDiscountRateInput(discountRateVal !== null && discountRateVal > 0 ? discountRateVal.toString() : "0");
           }
         }
       },
@@ -590,6 +603,7 @@ function CostSheetContent() {
       unsubStylesGrid();
       unsubOrderTypes();
       unsubDropdowns();
+      unsubCustomerCommission();
       unsubCostOfSales();
     };
   }, [styleIdParam, costSheetIdParam]);
@@ -640,30 +654,30 @@ function CostSheetContent() {
           setManpower(sheet.manpower);
 
           setEfficiencyOverride(
-            sheet.efficiencyOverride !== null
-              ? (sheet.efficiencyOverride * 100).toString()
+            sheet.efficiencyOverride !== null && sheet.efficiencyOverride !== undefined
+              ? parseFloat((sheet.efficiencyOverride * 100).toFixed(4)).toString()
               : "",
           );
           setRejectionOverride(
-            sheet.rejectionOverride !== null
-              ? (sheet.rejectionOverride * 100).toString()
+            sheet.rejectionOverride !== null && sheet.rejectionOverride !== undefined
+              ? parseFloat((sheet.rejectionOverride * 100).toFixed(4)).toString()
               : "",
           );
           setLineTargetOverride(
-            sheet.lineTargetOverride !== null
+            sheet.lineTargetOverride !== null && sheet.lineTargetOverride !== undefined
               ? sheet.lineTargetOverride.toString()
               : "",
           );
 
           setDiscountRateInput(
             sheet.discountRate !== undefined
-              ? (sheet.discountRate * 100).toString()
-              : "12",
+              ? parseFloat((sheet.discountRate * 100).toFixed(4)).toString()
+              : "0",
           );
           setPaymentTermsDaysInput(
             sheet.paymentTermsDays !== undefined
               ? sheet.paymentTermsDays.toString()
-              : "60",
+              : "0",
           );
           setFactoringDaysInput(
             sheet.factoringDays !== undefined
@@ -672,12 +686,32 @@ function CostSheetContent() {
           );
           setCommissionInput(
             sheet.commissionPct !== undefined
-              ? (sheet.commissionPct * 100).toString()
+              ? parseFloat((sheet.commissionPct * 100).toFixed(4)).toString()
               : "0",
           );
           setForeignBankChargesInput(
             sheet.foreignBankCharges !== undefined
               ? sheet.foreignBankCharges.toString()
+              : "0",
+          );
+          setTaxEdsInput(
+            sheet.taxEdsPct !== undefined
+              ? parseFloat((sheet.taxEdsPct * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setInlandFreightInput(
+            sheet.inlandFreightPct !== undefined
+              ? parseFloat((sheet.inlandFreightPct * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setLocalBankChargesInput(
+            sheet.localBankChargesPct !== undefined
+              ? parseFloat((sheet.localBankChargesPct * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setRebateInput(
+            sheet.rebatePct !== undefined
+              ? parseFloat((sheet.rebatePct * 100).toFixed(4)).toString()
               : "0",
           );
 
@@ -712,11 +746,6 @@ function CostSheetContent() {
             sheet.exFactoryDate || new Date().toISOString().split("T")[0],
           );
           setInhouseOrSubcontract(sheet.inhouseOrSubcontract || "INHOUSE");
-          setRebateInput(
-            sheet.rebatePct !== undefined
-              ? (sheet.rebatePct * 100).toString()
-              : "0",
-          );
         } else {
           toast.error("Saved Cost Sheet not found");
         }
@@ -1221,6 +1250,9 @@ function CostSheetContent() {
       factoringDays: parseFloat(factoringDaysInput) || 0,
       commissionPct: (parseFloat(commissionInput) || 0) / 100,
       foreignBankCharges: parseFloat(foreignBankChargesInput) || 0,
+      taxEdsPct: (parseFloat(taxEdsInput) || 0) / 100,
+      inlandFreightPct: (parseFloat(inlandFreightInput) || 0) / 100,
+      localBankChargesPct: (parseFloat(localBankChargesInput) || 0) / 100,
       orderFOB: (() => {
         const q =
           quotedPriceInput !== ""
@@ -1326,6 +1358,9 @@ function CostSheetContent() {
       factoringDays: parseFloat(factoringDaysInput) || 0,
       commissionPct: (parseFloat(commissionInput) || 0) / 100,
       foreignBankCharges: parseFloat(foreignBankChargesInput) || 0,
+      taxEdsPct: (parseFloat(taxEdsInput) || 0) / 100,
+      inlandFreightPct: (parseFloat(inlandFreightInput) || 0) / 100,
+      localBankChargesPct: (parseFloat(localBankChargesInput) || 0) / 100,
       orderFOB: (() => {
         const q =
           quotedPriceInput !== ""
@@ -2821,15 +2856,15 @@ function CostSheetContent() {
                     </TableRow>
 
                     {/* TOTAL VARIABLE COST */}
-                    <TableRow className="bg-[#fcf5e3]/60 dark:bg-amber-950/20 font-semibold border-t border-b">
-                      <TableCell className="px-2.5 py-1 text-foreground">Total Variable Cost</TableCell>
-                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                    <TableRow className="bg-gray-100/90 dark:bg-gray-800/80 font-bold border-y-2 border-gray-300 dark:border-gray-600 text-foreground">
+                      <TableCell className="px-2.5 py-1.5 font-bold text-foreground">Total Variable Cost</TableCell>
+                      <TableCell className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap font-bold text-foreground">
                         Rs. {calcs.totalVariableCostPKR.toFixed(0)}
                       </TableCell>
-                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                      <TableCell className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap font-bold text-foreground">
                         ${calcs.totalVariableCostUSD.toFixed(2)}
                       </TableCell>
-                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold">
+                      <TableCell className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap font-bold text-foreground">
                         {fmtPct(calcs.totalVariableCostPct, 1)}
                       </TableCell>
                     </TableRow>
@@ -3053,8 +3088,8 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            step="0.01"
-                            placeholder="0.00"
+                            step="0.0001"
+                            placeholder="0.0000"
                             className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.consumptionPerPc || ""}
                             onChange={(e) =>
@@ -3072,7 +3107,7 @@ function CostSheetContent() {
                             step="0.0001"
                             placeholder="0.0000"
                             className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
-                            value={item.rateUSD || ""}
+                            value={item.rateUSD ? Number(item.rateUSD.toFixed(4)) : ""}
                             onChange={(e) =>
                               updateFabricBOM(
                                 idx,
@@ -3085,12 +3120,12 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            step="0.01"
-                            placeholder="0"
+                            step="0.0001"
+                            placeholder="0.00"
                             className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={
                               item.ratePKR
-                                ? Number(item.ratePKR.toFixed(0))
+                                ? Number(item.ratePKR.toFixed(4))
                                 : ""
                             }
                             onChange={(e) =>
@@ -3103,7 +3138,7 @@ function CostSheetContent() {
                           />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4 whitespace-nowrap">
-                          Rs. {item.fabricCostPKR.toFixed(0)}
+                          Rs. {item.fabricCostPKR.toFixed(2)}
                         </TableCell>
                         <TableCell className="p-1.5 w-8 text-center">
                           <button
@@ -3166,7 +3201,7 @@ function CostSheetContent() {
                       Total Fabric Cost:
                     </TableCell>
                     <TableCell className="text-right text-primary pr-4 align-middle whitespace-nowrap">
-                      Rs. {calcs.fabricCostPKR.toFixed(0)}
+                      Rs. {calcs.fabricCostPKR.toFixed(2)}
                     </TableCell>
                     <TableCell />
                   </TableRow>
@@ -3252,8 +3287,8 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            step="0.01"
-                            placeholder="0.00"
+                            step="0.0001"
+                            placeholder="0.0000"
                             className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.consumptionPerPc || ""}
                             onChange={(e) =>
@@ -3271,7 +3306,7 @@ function CostSheetContent() {
                             step="0.0001"
                             placeholder="0.0000"
                             className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
-                            value={item.rateUSD || ""}
+                            value={item.rateUSD ? Number(item.rateUSD.toFixed(4)) : ""}
                             onChange={(e) =>
                               updateLiningBOM(
                                 idx,
@@ -3284,12 +3319,12 @@ function CostSheetContent() {
                         <TableCell className="p-1.5">
                           <input
                             type="number"
-                            step="0.01"
-                            placeholder="0"
+                            step="0.0001"
+                            placeholder="0.00"
                             className="w-full h-7 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={
                               item.ratePKR
-                                ? Number(item.ratePKR.toFixed(0))
+                                ? Number(item.ratePKR.toFixed(4))
                                 : ""
                             }
                             onChange={(e) =>
@@ -3302,7 +3337,7 @@ function CostSheetContent() {
                           />
                         </TableCell>
                         <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4 whitespace-nowrap">
-                          Rs. {item.liningCostPKR.toFixed(0)}
+                          Rs. {item.liningCostPKR.toFixed(2)}
                         </TableCell>
                         <TableCell className="p-1.5 w-8 text-center">
                           <button
@@ -3365,7 +3400,7 @@ function CostSheetContent() {
                       Total Lining Cost:
                     </TableCell>
                     <TableCell className="text-right text-primary pr-4 align-middle whitespace-nowrap">
-                      Rs. {calcs.liningCostPKR.toFixed(0)}
+                      Rs. {calcs.liningCostPKR.toFixed(2)}
                     </TableCell>
                     <TableCell />
                   </TableRow>
@@ -3481,7 +3516,8 @@ function CostSheetContent() {
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              step="0.01"
+                              step="0.0001"
+                              placeholder="0.0000"
                               className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                               value={item.consPerPc || ""}
                               onChange={(e) =>
@@ -3519,6 +3555,8 @@ function CostSheetContent() {
                           <TableCell className="p-1.5">
                             <input
                               type="number"
+                              step="0.0001"
+                              placeholder="0.00"
                               className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                               value={item.ratePKR || ""}
                               onChange={(e) =>
@@ -3531,7 +3569,7 @@ function CostSheetContent() {
                             />
                           </TableCell>
                           <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4 whitespace-nowrap">
-                            Rs. {(item.totalCostPKR || 0).toFixed(0)}
+                            Rs. {(item.totalCostPKR || 0).toFixed(2)}
                           </TableCell>
                           <TableCell className="p-1.5 w-8 text-center">
                             <button
@@ -3598,7 +3636,7 @@ function CostSheetContent() {
                         Total Accessories Cost:
                       </TableCell>
                       <TableCell className="text-right text-primary pr-4 align-middle whitespace-nowrap">
-                        Rs. {calcs.accessoriesCostPKR.toFixed(0)}
+                        Rs. {calcs.accessoriesCostPKR.toFixed(2)}
                       </TableCell>
                       <TableCell />
                     </TableRow>
@@ -3656,7 +3694,8 @@ function CostSheetContent() {
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              placeholder="0"
+                              step="0.0001"
+                              placeholder="0.00"
                               className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                               value={item.ratePKR || ""}
                               onChange={(e) =>
@@ -3669,7 +3708,7 @@ function CostSheetContent() {
                             />
                           </TableCell>
                           <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4 whitespace-nowrap">
-                            Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(0)}
+                            Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(2)}
                           </TableCell>
                           <TableCell className="p-1.5 w-8 text-center">
                             <button
@@ -3735,7 +3774,7 @@ function CostSheetContent() {
                         Total Chemical Cost:
                       </TableCell>
                       <TableCell className="text-right text-primary pr-4 align-middle whitespace-nowrap">
-                        Rs. {calcs.chemicalsCostPKR.toFixed(0)}
+                        Rs. {calcs.chemicalsCostPKR.toFixed(2)}
                       </TableCell>
                       <TableCell />
                     </TableRow>
@@ -3795,7 +3834,8 @@ function CostSheetContent() {
                           <TableCell className="p-1.5">
                             <input
                               type="number"
-                              placeholder="0"
+                              step="0.0001"
+                              placeholder="0.00"
                               className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                               value={item.ratePKR || ""}
                               onChange={(e) =>
@@ -3808,7 +3848,7 @@ function CostSheetContent() {
                             />
                           </TableCell>
                           <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4 whitespace-nowrap">
-                            Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(0)}
+                            Rs. {(item.totalCostPKR || item.ratePKR || 0).toFixed(2)}
                           </TableCell>
                           <TableCell className="p-1.5 w-8 text-center">
                             <button
@@ -3874,7 +3914,7 @@ function CostSheetContent() {
                         Total Special Charges Cost:
                       </TableCell>
                       <TableCell className="text-right text-primary pr-4 align-middle whitespace-nowrap">
-                        Rs. {calcs.specialChargesCostPKR.toFixed(0)}
+                        Rs. {calcs.specialChargesCostPKR.toFixed(2)}
                       </TableCell>
                       <TableCell />
                     </TableRow>

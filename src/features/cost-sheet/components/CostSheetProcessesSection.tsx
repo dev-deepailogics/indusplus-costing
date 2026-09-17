@@ -67,11 +67,11 @@ export function CostSheetProcessesSection({ results }: CostSheetProcessesSection
                 <TableCell className="text-xs py-2 text-right">${results.leftoverCostUSD.toFixed(2)}</TableCell>
                 <TableCell className="text-xs py-2 text-right">{(results.leftoverCostPct * 100).toFixed(1)}%</TableCell>
               </TableRow>
-              <TableRow className="bg-muted/30 font-semibold">
-                <TableCell className="text-xs py-2">Total Variable Cost</TableCell>
-                <TableCell className="text-xs py-2 text-right">Rs. {results.totalVariableCostPKR.toFixed(1)}</TableCell>
-                <TableCell className="text-xs py-2 text-right">${results.totalVariableCostUSD.toFixed(2)}</TableCell>
-                <TableCell className="text-xs py-2 text-right">{(results.totalVariableCostPct * 100).toFixed(1)}%</TableCell>
+              <TableRow className="bg-gray-100/90 dark:bg-gray-800/80 font-bold border-y-2 border-gray-300 dark:border-gray-600 text-foreground">
+                <TableCell className="text-xs py-2 font-bold">Total Variable Cost</TableCell>
+                <TableCell className="text-xs py-2 text-right font-bold">Rs. {results.totalVariableCostPKR.toFixed(1)}</TableCell>
+                <TableCell className="text-xs py-2 text-right font-bold">${results.totalVariableCostUSD.toFixed(2)}</TableCell>
+                <TableCell className="text-xs py-2 text-right font-bold">{(results.totalVariableCostPct * 100).toFixed(1)}%</TableCell>
               </TableRow>
               <TableRow className="bg-primary/5 font-bold text-primary">
                 <TableCell className="text-xs py-2">Contribution Margin (CM)</TableCell>

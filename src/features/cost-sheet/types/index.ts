@@ -60,6 +60,9 @@ export interface SavedCostSheetItem {
   factoringDays: number;
   commissionPct: number;
   foreignBankCharges: number;
+  taxEdsPct?: number;
+  inlandFreightPct?: number;
+  localBankChargesPct?: number;
   orderFOB: number;
   quotedPrice?: number;
   intlFreight?: number;

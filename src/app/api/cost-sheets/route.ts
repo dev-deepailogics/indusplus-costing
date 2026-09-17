@@ -64,6 +64,12 @@ async function ensureTable(pool: Awaited<ReturnType<typeof getPool>>) {
         CREATE INDEX IX_pcs_style_id ON pre_order_cost_sheets (style_id);
         CREATE INDEX IX_pcs_saved_at ON pre_order_cost_sheets (saved_at DESC);
     END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'tax_eds_pct')
+      ALTER TABLE pre_order_cost_sheets ADD tax_eds_pct FLOAT NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'inland_freight_pct')
+      ALTER TABLE pre_order_cost_sheets ADD inland_freight_pct FLOAT NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'local_bank_charges_pct')
+      ALTER TABLE pre_order_cost_sheets ADD local_bank_charges_pct FLOAT NULL;
   `);
   isTableEnsured = true;
 }
@@ -101,6 +107,9 @@ function rowToItem(row: Record<string, any>): SavedCostSheetItem {
     factoringDays: row.factoring_days,
     commissionPct: row.commission_pct,
     foreignBankCharges: row.foreign_bank_charges,
+    taxEdsPct: row.tax_eds_pct ?? undefined,
+    inlandFreightPct: row.inland_freight_pct ?? undefined,
+    localBankChargesPct: row.local_bank_charges_pct ?? undefined,
     orderFOB: row.order_fob,
     quotedPrice: row.quoted_price ?? undefined,
     intlFreight: row.intl_freight ?? undefined,
@@ -141,25 +150,33 @@ export async function GET(request: NextRequest) {
       const result = await pool
         .request()
         .input("prefix", `${prefix}%`)
-        .query<{ id: string }>(
-          "SELECT id FROM pre_order_cost_sheets WHERE id LIKE @prefix"
-        );
+        .query(`
+          SELECT id FROM pre_order_cost_sheets
+          WHERE id LIKE @prefix
+          ORDER BY id DESC
+        `);
 
       let maxSeq = 0;
       for (const row of result.recordset) {
-        const seq = parseInt(row.id.slice(prefix.length), 10);
-        if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+        const rest = (row.id as string).replace(prefix, "");
+        const num = parseInt(rest, 10);
+        if (!isNaN(num) && num > maxSeq) {
+          maxSeq = num;
+        }
       }
-      const nextIdStr = `${prefix}${String(maxSeq + 1).padStart(4, "0")}`;
-      return Response.json({ nextId: nextIdStr });
+      const nextSeq = String(maxSeq + 1).padStart(4, "0");
+      return Response.json({ nextId: `${prefix}${nextSeq}` });
     }
 
-    // Normal list
-    const result = await pool
-      .request()
-      .query(
-        "SELECT * FROM pre_order_cost_sheets ORDER BY saved_at DESC"
-      );
+    let query = "SELECT * FROM pre_order_cost_sheets";
+    if (styleId) {
+      query += " WHERE style_id = @styleId";
+    }
+    query += " ORDER BY saved_at DESC";
+
+    const req = pool.request();
+    if (styleId) req.input("styleId", styleId);
+    const result = await req.query(query);
 
     const items: SavedCostSheetItem[] = result.recordset.map(rowToItem);
     return Response.json(items);
@@ -210,6 +227,9 @@ export async function POST(request: NextRequest) {
       .input("factoring_days", item.factoringDays)
       .input("commission_pct", item.commissionPct)
       .input("foreign_bank_charges", item.foreignBankCharges)
+      .input("tax_eds_pct", item.taxEdsPct ?? null)
+      .input("inland_freight_pct", item.inlandFreightPct ?? null)
+      .input("local_bank_charges_pct", item.localBankChargesPct ?? null)
       .input("order_fob", item.orderFOB)
       .input("quoted_price", item.quotedPrice ?? null)
       .input("intl_freight", item.intlFreight ?? null)
@@ -236,7 +256,8 @@ export async function POST(request: NextRequest) {
           delivery_terms, parity_sale, parity_procurement, manpower,
           efficiency_override, rejection_override, line_target_override,
           discount_rate, payment_terms_days, factoring_days, commission_pct,
-          foreign_bank_charges, order_fob, quoted_price, intl_freight,
+          foreign_bank_charges, tax_eds_pct, inland_freight_pct, local_bank_charges_pct,
+          order_fob, quoted_price, intl_freight,
           intl_insurance, no_of_colors, merch_group, work_order_number,
           delivery_destination, ex_factory_date, inhouse_or_subcontract,
           rebate_pct, bom_fabric, bom_lining, bom_accessories, bom_chemicals,
@@ -248,7 +269,8 @@ export async function POST(request: NextRequest) {
           @delivery_terms, @parity_sale, @parity_procurement, @manpower,
           @efficiency_override, @rejection_override, @line_target_override,
           @discount_rate, @payment_terms_days, @factoring_days, @commission_pct,
-          @foreign_bank_charges, @order_fob, @quoted_price, @intl_freight,
+          @foreign_bank_charges, @tax_eds_pct, @inland_freight_pct, @local_bank_charges_pct,
+          @order_fob, @quoted_price, @intl_freight,
           @intl_insurance, @no_of_colors, @merch_group, @work_order_number,
           @delivery_destination, @ex_factory_date, @inhouse_or_subcontract,
           @rebate_pct, @bom_fabric, @bom_lining, @bom_accessories, @bom_chemicals,

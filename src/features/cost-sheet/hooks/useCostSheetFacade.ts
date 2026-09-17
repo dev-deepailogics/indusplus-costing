@@ -183,34 +183,37 @@ export function useCostSheetFacade() {
     });
 
     const unsubCostOfSales = ParametersService.subscribeToTable<SimpleTableData>("cost-as-percent-of-sales", (data) => {
-      if (data?.rows?.length && !costSheetIdParam) {
+      const activeRows = data?.cards?.find((c) => c.isActive)?.rows ?? data?.rows ?? [];
+      if (activeRows.length && !costSheetIdParam) {
         const getVal = (desc: string) => {
-          const row = data.rows.find(
+          const row = activeRows.find(
             (r) => r.values.description?.toLowerCase().trim() === desc.toLowerCase().trim()
           );
-          return row?.values.percentOfSales ? parseFloat(row.values.percentOfSales) : null;
+          const val = row?.values.percentOfSales;
+          if (!val || val.trim() === "" || val.trim() === "-") return null;
+          const parsed = parseFloat(val);
+          return isNaN(parsed) ? null : parsed;
         };
 
+        const combinedTaxEds = getVal("Tax & EDS") ?? getVal("Taxes & EDS") ?? getVal("Tax and EDS");
         const eds = getVal("EDS");
-        const taxes = getVal("Taxes");
+        const taxes = getVal("Taxes") ?? getVal("Tax");
         const rebate = getVal("Rebate");
         const exchangeRate = getVal("Exchange Rate");
         const inlandFreight = getVal("Inland Freight");
         const localBankCharges = getVal("Local Bank Charges");
         const discountRateVal = getVal("Discount Rate");
 
-        if (eds !== null || taxes !== null) {
-          const totalTaxEds = (taxes || 0) + (eds || 0);
-          if (totalTaxEds > 0) setTaxEdsPct(totalTaxEds / 100);
-        }
+        const totalTaxEds = combinedTaxEds !== null ? combinedTaxEds : ((taxes || 0) + (eds || 0));
+        setTaxEdsPct(totalTaxEds > 0 ? totalTaxEds / 100 : 0);
         if (exchangeRate !== null && exchangeRate > 0) {
           setParitySale(exchangeRate);
           setParityProcurement(exchangeRate);
         }
-        if (rebate !== null && rebate > 0) setRebatePct(rebate);
-        if (inlandFreight !== null && inlandFreight > 0) setInlandFreightPct(inlandFreight / 100);
-        if (localBankCharges !== null && localBankCharges > 0) setLocalBankChargesPct(localBankCharges / 100);
-        if (discountRateVal !== null && discountRateVal > 0) setDiscountRate(discountRateVal / 100);
+        setRebatePct(rebate !== null && rebate > 0 ? rebate : 0);
+        setInlandFreightPct(inlandFreight !== null && inlandFreight > 0 ? inlandFreight / 100 : 0);
+        setLocalBankChargesPct(localBankCharges !== null && localBankCharges > 0 ? localBankCharges / 100 : 0);
+        setDiscountRate(discountRateVal !== null && discountRateVal > 0 ? discountRateVal / 100 : 0);
       }
     });
 
@@ -293,6 +296,9 @@ export function useCostSheetFacade() {
           setExFactoryDate(sheet.exFactoryDate || "");
           setInhouseOrSubcontract(sheet.inhouseOrSubcontract || "In-House");
           if (sheet.rebatePct !== undefined) setRebatePct(sheet.rebatePct);
+          if (sheet.taxEdsPct !== undefined) setTaxEdsPct(sheet.taxEdsPct);
+          if (sheet.inlandFreightPct !== undefined) setInlandFreightPct(sheet.inlandFreightPct);
+          if (sheet.localBankChargesPct !== undefined) setLocalBankChargesPct(sheet.localBankChargesPct);
 
           setReferenceName(sheet.referenceName || "");
         }
@@ -515,6 +521,9 @@ export function useCostSheetFacade() {
         factoringDays,
         commissionPct: commissionPct / 100,
         foreignBankCharges,
+        taxEdsPct,
+        inlandFreightPct,
+        localBankChargesPct,
         orderFOB: activeStyle.baseSellingPrice,
         quotedPrice,
         intlFreight,
