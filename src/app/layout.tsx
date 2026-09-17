@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth/auth-provider";
 import { AuthGate } from "@/components/auth/auth-gate";
+import { DisableNumberInputScroll } from "@/components/common/DisableNumberInputScroll";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,6 +36,7 @@ export default function RootLayout({
         <AuthProvider>
           <AuthGate>{children}</AuthGate>
         </AuthProvider>
+        <DisableNumberInputScroll />
         <Toaster />
       </body>
     </html>

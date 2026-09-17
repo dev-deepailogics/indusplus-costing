@@ -1,4 +1,1 @@
-export interface CatalogItem {
-  id: string;
-  name: string;
-}
+export * from "@/features/item-catalog/types";

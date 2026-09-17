@@ -9,6 +9,7 @@ import type {
 } from "@/lib/parameters/types";
 
 import { subscribeToStyles } from "@/lib/style-master/firestore";
+
 import type { StyleMasterItem } from "@/lib/style-master/types";
 import {
   calculateSizeBracket,
@@ -18,6 +19,20 @@ import {
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  SearchableSelect,
+  type SearchableSelectOption,
+} from "@/components/ui/searchable-select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -26,6 +41,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Building2,
+  X,
+  Sparkles,
+  Check,
+  Trash2,
+  Edit3,
+  Plus,
+} from "lucide-react";
+import { toast } from "sonner";
 
 export function ProcessMatrixEditor({
   data,
@@ -34,16 +59,185 @@ export function ProcessMatrixEditor({
   data: ProcessMatrixTableData;
   onSave: (data: ProcessMatrixTableData) => Promise<void>;
 }) {
-  const [active, setActive] = useState(data.processes[0]);
+  const [active, setActive] = useState(data.processes[0] || "Fabric");
   const [styles, setStyles] = useState<StyleMasterItem[]>([]);
+  const [customerOptionsList, setCustomerOptionsList] = useState<string[]>([]);
+
+  // Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+  const [customerRateInput, setCustomerRateInput] = useState<string>("");
+  const [isSavingRate, setIsSavingRate] = useState(false);
+
+  // Default Rejection Rate input state
+  const isGridModeActive = data.useGridRejection !== false;
+  const [defaultRejectionInput, setDefaultRejectionInput] = useState<string>(
+    (data.defaultRejection || "4.00%").replace("%", "").trim(),
+  );
+  const [isSavingDefaultRej, setIsSavingDefaultRej] = useState(false);
+
+  // Keep default rejection input in sync with external data changes
+  useEffect(() => {
+    if (data.defaultRejection) {
+      setDefaultRejectionInput(data.defaultRejection.replace("%", "").trim());
+    }
+  }, [data.defaultRejection]);
+
+  // Toggle between Grid Mode (Active) and Customer Mode (Inactive)
+  async function handleToggleMode(useGrid: boolean) {
+    try {
+      await onSave({
+        ...data,
+        useGridRejection: useGrid,
+      });
+      toast.success(
+        useGrid
+          ? "Rejection mode set to Active (Process Grid Sum)."
+          : "Rejection mode set to Inactive (Customer Rejection Rates).",
+      );
+    } catch {
+      toast.error("Failed to update rejection mode");
+    }
+  }
+
+  // Save Default Rejection Rate
+  async function handleSaveDefaultRejection(val?: string) {
+    const raw = (val !== undefined ? val : defaultRejectionInput).trim();
+    if (!raw || isNaN(parseFloat(raw))) {
+      toast.error(
+        "Please enter a valid numeric default rejection percentage (e.g. 4.00).",
+      );
+      return;
+    }
+    const formatted = `${parseFloat(raw).toFixed(2)}%`;
+    setIsSavingDefaultRej(true);
+    try {
+      await onSave({
+        ...data,
+        defaultRejection: formatted,
+      });
+      toast.success(`Default rejection saved as ${formatted}.`);
+    } catch {
+      toast.error("Failed to save default rejection rate");
+    } finally {
+      setIsSavingDefaultRej(false);
+    }
+  }
 
   // Subscribe to style master records to resolve active order quantity band sums
   useEffect(() => {
     return subscribeToStyles(setStyles);
   }, []);
 
-  function saveProcessTable(process: string, table: MatrixTableData) {
-    return onSave({ ...data, tables: { ...data.tables, [process]: table } });
+  // Fetch customer list from indus-plus DB
+  useEffect(() => {
+    fetch("/api/customers")
+      .then((res) => res.json())
+      .then((data: { customers?: string[]; error?: string }) => {
+        if (data.customers && data.customers.length > 0) {
+          setCustomerOptionsList(data.customers);
+        }
+      })
+      .catch((err) =>
+        console.error("[ProcessMatrixEditor] Failed to load customers:", err),
+      );
+  }, []);
+
+  // Compute all unique available customers
+  const allCustomerNames = useMemo(() => {
+    const set = new Set<string>();
+    customerOptionsList.forEach((c) => c && set.add(c.trim()));
+    styles.forEach((s) => s.customerName && set.add(s.customerName.trim()));
+    if (data.customerRejections) {
+      Object.keys(data.customerRejections).forEach(
+        (c) => c && set.add(c.trim()),
+      );
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [customerOptionsList, styles, data.customerRejections]);
+
+  // Customer dropdown select options
+  const customerSelectOptions: SearchableSelectOption[] = useMemo(() => {
+    return allCustomerNames.map((cust) => {
+      const existingVal = data.customerRejections?.[cust];
+      return {
+        value: cust,
+        label: `${cust}${existingVal ? ` — (Custom: ${existingVal})` : ""}`,
+      };
+    });
+  }, [allCustomerNames, data.customerRejections]);
+
+  // Trigger open modal when customer is selected
+  function handleSelectCustomer(cust: string) {
+    if (!cust) return;
+    setSelectedCustomer(cust);
+    const existingRate = data.customerRejections?.[cust];
+    setCustomerRateInput(
+      existingRate ? existingRate.replace("%", "").trim() : "",
+    );
+    setModalOpen(true);
+  }
+
+  // Save process matrix table
+  async function saveProcessTable(process: string, table: MatrixTableData) {
+    await onSave({ ...data, tables: { ...data.tables, [process]: table } });
+    toast.success(`Rejection grid for ${process} saved.`);
+  }
+
+  // Save single customer rejection rate inside modal
+  async function handleSaveCustomerRate() {
+    if (!selectedCustomer) {
+      toast.error("Please select a customer first.");
+      return;
+    }
+    const cleanRate = customerRateInput.trim();
+    if (!cleanRate || isNaN(parseFloat(cleanRate))) {
+      toast.error(
+        "Please enter a valid numeric rejection percentage (e.g. 4.15).",
+      );
+      return;
+    }
+
+    setIsSavingRate(true);
+    try {
+      const formattedRate = `${parseFloat(cleanRate).toFixed(2)}%`;
+      const updated = {
+        ...(data.customerRejections || {}),
+        [selectedCustomer]: formattedRate,
+      };
+
+      await onSave({
+        ...data,
+        customerRejections: updated,
+      });
+      toast.success(
+        `Rejection rate for "${selectedCustomer}" saved as ${formattedRate}.`,
+      );
+      setModalOpen(false);
+    } catch {
+      toast.error("Failed to save customer rejection rate");
+    } finally {
+      setIsSavingRate(false);
+    }
+  }
+
+  // Remove single customer rejection rate
+  async function handleRemoveCustomerRate(custName: string) {
+    setIsSavingRate(true);
+    try {
+      const updated = { ...(data.customerRejections || {}) };
+      delete updated[custName];
+      await onSave({
+        ...data,
+        customerRejections: updated,
+      });
+      toast.info(`Removed custom rejection rate for ${custName}.`);
+      setModalOpen(false);
+    } catch {
+      toast.error("Failed to remove customer rejection rate");
+    } finally {
+      setIsSavingRate(false);
+    }
   }
 
   // Construct read-only Total Table (dynamic processes sum)
@@ -74,9 +268,28 @@ export function ProcessMatrixEditor({
 
   // Compute live rejection totals per registered style master
   const styleSummaries = useMemo(() => {
+    const useGrid = data.useGridRejection !== false;
+    const defaultRejPercent =
+      parseFloat((data.defaultRejection || "4.00%").replace("%", "").trim()) ||
+      4.0;
+    const defaultRejVal = defaultRejPercent / 100;
+
     return styles.map((style) => {
-      const sizeBracket = calculateSizeBracket(style.orderQuantity);
+      const availableBrackets =
+        data.processes.length > 0
+          ? data.tables[data.processes[0]]?.rowLabels
+          : undefined;
+      const sizeBracket = calculateSizeBracket(
+        style.orderQuantity,
+        availableBrackets,
+      );
       const styleCategoryClass = mapSMVToCategory(style.smvSewing);
+
+      // Check if customer has single rate
+      const custRateStr = data.customerRejections?.[style.customerName];
+      const hasCustomerSingleRate = Boolean(
+        custRateStr && parseFloat(custRateStr) > 0,
+      );
 
       const processRejections: Record<string, number> = {};
       let baseRejectionSum = 0;
@@ -94,12 +307,30 @@ export function ProcessMatrixEditor({
       }
 
       const washingRejection = getWashingRejection(style.washType, sizeBracket);
-      const totalRejection = baseRejectionSum + washingRejection;
+
+      let totalRejection = 0;
+      let rejectionSource: "grid" | "customer" | "default" = "grid";
+
+      if (useGrid) {
+        totalRejection = baseRejectionSum + washingRejection;
+        rejectionSource = "grid";
+      } else {
+        if (hasCustomerSingleRate) {
+          totalRejection = parseFloat(custRateStr!) / 100;
+          rejectionSource = "customer";
+        } else {
+          totalRejection = defaultRejVal;
+          rejectionSource = "default";
+        }
+      }
 
       return {
         style,
         sizeBracket,
         styleCategoryClass,
+        hasCustomerSingleRate,
+        custRateStr,
+        rejectionSource,
         processRejections,
         baseRejectionSum,
         washingRejection,
@@ -108,30 +339,308 @@ export function ProcessMatrixEditor({
     });
   }, [styles, data]);
 
+  const existingModalRate = selectedCustomer
+    ? data.customerRejections?.[selectedCustomer]
+    : null;
+
   return (
     <div className="space-y-6">
+      {/* ── Main Control & Configuration Toolbar ── */}
+      <div className="p-4 bg-gradient-to-r from-slate-50 to-slate-100/80 dark:from-slate-900 dark:to-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        {/* Row 1: Active/Inactive Mode Switch & Default Rejection Field */}
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          {/* Active / Inactive Toggle Button */}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+              Rejection Mode:
+            </span>
+            <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 p-1 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => handleToggleMode(true)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                  isGridModeActive
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                <span
+                  className={`size-2 rounded-full ${isGridModeActive ? "bg-white animate-pulse" : "bg-slate-400"}`}
+                />
+                Active (Process Grid)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleMode(false)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                  !isGridModeActive
+                    ? "bg-amber-600 text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                }`}
+              >
+                <span
+                  className={`size-2 rounded-full ${!isGridModeActive ? "bg-white animate-pulse" : "bg-slate-400"}`}
+                />
+                Inactive (Customer Rejection)
+              </button>
+            </div>
+
+            <Badge
+              variant="outline"
+              className={`text-xs px-2.5 py-1 font-semibold ${
+                isGridModeActive
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300"
+                  : "border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300"
+              }`}
+            >
+              {isGridModeActive
+                ? "✓ Dynamic Grid Mode Active"
+                : "⚠ Customer Rejection Mode Active"}
+            </Badge>
+          </div>
+
+          {/* Right Controls: Default Rejection & Customer Selector */}
+          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-start lg:justify-end">
+            {/* Default Rejection Input Field */}
+            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-2xs">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                Default Rejection:
+              </span>
+              <div className="relative flex items-center w-24">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  placeholder="4.00"
+                  className="w-full h-7 pl-2 pr-6 text-xs font-bold border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded text-right focus:bg-white focus:outline-none"
+                  value={defaultRejectionInput}
+                  onChange={(e) => setDefaultRejectionInput(e.target.value)}
+                  onBlur={() => handleSaveDefaultRejection()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveDefaultRejection();
+                  }}
+                  disabled={isSavingDefaultRej}
+                />
+                <span className="absolute right-2 text-xs font-bold text-slate-400 pointer-events-none">
+                  %
+                </span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs font-bold text-primary hover:bg-primary/10"
+                onClick={() => handleSaveDefaultRejection()}
+                disabled={isSavingDefaultRej}
+                title="Save default rejection rate"
+              >
+                <Check className="size-3.5" />
+              </Button>
+            </div>
+
+            {/* Customer Rejection Search & Select */}
+            <div className="flex items-center gap-2 bg-white dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-2xs">
+              <Building2 className="size-4 text-primary shrink-0" />
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">
+                Customer:
+              </span>
+              <div className="w-52 sm:w-60">
+                <SearchableSelect
+                  options={customerSelectOptions}
+                  value={selectedCustomer}
+                  onChange={handleSelectCustomer}
+                  placeholder="Search or Select Customer..."
+                  className="bg-transparent text-xs h-7 font-semibold"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Customer Custom Rate Badges List */}
+      {data.customerRejections &&
+        Object.keys(data.customerRejections).length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 p-2.5 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 rounded-lg">
+            <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1">
+              <Sparkles className="size-3.5 text-amber-600" /> Customer
+              Rejection Rates:
+            </span>
+            {Object.entries(data.customerRejections).map(([cust, rate]) => (
+              <Badge
+                key={cust}
+                variant="outline"
+                className="text-xs py-1 px-2.5 bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 font-semibold flex items-center gap-2 shadow-2xs"
+              >
+                <button
+                  type="button"
+                  className="hover:underline cursor-pointer flex items-center gap-1.5 focus:outline-none"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    handleSelectCustomer(cust);
+                  }}
+                  title={`Edit custom rate for ${cust}`}
+                >
+                  <span>
+                    {cust}: <strong>{rate}</strong>
+                  </span>
+                  <Edit3 className="size-3 text-amber-700 dark:text-amber-400 hover:text-amber-900" />
+                </button>
+                <button
+                  type="button"
+                  className="hover:text-destructive text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/50 p-0.5 rounded transition-colors cursor-pointer focus:outline-none"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    handleRemoveCustomerRate(cust);
+                  }}
+                  title={`Remove custom rate for ${cust}`}
+                >
+                  <X className="size-3.5" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+
+      {/* Process Tabs Navigation Bar */}
+      <div className="flex items-center gap-2 overflow-x-auto w-full bg-muted/40 p-2 rounded-xl border">
+        <Tabs
+          value={active}
+          onValueChange={(v) => setActive(v as string)}
+          className="w-full"
+        >
+          <TabsList className="flex flex-wrap h-auto bg-muted p-1">
+            {data.processes.map((p) => (
+              <TabsTrigger
+                key={p}
+                value={p}
+                className="data-active:bg-primary data-active:text-primary-foreground py-1.5 px-3 text-xs"
+              >
+                {p}
+              </TabsTrigger>
+            ))}
+            {totalTable && (
+              <TabsTrigger
+                value="total-rejections"
+                className="data-active:bg-emerald-600 data-active:text-white py-1.5 px-3 text-xs font-semibold text-emerald-800 dark:text-emerald-300"
+              >
+                Total (Processes Sum)
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {/* Modal Dialog for Setting Single Customer Rejection Rate */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <Building2 className="size-5 text-primary" />
+              Customer Rejection Rate: {selectedCustomer}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Set a dedicated single rejection percentage for{" "}
+              <strong>{selectedCustomer}</strong>. When this customer is
+              selected in the Cost Sheet, this rate will be applied directly. If
+              no rate is set, the Cost Sheet calculates rejection dynamically
+              from the Rejection Grid.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Rejection Rate (%)
+              </label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="e.g. 4.15"
+                  className="h-10 text-base font-bold pr-8 text-right"
+                  value={customerRateInput}
+                  onChange={(e) => setCustomerRateInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveCustomerRate();
+                  }}
+                  autoFocus
+                />
+                <span className="absolute right-3 top-2.5 text-sm font-bold text-muted-foreground pointer-events-none">
+                  %
+                </span>
+              </div>
+            </div>
+
+            {existingModalRate ? (
+              <div className="p-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-lg text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between">
+                <span>
+                  Current active rate: <strong>{existingModalRate}</strong>
+                </span>
+                <Badge
+                  variant="outline"
+                  className="border-amber-400 text-amber-800 dark:text-amber-300"
+                >
+                  Custom Active
+                </Badge>
+              </div>
+            ) : (
+              <div className="p-2.5 bg-slate-50 dark:bg-slate-900 border rounded-lg text-xs text-muted-foreground">
+                Currently using <strong>Default Rejection Grid</strong>{" "}
+                calculations for this customer.
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="flex flex-row items-center justify-between gap-2 sm:justify-between">
+            {existingModalRate ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-xs text-destructive hover:bg-destructive/10 border-destructive/30"
+                onClick={() => handleRemoveCustomerRate(selectedCustomer)}
+                disabled={isSavingRate}
+              >
+                <Trash2 className="size-3.5 mr-1" /> Remove Custom Rate
+              </Button>
+            ) : (
+              <div />
+            )}
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+                onClick={() => setModalOpen(false)}
+                disabled={isSavingRate}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="text-xs font-bold"
+                onClick={handleSaveCustomerRate}
+                disabled={isSavingRate}
+              >
+                <Check className="size-3.5 mr-1" />
+                {isSavingRate ? "Saving..." : "Save Rate"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Process Tabs Content */}
       <Tabs value={active} onValueChange={(v) => setActive(v as string)}>
-        <TabsList className="flex flex-wrap h-auto bg-muted p-1">
-          {data.processes.map((p) => (
-            <TabsTrigger
-              key={p}
-              value={p}
-              className="data-active:bg-primary data-active:text-primary-foreground py-1.5 px-3 text-xs"
-            >
-              {p}
-            </TabsTrigger>
-          ))}
-          {totalTable && (
-            <TabsTrigger
-              value="total-rejections"
-              className="data-active:bg-emerald-600 data-active:text-white py-1.5 px-3 text-xs font-semibold text-emerald-800"
-            >
-              Total (Processes Sum)
-            </TabsTrigger>
-          )}
-        </TabsList>
         {data.processes.map((p) => (
-          <TabsContent key={p} value={p} className="pt-2">
+          <TabsContent key={p} value={p} className="pt-0">
             <MatrixTableEditor
               data={data.tables[p]}
               onSave={(table) => saveProcessTable(p, table)}
@@ -140,7 +649,7 @@ export function ProcessMatrixEditor({
           </TabsContent>
         ))}
         {totalTable && (
-          <TabsContent value="total-rejections" className="pt-2">
+          <TabsContent value="total-rejections" className="pt-0">
             <div className="space-y-3">
               <div className="rounded-lg border bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
                 <Table>
@@ -185,72 +694,6 @@ export function ProcessMatrixEditor({
           </TabsContent>
         )}
       </Tabs>
-
-      {/* Style-level Rejection Breakdown Summary Table
-      <Card className="border-muted shadow-md overflow-hidden bg-card/60">
-        <CardHeader className="bg-muted/30 border-b py-4">
-          <CardTitle className="text-sm font-bold flex items-center justify-between">
-            <span>Apparel Styles - Dynamic Rejection Summary (Order Quantity Pcs Related)</span>
-            <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-wider">
-              Live Calc
-            </Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {styleSummaries.length === 0 ? (
-            <div className="p-6 text-center text-xs text-muted-foreground">
-              No style master records found. Rejection summaries will display once styles are created.
-            </div>
-          ) : (
-            <Table>
-              <TableHeader className="bg-muted/20">
-                <TableRow>
-                  <TableHead className="font-semibold text-xs text-foreground py-2.5">Style ID & Name</TableHead>
-                  <TableHead className="font-semibold text-xs text-foreground py-2.5">Category Class</TableHead>
-                  <TableHead className="font-semibold text-xs text-foreground py-2.5">Order Qty (Band)</TableHead>
-                  <TableHead className="font-semibold text-xs text-foreground py-2.5 text-right">Process Sum</TableHead>
-                  <TableHead className="font-semibold text-xs text-foreground py-2.5">Wash Type</TableHead>
-                  <TableHead className="font-semibold text-xs text-foreground py-2.5 text-right">Wash Rej.</TableHead>
-                  <TableHead className="font-semibold text-xs text-foreground py-2.5 text-right pr-4">Total Rej.</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {styleSummaries.map(({ style, sizeBracket, styleCategoryClass, baseRejectionSum, washingRejection, totalRejection }) => (
-                  <TableRow key={style.id} className="hover:bg-muted/10">
-                    <TableCell className="py-2.5 text-xs">
-                      <span className="font-bold text-primary block">{style.id}</span>
-                      <span className="text-muted-foreground font-medium text-[11px]">{style.styleName}</span>
-                    </TableCell>
-                    <TableCell className="py-2.5 text-xs font-semibold">
-                      {styleCategoryClass}
-                    </TableCell>
-                    <TableCell className="py-2.5 text-xs text-muted-foreground font-medium">
-                      {style.orderQuantity.toLocaleString()} pcs
-                      <Badge variant="outline" className="ml-1.5 text-[10px] px-1 py-0 border-blue-200 text-blue-700 bg-blue-50 font-bold">
-                        {sizeBracket}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="py-2.5 text-xs text-right font-mono font-semibold">
-                      {(baseRejectionSum * 100).toFixed(2)}%
-                    </TableCell>
-                    <TableCell className="py-2.5 text-xs font-medium text-muted-foreground">
-                      {style.washType}
-                    </TableCell>
-                    <TableCell className="py-2.5 text-xs text-right font-mono text-muted-foreground font-semibold">
-                      {(washingRejection * 100).toFixed(2)}%
-                    </TableCell>
-                    <TableCell className="py-2.5 text-right pr-4">
-                      <Badge className="font-mono text-xs font-extrabold bg-primary text-primary-foreground shadow-sm">
-                        {(totalRejection * 100).toFixed(2)}%
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card> */}
     </div>
   );
 }

@@ -1,21 +1,13 @@
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  updateProfile,
-} from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { AuthService } from "@/features/auth";
 
 export function signInWithEmail(email: string, password: string) {
-  return signInWithEmailAndPassword(auth, email, password);
+  return AuthService.signIn(email, password);
 }
 
-export async function signUpWithEmail(email: string, password: string, displayName: string) {
-  const credential = await createUserWithEmailAndPassword(auth, email, password);
-  await updateProfile(credential.user, { displayName });
-  return credential;
+export function signUpWithEmail(email: string, password: string, displayName: string) {
+  return AuthService.signUp(email, password, displayName);
 }
 
 export function signOut() {
-  return firebaseSignOut(auth);
+  return AuthService.signOut();
 }

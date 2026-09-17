@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, Suspense } from "react";
+import { useEffect, useState, useMemo, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -13,6 +13,7 @@ import {
   Printer,
   Plus,
   X,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,8 +21,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  SearchableSelect,
+  type SearchableSelectOption,
+} from "@/components/ui/searchable-select";
+import type { StyleWorkOrderRow } from "@/app/api/styles-and-workorders/route";
+import type { IndusBOMData } from "@/app/api/bom/[styleCode]/route";
+import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -30,7 +39,7 @@ import {
   getCostSheetById,
   getNextCostSheetId,
   saveCostSheet,
-} from "@/lib/cost-sheet/firestore";
+} from "@/lib/cost-sheet/api";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 import {
   Table,
@@ -41,16 +50,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { subscribeToStyles } from "@/lib/style-master/firestore";
-import { subscribeToWorkOrders } from "@/lib/work-orders/firestore";
-import type { WorkOrderItem } from "@/lib/work-orders/types";
-import {
-  FABRIC_COLLECTION,
-  LINING_COLLECTION,
-  subscribeToCatalog,
-} from "@/lib/item-catalog/firestore";
-import type { CatalogItem } from "@/lib/item-catalog/types";
-import { subscribeToTable } from "@/lib/parameters/firestore";
+import type { CatalogItemDB } from "@/app/api/bom/catalog-items/route";
+import { subscribeToTable } from "@/lib/parameters/api";
 import type {
   StyleMasterItem,
   BOMFabricItem,
@@ -83,17 +84,17 @@ export default function CostSheetPage() {
 
 const CUSTOM_STYLE: StyleMasterItem = {
   id: "custom",
-  styleName: "Custom Style",
-  customerName: "Duer",
+  styleName: "",
+  customerName: "",
   styleCategory: "Top Ware",
   orderType: "Denim",
   washType: "Rinse",
-  orderQuantity: 1000,
+  orderQuantity: 0,
   sizeBracket: "<=500",
-  smvSewing: 15,
+  smvSewing: 0,
   targetEfficiency: 0.47,
   rejectionPct: 0.0415,
-  baseSellingPrice: 10,
+  baseSellingPrice: 0,
   bomFabric: [],
   bomLining: [],
   bomAccessories: [],
@@ -101,86 +102,100 @@ const CUSTOM_STYLE: StyleMasterItem = {
   bomSpecialCharges: [],
 };
 
-const DEFAULT_ACCESSORIES_TEMPLATES = [
-  { category: "Zipper", itemName: "Zippers" },
-  { category: "Thread", itemName: "Thread" },
-  { category: "Label", itemName: "Labels" },
-  { category: "Trims", itemName: "Trims Mix Materials" },
-  { category: "Poly Bag", itemName: "Poly Bags" },
-  { category: "Tag", itemName: "Tag" },
-  { category: "Carton", itemName: "Cartons" },
-  { category: "Button & Rivets", itemName: "Button & Rivets" },
-  { category: "Packing Mix Materials", itemName: "Packing Mix Materials" },
-  { category: "Sticker", itemName: "Sticker" },
-];
-
-const DEFAULT_CHEMICALS_TEMPLATES = [{ washItem: "Rinse" }];
-
-const DEFAULT_SPECIAL_TEMPLATES = [
-  { itemName: "Embroidery" },
-  { itemName: "Printing Charges" },
-  { itemName: "Testing Charges" },
-  { itemName: "Inspection Charges" },
-];
-
 function ensureStyleBOMDefaults(style: StyleMasterItem): StyleMasterItem {
-  const merged = { ...style };
+  return {
+    ...style,
+    bomFabric: style.bomFabric || [],
+    bomLining: style.bomLining || [],
+    bomAccessories: style.bomAccessories || [],
+    bomChemicals: style.bomChemicals || [],
+    bomSpecialCharges: style.bomSpecialCharges || [],
+  };
+}
 
-  // Accessories
-  const accList = [...(style.bomAccessories || [])];
-  DEFAULT_ACCESSORIES_TEMPLATES.forEach((tmpl) => {
-    const hasCategory = accList.some(
-      (item) => item.category?.toLowerCase() === tmpl.category.toLowerCase(),
-    );
-    if (!hasCategory) {
-      accList.push({
-        category: tmpl.category,
-        itemName: tmpl.itemName,
-        consPerPc: 0,
-        ratePKR: 0,
-        totalCostPKR: 0,
+/**
+ * Fetches BOM data from indus-plus for a given styleCode and returns
+ * mapped BOM arrays ready to merge into a StyleMasterItem.
+ * Returns null on error or empty styleCode.
+ */
+async function fetchIndusBOM(styleCode: string): Promise<IndusBOMData | null> {
+  if (!styleCode || styleCode === "custom") return null;
+  try {
+    const res = await fetch(`/api/bom/${encodeURIComponent(styleCode)}`);
+    if (!res.ok) return null;
+    return (await res.json()) as IndusBOMData;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Converts an IndusBOMData payload into the StyleMasterItem BOM arrays.
+ */
+function mapIndusBOMToStyle(bom: IndusBOMData, parityProc = 278) {
+  const bomFabric = bom.fabric.map((r) => {
+    const ratePKR = r.ratePKR || 0;
+    const rateUSD =
+      parityProc > 0 && ratePKR > 0
+        ? parseFloat((ratePKR / parityProc).toFixed(4))
+        : 0;
+    return {
+      itemName: r.itemName,
+      consumptionPerPc: r.consumption,
+      rateUSD,
+      ratePKR,
+      fabricCostPKR: r.consumption * ratePKR,
+    };
+  });
+
+  const bomLining = bom.lining.map((r) => {
+    const ratePKR = r.ratePKR || 0;
+    const rateUSD =
+      parityProc > 0 && ratePKR > 0
+        ? parseFloat((ratePKR / parityProc).toFixed(4))
+        : 0;
+    return {
+      itemName: r.itemName,
+      consumptionPerPc: r.consumption,
+      rateUSD,
+      ratePKR,
+      liningCostPKR: r.consumption * ratePKR,
+    };
+  });
+
+  // For accessories, aggregate by category+itemName (view can have duplicates)
+  const accMap = new Map<
+    string,
+    {
+      category: string;
+      itemName: string;
+      consPerPc: number;
+      ratePKR: number;
+      totalCostPKR: number;
+    }
+  >();
+  for (const r of bom.accessories) {
+    const key = `${r.category}|||${r.itemName}`;
+    if (!accMap.has(key)) {
+      accMap.set(key, {
+        category: r.category,
+        itemName: r.itemName,
+        consPerPc: r.consumption,
+        ratePKR: r.ratePKR,
+        totalCostPKR: r.consumption * r.ratePKR,
       });
     }
-  });
-  merged.bomAccessories = accList;
+  }
+  const bomAccessories = Array.from(accMap.values());
 
-  // Chemicals
-  const chemList = [...(style.bomChemicals || [])];
-  DEFAULT_CHEMICALS_TEMPLATES.forEach((tmpl) => {
-    const hasItem = chemList.some(
-      (item) => item.washItem?.toLowerCase() === tmpl.washItem.toLowerCase(),
-    );
-    if (!hasItem) {
-      chemList.push({
-        washItem: tmpl.washItem,
-        consPerPc: 0,
-        ratePKR: 0,
-        totalCostPKR: 0,
-      });
-    }
-  });
-  merged.bomChemicals = chemList;
-
-  // Special Charges
-  const specialList = [...(style.bomSpecialCharges || [])];
-  DEFAULT_SPECIAL_TEMPLATES.forEach((tmpl) => {
-    const hasItem = specialList.some(
-      (item) =>
-        item.itemName?.toLowerCase().replace(/\s+/g, "") ===
-        tmpl.itemName.toLowerCase().replace(/\s+/g, ""),
-    );
-    if (!hasItem) {
-      specialList.push({
-        itemName: tmpl.itemName,
-        consPerPc: 0,
-        ratePKR: 0,
-        totalCostPKR: 0,
-      });
-    }
-  });
-  merged.bomSpecialCharges = specialList;
-
-  return merged;
+  return {
+    bomFabric,
+    bomLining,
+    bomAccessories,
+    smvSewing: bom.smvSewing,
+    washType: bom.wash || undefined,
+    styleCategory: bom.category || undefined,
+  };
 }
 
 function CostSheetContent() {
@@ -196,12 +211,45 @@ function CostSheetContent() {
   const [newSnapshotName, setNewSnapshotName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Subscribed Database Data
-  const [styles, setStyles] = useState<StyleMasterItem[]>([]);
-  const [activeStyle, setActiveStyle] = useState<StyleMasterItem | null>(null);
-  const [workOrders, setWorkOrders] = useState<WorkOrderItem[]>([]);
-  const [fabricCatalog, setFabricCatalog] = useState<CatalogItem[]>([]);
-  const [liningCatalog, setLiningCatalog] = useState<CatalogItem[]>([]);
+  // Unsaved Changes & Navigation Guard States
+  const [isDirty, setIsDirty] = useState(false);
+  const [unsavedModalOpen, setUnsavedModalOpen] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    type: "url" | "style" | "reset";
+    target?: string;
+  } | null>(null);
+
+  const isDirtyRef = useRef(false);
+  isDirtyRef.current = isDirty;
+
+  const markDirty = () => {
+    if (!isDirtyRef.current) {
+      setIsDirty(true);
+    }
+  };
+
+  // Active Style & Catalogs (MSSQL DB S_StyleCardBOMConsumptionSAMView)
+  const [activeStyle, setActiveStyle] = useState<StyleMasterItem | null>(
+    CUSTOM_STYLE,
+  );
+  const [fabricCatalog, setFabricCatalog] = useState<CatalogItemDB[]>([]);
+  const [liningCatalog, setLiningCatalog] = useState<CatalogItemDB[]>([]);
+  const [trimsCatalog, setTrimsCatalog] = useState<CatalogItemDB[]>([]);
+  const [chemicalsCatalog, setChemicalsCatalog] = useState<CatalogItemDB[]>([]);
+  const [specialChargesCatalog, setSpecialChargesCatalog] = useState<
+    CatalogItemDB[]
+  >([]);
+  const [newFabricRows, setNewFabricRows] = useState<Set<number>>(new Set());
+  const [newLiningRows, setNewLiningRows] = useState<Set<number>>(new Set());
+  const [newAccessoryRows, setNewAccessoryRows] = useState<Set<number>>(
+    new Set(),
+  );
+  const [newChemicalRows, setNewChemicalRows] = useState<Set<number>>(
+    new Set(),
+  );
+  const [newSpecialChargeRows, setNewSpecialChargeRows] = useState<Set<number>>(
+    new Set(),
+  );
 
   const [directLabourFoh, setDirectLabourFoh] = useState<
     SimpleTableData | undefined
@@ -223,34 +271,32 @@ function CostSheetContent() {
   const [costingDate, setCostingDate] = useState(
     () => new Date().toISOString().split("T")[0],
   );
-  const [costingStage, setCostingStage] = useState("Quote");
-  const [country, setCountry] = useState("SPAIN");
-  const [paymentTerms, setPaymentTerms] = useState("LC-60 days");
-  const [shipmentMode, setShipmentMode] = useState("Sea");
-  const [deliveryTerms, setDeliveryTerms] = useState("FOB");
-  const [paritySale, setParitySale] = useState(278);
-  const [parityProcurement, setParityProcurement] = useState(278);
+  const [costingStage, setCostingStage] = useState("");
+  const [country, setCountry] = useState("");
+  const [paymentTerms, setPaymentTerms] = useState("");
+  const [shipmentMode, setShipmentMode] = useState("");
+  const [deliveryTerms, setDeliveryTerms] = useState("");
+  const [paritySale, setParitySale] = useState<number>();
+  const [parityProcurement, setParityProcurement] = useState<number>();
 
   // New editable style fields
-  const [customerName, setCustomerName] = useState("Duer");
-  const [styleCategory, setStyleCategory] = useState("Top Ware");
-  const [washType, setWashType] = useState("Rinse");
-  const [orderQuantity, setOrderQuantity] = useState(1000);
-  const [orderType, setOrderType] = useState<"Denim" | "Non Denim">("Denim");
+  const [customerName, setCustomerName] = useState("");
+  const [styleCategory, setStyleCategory] = useState("");
+  const [washType, setWashType] = useState("");
+  const [orderQuantity, setOrderQuantity] = useState(0);
+  const [orderType, setOrderType] = useState<"Denim" | "Non Denim" | "">("");
   const [smvSewingInput, setSmvSewingInput] = useState<string>("");
   const [noOfColors, setNoOfColors] = useState<number>(1);
-  const [merchGroup, setMerchGroup] = useState<string>("Ayaz");
+  const [merchGroup, setMerchGroup] = useState("");
   const [workOrderNumber, setWorkOrderNumber] = useState<string>("");
-  const [deliveryDestination, setDeliveryDestination] =
-    useState<string>("EURO");
+  const [deliveryDestination, setDeliveryDestination] = useState("");
   const [exFactoryDate, setExFactoryDate] = useState<string>(() => {
     const d = new Date();
     d.setMonth(d.getMonth() + 3);
     return d.toISOString().split("T")[0];
   });
-  const [inhouseOrSubcontract, setInhouseOrSubcontract] =
-    useState<string>("INHOUSE");
-  const [rebatePct, setRebatePct] = useState<number>(0);
+  const [inhouseOrSubcontract, setInhouseOrSubcontract] = useState("");
+  const [rebateInput, setRebateInput] = useState<string>("0");
 
   // Operational Inputs
   const [manpower, setManpower] = useState(60);
@@ -258,100 +304,202 @@ function CostSheetContent() {
   const [rejectionOverride, setRejectionOverride] = useState<string>("");
   const [lineTargetOverride, setLineTargetOverride] = useState<string>("");
 
-  // Financial Parameters
-  const [discountRate, setDiscountRate] = useState(0.12);
-  const [taxEdsPct, setTaxEdsPct] = useState(0.025);
-  const [inlandFreightPct, setInlandFreightPct] = useState(0.0125);
-  const [localBankChargesPct, setLocalBankChargesPct] = useState(0.0085);
-  const [paymentTermsDays, setPaymentTermsDays] = useState(60);
-  const [factoringDays, setFactoringDays] = useState(0);
-  const [commissionPct, setCommissionPct] = useState(0);
-  const [foreignBankCharges, setForeignBankCharges] = useState(0);
+  // Financial Parameters (initialized to 0 and populated strictly from active database parameter tables)
+  const [discountRateInput, setDiscountRateInput] = useState<string>("0");
+  const [taxEdsInput, setTaxEdsInput] = useState<string>("0");
+  const [inlandFreightInput, setInlandFreightInput] = useState<string>("0");
+  const [localBankChargesInput, setLocalBankChargesInput] =
+    useState<string>("0");
+  const [paymentTermsDaysInput, setPaymentTermsDaysInput] =
+    useState<string>("0");
+  const [factoringDaysInput, setFactoringDaysInput] = useState<string>("0");
+  const [commissionInput, setCommissionInput] = useState<string>("0");
+  const [foreignBankChargesInput, setForeignBankChargesInput] =
+    useState<string>("0");
 
   // Order FOB / Quoted Price / Freight & Insurance inputs
   const [quotedPriceInput, setQuotedPriceInput] = useState<string>("");
   const [intlFreight, setIntlFreight] = useState<string>("");
   const [intlInsurance, setIntlInsurance] = useState<string>("");
 
+  // Global click listener to intercept internal link navigations
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (!isDirtyRef.current) return;
+
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      const anchor = target.closest("a");
+      if (!anchor) return;
+
+      const href = anchor.getAttribute("href");
+      if (!href) return;
+
+      // Ignore hash anchors, javascript:, blank targets, or download links
+      if (
+        href.startsWith("#") ||
+        href.startsWith("javascript:") ||
+        anchor.target === "_blank" ||
+        anchor.hasAttribute("download")
+      ) {
+        return;
+      }
+
+      // Check if navigating to another page/url
+      const currentFullUrl = window.location.pathname + window.location.search;
+      if (href === currentFullUrl || href === window.location.pathname) {
+        return;
+      }
+
+      // Intercept navigation
+      e.preventDefault();
+      e.stopPropagation();
+
+      setPendingNavigation({ type: "url", target: href });
+      setUnsavedModalOpen(true);
+    }
+
+    document.addEventListener("click", handleClick, true);
+    return () => {
+      document.removeEventListener("click", handleClick, true);
+    };
+  }, []);
+
+  // Browser beforeunload event (tab close, refresh, external navigation)
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (isDirtyRef.current) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
+
   // Options lists (will subscribe to parameter dropdown-lists if exists)
-  const [paymentTermsList, setPaymentTermsList] = useState([
-    "LC at Sight",
-    "LC-30 days",
-    "LC-45 days",
-    "LC-60 days",
-    "LC-75 days",
-    "DA",
-    "Advance",
-  ]);
-  const [deliveryTermsList, setDeliveryTermsList] = useState([
-    "FOB",
-    "CIF",
-    "CFR",
-    "DDP/LDP",
-  ]);
-  const [countriesList, setCountriesList] = useState([
-    "SPAIN",
-    "GERMANY",
-    "USA",
-    "UK",
-    "FRANCE",
-    "ITALY",
-  ]);
-  const [customersList, setCustomersList] = useState([
-    "Duer",
-    "Zara",
-    "Mustang",
-    "Miniconf",
-    "Mohito",
-    "Retrojeans",
-  ]);
-  const [categoriesList, setCategoriesList] = useState([
-    "Top Ware",
-    "Men's Pant",
-    "Ladies Pant",
-    "Shorts",
-    "Shirt",
-  ]);
-  const [washTypesList, setWashTypesList] = useState([
-    "Rinse",
-    "Dyeing",
-    "Softner",
-    "Stone Wash",
-    "EW/Biopolish",
-    "Silicon Ball",
-  ]);
-  const [orderTypesList, setOrderTypesList] = useState(["Denim", "Non Denim"]);
+  const [paymentTermsList, setPaymentTermsList] = useState<string[]>([]);
+  const [deliveryTermsList, setDeliveryTermsList] = useState<string[]>([]);
+  const [countriesList, setCountriesList] = useState<string[]>([]);
+  const [customersList, setCustomersList] = useState<string[]>([]);
+  const [categoriesList, setCategoriesList] = useState<string[]>([]);
+  const [washTypesList, setWashTypesList] = useState<string[]>([]);
+  const [orderTypesList, setOrderTypesList] = useState<string[]>([]);
+  const [costingStageList, setCostingStageList] = useState<string[]>([]);
+  const [shipmentModeList, setShipmentModeList] = useState<string[]>([]);
+  const [merchGroupList, setMerchGroupList] = useState<string[]>([]);
+  const [delvDestinationList, setDelvDestinationList] = useState<string[]>([]);
+  const [inhouseSubcontractList, setInhouseSubcontractList] = useState<
+    string[]
+  >([]);
+  const [chemicalsList, setChemicalsList] = useState<string[]>([]);
+  const [specialChargesList, setSpecialChargesList] = useState<string[]>([]);
+
+  // indus-plus: Styles & Work Orders from S_StyleAndWorkOrdersView
+  const [indusStyleRows, setIndusStyleRows] = useState<StyleWorkOrderRow[]>([]);
+
+  // Fetch customers from indus-plus DB on mount
+  useEffect(() => {
+    fetch("/api/customers")
+      .then((res) => res.json())
+      .then((data: { customers?: string[]; error?: string }) => {
+        if (data.customers && data.customers.length > 0) {
+          setCustomersList(data.customers);
+        }
+      })
+      .catch((err) =>
+        console.error("[CostSheet] Failed to load customers:", err),
+      );
+  }, []);
+
+  // Fetch styles & work orders from indus-plus DB on mount
+  useEffect(() => {
+    fetch("/api/styles-and-workorders")
+      .then((res) => res.json())
+      .then((data: { rows?: StyleWorkOrderRow[]; error?: string }) => {
+        if (data.rows && data.rows.length > 0) {
+          setIndusStyleRows(data.rows);
+          if (styleIdParam && !costSheetIdParam) {
+            if (styleIdParam === "custom") {
+              setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
+            } else {
+              const matchedRow = data.rows.find(
+                (r) => r.styleCode === styleIdParam,
+              );
+              if (matchedRow) {
+                const rawCust = matchedRow.customer?.trim() || "";
+                setWorkOrderNumber(matchedRow.workOrderNo);
+                setCustomerName(rawCust);
+                const baseStyle = ensureStyleBOMDefaults({
+                  ...CUSTOM_STYLE,
+                  id: matchedRow.styleCode,
+                  styleName: matchedRow.styleName,
+                  customerName: rawCust,
+                  orderQuantity: matchedRow.poQty ?? 1000,
+                });
+                setActiveStyle(baseStyle);
+                fetchIndusBOM(matchedRow.styleCode).then((bom) => {
+                  if (!bom) return;
+                  const mapped = mapIndusBOMToStyle(bom);
+                  setActiveStyle((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          bomFabric: mapped.bomFabric.length
+                            ? mapped.bomFabric
+                            : prev.bomFabric,
+                          bomLining: mapped.bomLining.length
+                            ? mapped.bomLining
+                            : prev.bomLining,
+                          bomAccessories: mapped.bomAccessories.length
+                            ? mapped.bomAccessories
+                            : prev.bomAccessories,
+                          smvSewing: mapped.smvSewing ?? prev.smvSewing,
+                          washType: mapped.washType ?? prev.washType,
+                          styleCategory:
+                            mapped.styleCategory ?? prev.styleCategory,
+                        }
+                      : prev,
+                  );
+                  if (mapped.smvSewing)
+                    setSmvSewingInput(mapped.smvSewing.toString());
+                  if (mapped.washType) setWashType(mapped.washType);
+                  if (mapped.styleCategory)
+                    setStyleCategory(mapped.styleCategory);
+                });
+              }
+            }
+          }
+        }
+      })
+      .catch((err) =>
+        console.error("[CostSheet] Failed to load styles/WOs:", err),
+      );
+  }, [styleIdParam, costSheetIdParam]);
 
   useEffect(() => {
-    // Subscribe to Style Master
-    const unsubStyles = subscribeToStyles((data) => {
-      setStyles(data);
-      setLoadingStyles(false);
+    setLoadingStyles(false);
 
-      // Select active style from param or select first one
-      if (data.length > 0 && !costSheetIdParam) {
-        const targetId = styleIdParam || data[0].id;
-        if (targetId === "custom") {
-          setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
-        } else {
-          const found = data.find((s) => s.id === targetId) || data[0];
-          setActiveStyle(ensureStyleBOMDefaults(found));
-        }
-      }
-    });
-
-    // Subscribe to Work Orders
-    const unsubWorkOrders = subscribeToWorkOrders(setWorkOrders);
-
-    // Subscribe to Item Catalog
-    const unsubFabricCatalog = subscribeToCatalog(
-      FABRIC_COLLECTION,
-      setFabricCatalog,
-    );
-    const unsubLiningCatalog = subscribeToCatalog(
-      LINING_COLLECTION,
-      setLiningCatalog,
-    );
+    // Fetch MSSQL BOM Catalog Items from S_StyleCardBOMConsumptionSAMView
+    fetch("/api/bom/catalog-items")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.fabrics) setFabricCatalog(data.fabrics);
+        if (data.linings) setLiningCatalog(data.linings);
+        if (data.trims) setTrimsCatalog(data.trims);
+        if (data.chemicals) setChemicalsCatalog(data.chemicals);
+        if (data.specialCharges) setSpecialChargesCatalog(data.specialCharges);
+      })
+      .catch((err) =>
+        console.error(
+          "[CostSheet] Failed to load catalog items from MSSQL DB:",
+          err,
+        ),
+      );
 
     // Subscribe to POC Parameters
     const unsubDLF = subscribeToTable<SimpleTableData>(
@@ -404,14 +552,75 @@ function CostSheetContent() {
           if (pTerms) setPaymentTermsList(pTerms);
           if (dTerms) setDeliveryTermsList(dTerms);
           if (countrs) setCountriesList(countrs);
-          if (custs) setCustomersList(custs);
           if (cats) setCategoriesList(cats);
           if (washes) setWashTypesList(washes);
           const orderTypes = data.lists.find(
-            (l) => l.key === "orderType" || l.key === "Order Type",
+            (l) =>
+              l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "ordertype",
           )?.items;
           if (orderTypes && orderTypes.length > 0)
             setOrderTypesList(orderTypes);
+
+          const cStage = data.lists.find(
+            (l) =>
+              l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "costingstage",
+          )?.items;
+          const sMode = data.lists.find(
+            (l) =>
+              l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "shipmentmode",
+          )?.items;
+          const mGroup = data.lists.find(
+            (l) =>
+              l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "merchgroup",
+          )?.items;
+          const dDest = data.lists.find(
+            (l) =>
+              l.key.toLowerCase().replace(/[^a-z0-9]/g, "") ===
+              "deliverydestination",
+          )?.items;
+          const inhSub = data.lists.find(
+            (l) =>
+              l.key.toLowerCase().replace(/[^a-z0-9]/g, "") ===
+              "inhouseorsubcontract",
+          )?.items;
+          const chems = data.lists.find((l) => {
+            const k = l.key.toLowerCase().replace(/[^a-z0-9]/g, "");
+            return (
+              k === "chemicalcosts" || k === "chemicals" || k === "chemical"
+            );
+          })?.items;
+          const spCharges = data.lists.find((l) => {
+            const k = l.key.toLowerCase().replace(/[^a-z0-9]/g, "");
+            return k === "specialcharges" || k === "specialcharge";
+          })?.items;
+
+          if (cStage) setCostingStageList(cStage);
+          if (sMode) setShipmentModeList(sMode);
+          if (mGroup) setMerchGroupList(mGroup);
+          if (dDest) setDelvDestinationList(dDest);
+          if (inhSub) setInhouseSubcontractList(inhSub);
+          if (chems) setChemicalsList(chems);
+          if (spCharges) setSpecialChargesList(spCharges);
+        }
+      },
+    );
+
+    const unsubCustomerCommission = subscribeToTable<SimpleTableData>(
+      "customer-commission",
+      (data) => {
+        const activeRows =
+          data?.cards?.find((c) => c.isActive)?.rows ?? data?.rows ?? [];
+        if (activeRows.length && !costSheetIdParam) {
+          const row = activeRows[0];
+          const val = row?.values?.commissionPercent;
+          if (val && val.trim() !== "" && val.trim() !== "-") {
+            const parsed = parseFloat(val);
+            setCommissionInput(
+              !isNaN(parsed) && parsed > 0 ? parsed.toString() : "0",
+            );
+          } else {
+            setCommissionInput("0");
+          }
         }
       },
     );
@@ -419,20 +628,27 @@ function CostSheetContent() {
     const unsubCostOfSales = subscribeToTable<SimpleTableData>(
       "cost-as-percent-of-sales",
       (data) => {
-        if (data?.rows?.length) {
+        const activeRows =
+          data?.cards?.find((c) => c.isActive)?.rows ?? data?.rows ?? [];
+        if (activeRows.length) {
           const getVal = (desc: string) => {
-            const row = data.rows.find(
+            const row = activeRows.find(
               (r) =>
                 r.values.description?.toLowerCase().trim() ===
                 desc.toLowerCase().trim(),
             );
-            return row?.values.percentOfSales
-              ? parseFloat(row.values.percentOfSales)
-              : null;
+            const val = row?.values?.percentOfSales;
+            if (!val || val.trim() === "" || val.trim() === "-") return null;
+            const parsed = parseFloat(val);
+            return isNaN(parsed) ? null : parsed;
           };
 
+          const combinedTaxEds =
+            getVal("Tax & EDS") ??
+            getVal("Taxes & EDS") ??
+            getVal("Tax and EDS");
           const eds = getVal("EDS");
-          const taxes = getVal("Taxes");
+          const taxes = getVal("Taxes") ?? getVal("Tax");
           const rebate = getVal("Rebate");
           const exchangeRate = getVal("Exchange Rate");
           const inlandFreight = getVal("Inland Freight");
@@ -440,42 +656,47 @@ function CostSheetContent() {
           const discountRateVal = getVal("Discount Rate");
 
           if (!costSheetIdParam) {
-            if (eds !== null || taxes !== null) {
-              const totalTaxEds = (taxes || 0) + (eds || 0);
-              if (totalTaxEds > 0) setTaxEdsPct(totalTaxEds / 100);
-            }
+            const totalTaxEds =
+              combinedTaxEds !== null
+                ? combinedTaxEds
+                : (taxes || 0) + (eds || 0);
+            setTaxEdsInput(totalTaxEds > 0 ? totalTaxEds.toString() : "0");
+
             if (exchangeRate !== null && exchangeRate > 0) {
               setParitySale(exchangeRate);
               setParityProcurement(exchangeRate);
             }
-            if (rebate !== null && rebate > 0) {
-              setRebatePct(rebate);
-            }
-            if (inlandFreight !== null && inlandFreight > 0) {
-              setInlandFreightPct(inlandFreight / 100);
-            }
-            if (localBankCharges !== null && localBankCharges > 0) {
-              setLocalBankChargesPct(localBankCharges / 100);
-            }
-            if (discountRateVal !== null && discountRateVal > 0) {
-              setDiscountRate(discountRateVal / 100);
-            }
+            setRebateInput(
+              rebate !== null && rebate > 0 ? rebate.toString() : "0",
+            );
+            setInlandFreightInput(
+              inlandFreight !== null && inlandFreight > 0
+                ? inlandFreight.toString()
+                : "0",
+            );
+            setLocalBankChargesInput(
+              localBankCharges !== null && localBankCharges > 0
+                ? localBankCharges.toString()
+                : "0",
+            );
+            setDiscountRateInput(
+              discountRateVal !== null && discountRateVal > 0
+                ? discountRateVal.toString()
+                : "0",
+            );
           }
         }
       },
     );
 
     return () => {
-      unsubStyles();
-      unsubWorkOrders();
-      unsubFabricCatalog();
-      unsubLiningCatalog();
       unsubDLF();
       unsubCTS();
       unsubRej();
       unsubStylesGrid();
       unsubOrderTypes();
       unsubDropdowns();
+      unsubCustomerCommission();
       unsubCostOfSales();
     };
   }, [styleIdParam, costSheetIdParam]);
@@ -524,26 +745,75 @@ function CostSheetContent() {
           setManpower(sheet.manpower);
 
           setEfficiencyOverride(
-            sheet.efficiencyOverride !== null
-              ? (sheet.efficiencyOverride * 100).toString()
+            sheet.efficiencyOverride !== null &&
+              sheet.efficiencyOverride !== undefined
+              ? parseFloat(
+                  (sheet.efficiencyOverride * 100).toFixed(4),
+                ).toString()
               : "",
           );
           setRejectionOverride(
-            sheet.rejectionOverride !== null
-              ? (sheet.rejectionOverride * 100).toString()
+            sheet.rejectionOverride !== null &&
+              sheet.rejectionOverride !== undefined
+              ? parseFloat(
+                  (sheet.rejectionOverride * 100).toFixed(4),
+                ).toString()
               : "",
           );
           setLineTargetOverride(
-            sheet.lineTargetOverride !== null
+            sheet.lineTargetOverride !== null &&
+              sheet.lineTargetOverride !== undefined
               ? sheet.lineTargetOverride.toString()
               : "",
           );
 
-          setDiscountRate(sheet.discountRate);
-          setPaymentTermsDays(sheet.paymentTermsDays);
-          setFactoringDays(sheet.factoringDays);
-          setCommissionPct(sheet.commissionPct * 100);
-          setForeignBankCharges(sheet.foreignBankCharges);
+          setDiscountRateInput(
+            sheet.discountRate !== undefined
+              ? parseFloat((sheet.discountRate * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setPaymentTermsDaysInput(
+            sheet.paymentTermsDays !== undefined
+              ? sheet.paymentTermsDays.toString()
+              : "0",
+          );
+          setFactoringDaysInput(
+            sheet.factoringDays !== undefined
+              ? sheet.factoringDays.toString()
+              : "0",
+          );
+          setCommissionInput(
+            sheet.commissionPct !== undefined
+              ? parseFloat((sheet.commissionPct * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setForeignBankChargesInput(
+            sheet.foreignBankCharges !== undefined
+              ? sheet.foreignBankCharges.toString()
+              : "0",
+          );
+          setTaxEdsInput(
+            sheet.taxEdsPct !== undefined
+              ? parseFloat((sheet.taxEdsPct * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setInlandFreightInput(
+            sheet.inlandFreightPct !== undefined
+              ? parseFloat((sheet.inlandFreightPct * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setLocalBankChargesInput(
+            sheet.localBankChargesPct !== undefined
+              ? parseFloat(
+                  (sheet.localBankChargesPct * 100).toFixed(4),
+                ).toString()
+              : "0",
+          );
+          setRebateInput(
+            sheet.rebatePct !== undefined
+              ? parseFloat((sheet.rebatePct * 100).toFixed(4)).toString()
+              : "0",
+          );
 
           const qPrice =
             sheet.quotedPrice !== undefined
@@ -558,15 +828,15 @@ function CostSheetContent() {
           setIntlInsurance(iInsurance ? iInsurance.toString() : "");
 
           // Set editable style fields from loaded sheet
-          setCustomerName(sheet.customerName || "Duer");
+          setCustomerName(sheet.customerName || "");
           setStyleCategory(sheet.styleCategory || "Top Ware");
           setWashType(sheet.washType || "Rinse");
-          setOrderQuantity(sheet.orderQuantity || 1000);
+          setOrderQuantity(sheet.orderQuantity || 0);
           setOrderType((sheet.orderType || "Denim") as "Denim" | "Non Denim");
           setSmvSewingInput(
             sheet.smvSewing !== undefined
               ? sheet.smvSewing.toString()
-              : styleFromSheet.smvSewing?.toString() || "15",
+              : styleFromSheet.smvSewing?.toString() || "",
           );
           setNoOfColors(sheet.noOfColors !== undefined ? sheet.noOfColors : 1);
           setMerchGroup(sheet.merchGroup || "Ayaz");
@@ -576,9 +846,6 @@ function CostSheetContent() {
             sheet.exFactoryDate || new Date().toISOString().split("T")[0],
           );
           setInhouseOrSubcontract(sheet.inhouseOrSubcontract || "INHOUSE");
-          setRebatePct(
-            sheet.rebatePct !== undefined ? sheet.rebatePct * 100 : 0,
-          );
         } else {
           toast.error("Saved Cost Sheet not found");
         }
@@ -587,11 +854,23 @@ function CostSheetContent() {
     }
   }, [costSheetIdParam]);
 
-  // Sync state when activeStyle changes
+  // Ref to track previous style ID and avoid resetting user inputs on local BOM updates
+  const prevStyleIdRef = useRef<string | undefined>(undefined);
+
+  // Sync state ONLY when switching activeStyle ID
   useEffect(() => {
     if (activeStyle && !costSheetIdParam) {
+      if (prevStyleIdRef.current === activeStyle.id) {
+        return; // Style ID hasn't changed; do not wipe user inputs / SMV / FOB
+      }
+      prevStyleIdRef.current = activeStyle.id;
+
       Promise.resolve().then(() => {
-        setQuotedPriceInput(activeStyle.baseSellingPrice.toString());
+        setQuotedPriceInput(
+          activeStyle.baseSellingPrice
+            ? activeStyle.baseSellingPrice.toString()
+            : "",
+        );
         setIntlFreight("");
         setIntlInsurance("");
         setRejectionOverride("");
@@ -599,17 +878,23 @@ function CostSheetContent() {
         setLineTargetOverride("");
 
         // Set editable style fields from activeStyle defaults
-        setCustomerName(activeStyle.customerName || "Duer");
+        const rawCust = activeStyle.customerName?.trim() || "";
+        const matchedCust =
+          customersList.find(
+            (c) => c.toLowerCase() === rawCust.toLowerCase(),
+          ) || rawCust;
+        setCustomerName(matchedCust);
         setStyleCategory(activeStyle.styleCategory || "Top Ware");
         setWashType(activeStyle.washType || "Rinse");
-        setOrderQuantity(activeStyle.orderQuantity || 1000);
+        setOrderQuantity(activeStyle.orderQuantity || 0);
         setOrderType(
           (activeStyle.orderType || "Denim") as "Denim" | "Non Denim",
         );
-        setSmvSewingInput(activeStyle.smvSewing?.toString() || "15");
+        setSmvSewingInput(
+          activeStyle.smvSewing ? activeStyle.smvSewing.toString() : "",
+        );
         setNoOfColors(1);
         setMerchGroup("Ayaz");
-        setWorkOrderNumber("");
         setDeliveryDestination("EURO");
         setExFactoryDate(() => {
           const d = new Date();
@@ -617,251 +902,411 @@ function CostSheetContent() {
           return d.toISOString().split("T")[0];
         });
         setInhouseOrSubcontract("INHOUSE");
-        setRebatePct(0);
+        setRebateInput("0");
       });
     }
-  }, [activeStyle, costSheetIdParam]);
+  }, [activeStyle?.id, costSheetIdParam]);
 
   // Adjust payment days based on payment terms dropdown
   useEffect(() => {
-    const match = paymentTerms.match(/(\d+)\s*days/i);
+    const match = paymentTerms?.match(/(\d+)\s*days/i);
     Promise.resolve().then(() => {
       if (match) {
-        setPaymentTermsDays(parseInt(match[1], 10));
-      } else if (paymentTerms.toLowerCase() === "da") {
-        setPaymentTermsDays(60); // DA default is 60 in Excel model
+        setPaymentTermsDaysInput(match[1]);
+      } else if (paymentTerms && paymentTerms.toLowerCase() === "da") {
+        setPaymentTermsDaysInput("60"); // DA default is 60 in Excel model
       } else {
-        setPaymentTermsDays(0);
+        setPaymentTermsDaysInput("0");
       }
     });
   }, [paymentTerms]);
 
-  // Keep activeStyle.bomChemicals[0].washItem in sync with washType
-  useEffect(() => {
-    if (
-      activeStyle &&
-      activeStyle.bomChemicals &&
-      activeStyle.bomChemicals.length > 0
-    ) {
-      if (activeStyle.bomChemicals[0].washItem !== washType) {
-        const nextChem = [...activeStyle.bomChemicals];
-        nextChem[0] = {
-          ...nextChem[0],
-          washItem: washType,
-        };
-        Promise.resolve().then(() => {
-          setActiveStyle({
-            ...activeStyle,
-            bomChemicals: nextChem,
-          });
-        });
-      }
-    }
-  }, [washType, activeStyle]);
-
-  // Handle active style change from dropdown
-  function handleStyleChange(id: string) {
-    if (id === "custom") {
+  // Core Style Change Logic
+  function executeStyleChange(id: string) {
+    setIsDirty(false);
+    setNewFabricRows(new Set());
+    setNewLiningRows(new Set());
+    setNewAccessoryRows(new Set());
+    setNewChemicalRows(new Set());
+    setNewSpecialChargeRows(new Set());
+    if (id === "custom" || !id) {
       setLoadedCostSheet(null);
       setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
+      setWorkOrderNumber("");
       router.push("/cost-sheet?styleId=custom");
     } else {
-      const selected = styles.find((s) => s.id === id);
-      if (selected) {
-        setLoadedCostSheet(null);
-        setActiveStyle(ensureStyleBOMDefaults(selected));
-        router.push(`/cost-sheet?styleId=${id}`);
+      const woRow = indusStyleRows.find((r) => r.styleCode === id);
+      const rawCust = woRow?.customer?.trim() || "";
+      const matchedCust =
+        customersList.find((c) => c.toLowerCase() === rawCust.toLowerCase()) ||
+        rawCust ||
+        customerName;
+      if (woRow) {
+        setWorkOrderNumber(woRow.workOrderNo);
+        setCustomerName(matchedCust);
+        setOrderQuantity(woRow.poQty ?? orderQuantity);
+      } else {
+        setWorkOrderNumber("");
       }
+      const baseStyle = ensureStyleBOMDefaults({
+        ...CUSTOM_STYLE,
+        id: id,
+        styleName: woRow?.styleName ?? id,
+        customerName: matchedCust,
+        orderQuantity: woRow?.poQty ?? orderQuantity,
+      });
+      setLoadedCostSheet(null);
+      setActiveStyle(baseStyle);
+      router.push(`/cost-sheet?styleCode=${encodeURIComponent(id)}`);
+      fetchIndusBOM(id).then((bom) => {
+        if (!bom) return;
+        const mapped = mapIndusBOMToStyle(bom);
+        setActiveStyle((prev) =>
+          prev
+            ? {
+                ...prev,
+                bomFabric: mapped.bomFabric.length
+                  ? mapped.bomFabric
+                  : prev.bomFabric,
+                bomLining: mapped.bomLining.length
+                  ? mapped.bomLining
+                  : prev.bomLining,
+                bomAccessories: mapped.bomAccessories.length
+                  ? mapped.bomAccessories
+                  : prev.bomAccessories,
+                smvSewing: mapped.smvSewing ?? prev.smvSewing,
+                washType: mapped.washType ?? prev.washType,
+                styleCategory: mapped.styleCategory ?? prev.styleCategory,
+              }
+            : prev,
+        );
+        if (mapped.smvSewing) setSmvSewingInput(mapped.smvSewing.toString());
+        if (mapped.washType) setWashType(mapped.washType);
+        if (mapped.styleCategory) setStyleCategory(mapped.styleCategory);
+      });
+    }
+  }
+
+  // Handle active style change from dropdown with unsaved changes interception
+  function handleStyleChange(id: string) {
+    if (isDirtyRef.current) {
+      setPendingNavigation({ type: "style", target: id });
+      setUnsavedModalOpen(true);
+      return;
+    }
+    executeStyleChange(id);
+  }
+
+  // Core Reset Logic
+  function executeReset() {
+    setIsDirty(false);
+    if (loadedCostSheet) {
+      router.push(`/cost-sheet?costSheetId=${loadedCostSheet.id}`);
+      toast.info("Calculator reset to snapshot defaults");
+    } else if (activeStyle) {
+      setActiveStyle({ ...activeStyle });
+      toast.info("Calculator reset to Style Master defaults");
+    }
+  }
+
+  function handleResetClick() {
+    if (isDirtyRef.current) {
+      setPendingNavigation({ type: "reset" });
+      setUnsavedModalOpen(true);
+    } else {
+      executeReset();
+    }
+  }
+
+  // Proceed with pending navigation after user chooses to discard or save
+  async function proceedWithPendingNavigation() {
+    const nav = pendingNavigation;
+    setIsDirty(false);
+    setUnsavedModalOpen(false);
+    setPendingNavigation(null);
+    if (!nav) return;
+
+    if (nav.type === "url" && nav.target) {
+      router.push(nav.target);
+    } else if (nav.type === "style" && nav.target) {
+      executeStyleChange(nav.target);
+    } else if (nav.type === "reset") {
+      executeReset();
+    }
+  }
+
+  // Save changes and proceed with pending navigation
+  async function handleSaveAndProceed() {
+    if (!activeStyle || !calcs) return;
+    if (loadedCostSheet) {
+      await handleUpdateExisting();
+      if (pendingNavigation) {
+        const nav = pendingNavigation;
+        setIsDirty(false);
+        setUnsavedModalOpen(false);
+        setPendingNavigation(null);
+        if (nav.type === "url" && nav.target) {
+          router.push(nav.target);
+        } else if (nav.type === "style" && nav.target) {
+          executeStyleChange(nav.target);
+        } else if (nav.type === "reset") {
+          executeReset();
+        }
+      }
+    } else {
+      setUnsavedModalOpen(false);
+      setSaveDialogOpen(true);
     }
   }
 
   // Right Panel: Local BOM edits state helpers
-  function updateFabricBOM(idx: number, key: string, val: string | number) {
-    if (!activeStyle) return;
-    const nextFab = [...(activeStyle.bomFabric || [])];
-    for (let i = 0; i <= idx; i++) {
-      if (!nextFab[i]) {
-        nextFab[i] = {
-          itemName: `Fabric ${i + 1}`,
-          consumptionPerPc: 0,
-          rateUSD: 0,
-          ratePKR: 0,
-          fabricCostPKR: 0,
-        };
+  function updateFabricBOM(
+    idx: number,
+    keyOrPatch: string | Partial<BOMFabricItem>,
+    val?: string | number,
+  ) {
+    markDirty();
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      const nextFab = [...(prev.bomFabric || [])];
+      for (let i = 0; i <= idx; i++) {
+        if (!nextFab[i]) {
+          nextFab[i] = {
+            itemName: `Fabric ${i + 1}`,
+            consumptionPerPc: 0,
+            rateUSD: 0,
+            ratePKR: 0,
+            fabricCostPKR: 0,
+          };
+        }
       }
-    }
-    nextFab[idx] = {
-      ...nextFab[idx],
-      [key]: val,
-    } as BOMFabricItem;
-    // Recalculate costs
-    if (key === "consumptionPerPc" || key === "rateUSD" || key === "ratePKR") {
-      if (key === "rateUSD") {
-        nextFab[idx].ratePKR = Number(val) * parityProcurement;
-      } else if (key === "ratePKR") {
-        nextFab[idx].rateUSD = Number(val) / parityProcurement;
+      const patch =
+        typeof keyOrPatch === "string" ? { [keyOrPatch]: val } : keyOrPatch;
+
+      const updated = {
+        ...nextFab[idx],
+        ...patch,
+      } as BOMFabricItem;
+
+      const procRate = parityProcurement || 0;
+      if ("rateUSD" in patch && patch.rateUSD !== undefined) {
+        updated.ratePKR = Number(patch.rateUSD) * procRate;
+      } else if ("ratePKR" in patch && patch.ratePKR !== undefined) {
+        updated.rateUSD = procRate > 0 ? Number(patch.ratePKR) / procRate : 0;
       }
-      nextFab[idx].fabricCostPKR =
-        (nextFab[idx].consumptionPerPc || 0) * (nextFab[idx].ratePKR || 0);
-    }
-    setActiveStyle({
-      ...activeStyle,
-      bomFabric: nextFab,
+      updated.fabricCostPKR =
+        (updated.consumptionPerPc || 0) * (updated.ratePKR || 0);
+
+      nextFab[idx] = updated;
+      return {
+        ...prev,
+        bomFabric: nextFab,
+      };
     });
   }
 
   // Pocket Lining BOM
-  function updateLiningBOM(idx: number, key: string, val: string | number) {
-    if (!activeStyle) return;
-    const nextLin = [...(activeStyle.bomLining || [])];
-    for (let i = 0; i <= idx; i++) {
-      if (!nextLin[i]) {
-        nextLin[i] = {
-          itemName: `Lining ${i + 1}`,
-          consumptionPerPc: 0,
-          rateUSD: 0,
-          ratePKR: 0,
-          liningCostPKR: 0,
-        };
+  function updateLiningBOM(
+    idx: number,
+    keyOrPatch: string | Partial<BOMLiningItem>,
+    val?: string | number,
+  ) {
+    markDirty();
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      const nextLin = [...(prev.bomLining || [])];
+      for (let i = 0; i <= idx; i++) {
+        if (!nextLin[i]) {
+          nextLin[i] = {
+            itemName: `Lining ${i + 1}`,
+            consumptionPerPc: 0,
+            rateUSD: 0,
+            ratePKR: 0,
+            liningCostPKR: 0,
+          };
+        }
       }
-    }
-    nextLin[idx] = {
-      ...nextLin[idx],
-      [key]: val,
-    } as BOMLiningItem;
-    // Recalculate costs
-    if (key === "consumptionPerPc" || key === "rateUSD" || key === "ratePKR") {
-      if (key === "rateUSD") {
-        nextLin[idx].ratePKR = Number(val) * parityProcurement;
-      } else if (key === "ratePKR") {
-        nextLin[idx].rateUSD = Number(val) / parityProcurement;
+      const patch =
+        typeof keyOrPatch === "string" ? { [keyOrPatch]: val } : keyOrPatch;
+
+      const updated = {
+        ...nextLin[idx],
+        ...patch,
+      } as BOMLiningItem;
+
+      const procRate = parityProcurement || 0;
+      if ("rateUSD" in patch && patch.rateUSD !== undefined) {
+        updated.ratePKR = Number(patch.rateUSD) * procRate;
+      } else if ("ratePKR" in patch && patch.ratePKR !== undefined) {
+        updated.rateUSD = procRate > 0 ? Number(patch.ratePKR) / procRate : 0;
       }
-      nextLin[idx].liningCostPKR =
-        (nextLin[idx].consumptionPerPc || 0) * (nextLin[idx].ratePKR || 0);
-    }
-    setActiveStyle({
-      ...activeStyle,
-      bomLining: nextLin,
+      updated.liningCostPKR =
+        (updated.consumptionPerPc || 0) * (updated.ratePKR || 0);
+
+      nextLin[idx] = updated;
+      return {
+        ...prev,
+        bomLining: nextLin,
+      };
     });
   }
 
   function updateAccessoriesBOM(
     idx: number,
-    key: string,
-    val: string | number,
+    keyOrPatch: string | Partial<BOMAccessoriesItem>,
+    val?: string | number,
   ) {
-    if (!activeStyle) return;
-    const nextAcc = [...(activeStyle.bomAccessories || [])];
-    for (let i = 0; i <= idx; i++) {
-      if (!nextAcc[i]) {
-        nextAcc[i] = {
-          category: "Trims",
-          itemName: "",
-          consPerPc: 0,
-          ratePKR: 0,
-          rateUSD: 0,
-          totalCostPKR: 0,
-        };
+    markDirty();
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      const nextAcc = [...(prev.bomAccessories || [])];
+      for (let i = 0; i <= idx; i++) {
+        if (!nextAcc[i]) {
+          nextAcc[i] = {
+            category: "Trims",
+            itemName: "",
+            consPerPc: 0,
+            ratePKR: 0,
+            rateUSD: 0,
+            totalCostPKR: 0,
+          };
+        }
       }
-    }
-    nextAcc[idx] = {
-      ...nextAcc[idx],
-      [key]: val,
-    } as BOMAccessoriesItem;
+      const patch =
+        typeof keyOrPatch === "string" ? { [keyOrPatch]: val } : keyOrPatch;
 
-    if (key === "rateUSD") {
-      nextAcc[idx].ratePKR = Number(val) * parityProcurement;
-    } else if (key === "ratePKR") {
-      nextAcc[idx].rateUSD = Number(val) / parityProcurement;
-    }
+      const updated = {
+        ...nextAcc[idx],
+        ...patch,
+      } as BOMAccessoriesItem;
 
-    if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
-      nextAcc[idx].totalCostPKR =
-        (nextAcc[idx].consPerPc || 0) * (nextAcc[idx].ratePKR || 0);
-    }
-    setActiveStyle({
-      ...activeStyle,
-      bomAccessories: nextAcc,
+      const procRateAcc = parityProcurement || 0;
+      if ("rateUSD" in patch && patch.rateUSD !== undefined) {
+        updated.ratePKR = Number(patch.rateUSD) * procRateAcc;
+      } else if ("ratePKR" in patch && patch.ratePKR !== undefined) {
+        updated.rateUSD =
+          procRateAcc > 0 ? Number(patch.ratePKR) / procRateAcc : 0;
+      }
+
+      updated.totalCostPKR = (updated.consPerPc || 0) * (updated.ratePKR || 0);
+
+      nextAcc[idx] = updated;
+      return {
+        ...prev,
+        bomAccessories: nextAcc,
+      };
     });
   }
 
-  function updateChemicalsBOM(idx: number, key: string, val: string | number) {
-    if (!activeStyle) return;
-    const nextChem = [...(activeStyle.bomChemicals || [])];
-    for (let i = 0; i <= idx; i++) {
-      if (!nextChem[i]) {
-        nextChem[i] = {
-          washItem: "",
-          consPerPc: 0,
-          ratePKR: 0,
-          rateUSD: 0,
-          totalCostPKR: 0,
-        };
+  function updateChemicalsBOM(
+    idx: number,
+    keyOrPatch: string | Partial<BOMChemicalsItem>,
+    val?: string | number,
+  ) {
+    markDirty();
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      const nextChem = [...(prev.bomChemicals || [])];
+      for (let i = 0; i <= idx; i++) {
+        if (!nextChem[i]) {
+          nextChem[i] = {
+            washItem: "",
+            consPerPc: 1,
+            ratePKR: 0,
+            rateUSD: 0,
+            totalCostPKR: 0,
+          };
+        }
       }
-    }
-    nextChem[idx] = {
-      ...nextChem[idx],
-      [key]: val,
-    } as BOMChemicalsItem;
+      const patch =
+        typeof keyOrPatch === "string" ? { [keyOrPatch]: val } : keyOrPatch;
 
-    if (key === "rateUSD") {
-      nextChem[idx].ratePKR = Number(val) * parityProcurement;
-    } else if (key === "ratePKR") {
-      nextChem[idx].rateUSD = Number(val) / parityProcurement;
-    }
+      const updated = {
+        ...nextChem[idx],
+        ...patch,
+      } as BOMChemicalsItem;
 
-    if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
-      nextChem[idx].totalCostPKR =
-        (nextChem[idx].consPerPc || 0) * (nextChem[idx].ratePKR || 0);
-    }
-    setActiveStyle({
-      ...activeStyle,
-      bomChemicals: nextChem,
+      const procRateChem = parityProcurement || 0;
+      if ("rateUSD" in patch && patch.rateUSD !== undefined) {
+        updated.ratePKR = Number(patch.rateUSD) * procRateChem;
+      } else if ("ratePKR" in patch && patch.ratePKR !== undefined) {
+        updated.rateUSD =
+          procRateChem > 0 ? Number(patch.ratePKR) / procRateChem : 0;
+      }
+
+      updated.consPerPc = 1;
+      updated.totalCostPKR = updated.ratePKR || 0;
+
+      nextChem[idx] = updated;
+      return {
+        ...prev,
+        bomChemicals: nextChem,
+      };
     });
   }
 
   function updateSpecialChargesBOM(
     idx: number,
-    key: string,
-    val: string | number,
+    keyOrPatch: string | Partial<BOMSpecialChargesItem>,
+    val?: string | number,
   ) {
-    if (!activeStyle) return;
-    const nextChg = [...(activeStyle.bomSpecialCharges || [])];
-    for (let i = 0; i <= idx; i++) {
-      if (!nextChg[i]) {
-        nextChg[i] = {
-          itemName: "",
-          consPerPc: 0,
-          ratePKR: 0,
-          rateUSD: 0,
-          totalCostPKR: 0,
-        };
+    markDirty();
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      const nextChg = [...(prev.bomSpecialCharges || [])];
+      for (let i = 0; i <= idx; i++) {
+        if (!nextChg[i]) {
+          nextChg[i] = {
+            itemName: "",
+            consPerPc: 1,
+            ratePKR: 0,
+            rateUSD: 0,
+            totalCostPKR: 0,
+          };
+        }
       }
-    }
-    nextChg[idx] = {
-      ...nextChg[idx],
-      [key]: val,
-    } as BOMSpecialChargesItem;
+      const patch =
+        typeof keyOrPatch === "string" ? { [keyOrPatch]: val } : keyOrPatch;
 
-    if (key === "rateUSD") {
-      nextChg[idx].ratePKR = Number(val) * parityProcurement;
-    } else if (key === "ratePKR") {
-      nextChg[idx].rateUSD = Number(val) / parityProcurement;
-    }
+      const updated = {
+        ...nextChg[idx],
+        ...patch,
+      } as BOMSpecialChargesItem;
 
-    if (key === "consPerPc" || key === "ratePKR" || key === "rateUSD") {
-      nextChg[idx].totalCostPKR =
-        (nextChg[idx].consPerPc || 0) * (nextChg[idx].ratePKR || 0);
-    }
-    setActiveStyle({
-      ...activeStyle,
-      bomSpecialCharges: nextChg,
+      const procRateChg = parityProcurement || 0;
+      if ("rateUSD" in patch && patch.rateUSD !== undefined) {
+        updated.ratePKR = Number(patch.rateUSD) * procRateChg;
+      } else if ("ratePKR" in patch && patch.ratePKR !== undefined) {
+        updated.rateUSD =
+          procRateChg > 0 ? Number(patch.ratePKR) / procRateChg : 0;
+      }
+
+      updated.consPerPc = 1;
+      updated.totalCostPKR = updated.ratePKR || 0;
+
+      nextChg[idx] = updated;
+      return {
+        ...prev,
+        bomSpecialCharges: nextChg,
+      };
     });
   }
 
   // Save new snapshot
   async function handleSaveNew(name: string) {
     if (!activeStyle || !calcs) return;
+    if (calcs.isSmvOutOfRange) {
+      toast.error(
+        "Cannot save: SMV does not match any configured SAM range in Parameters.",
+      );
+      return;
+    }
+    if (calcs.isQtyOutOfRange) {
+      toast.error(
+        "Cannot save: Order Quantity does not match any configured Quantity Band in Parameters.",
+      );
+      return;
+    }
     if (!name.trim()) {
       toast.error("Please enter a scenario reference name");
       return;
@@ -886,7 +1331,7 @@ function CostSheetContent() {
       deliveryDestination,
       exFactoryDate,
       inhouseOrSubcontract,
-      rebatePct: rebatePct / 100,
+      rebatePct: (parseFloat(rebateInput) || 0) / 100,
 
       costingDate,
       costingStage,
@@ -894,8 +1339,8 @@ function CostSheetContent() {
       paymentTerms,
       shipmentMode,
       deliveryTerms,
-      paritySale,
-      parityProcurement,
+      paritySale: paritySale ?? 0,
+      parityProcurement: parityProcurement ?? 0,
       manpower,
       efficiencyOverride:
         efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
@@ -904,11 +1349,14 @@ function CostSheetContent() {
       lineTargetOverride:
         lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
 
-      discountRate,
-      paymentTermsDays,
-      factoringDays,
-      commissionPct: commissionPct / 100,
-      foreignBankCharges,
+      discountRate: (parseFloat(discountRateInput) || 0) / 100,
+      paymentTermsDays: parseFloat(paymentTermsDaysInput) || 0,
+      factoringDays: parseFloat(factoringDaysInput) || 0,
+      commissionPct: (parseFloat(commissionInput) || 0) / 100,
+      foreignBankCharges: parseFloat(foreignBankChargesInput) || 0,
+      taxEdsPct: (parseFloat(taxEdsInput) || 0) / 100,
+      inlandFreightPct: (parseFloat(inlandFreightInput) || 0) / 100,
+      localBankChargesPct: (parseFloat(localBankChargesInput) || 0) / 100,
       orderFOB: (() => {
         const q =
           quotedPriceInput !== ""
@@ -953,13 +1401,13 @@ function CostSheetContent() {
     };
 
     try {
+      setIsSaving(true);
       await saveCostSheet(snapshot);
       setLoadedCostSheet(snapshot);
       setSaveDialogOpen(false);
-      setNewSnapshotName("");
+      setIsDirty(false);
       toast.success(`Cost Sheet snapshot "${name}" saved successfully`);
-      router.push(`/cost-sheet?costSheetId=${nextId}`);
-    } catch (e) {
+    } catch {
       toast.error("Failed to save cost sheet");
     } finally {
       setIsSaving(false);
@@ -968,9 +1416,20 @@ function CostSheetContent() {
 
   // Update existing snapshot
   async function handleUpdateExisting() {
-    if (!activeStyle || !calcs || !loadedCostSheet) return;
+    if (!loadedCostSheet || !calcs || !activeStyle) return;
+    if (calcs.isSmvOutOfRange) {
+      toast.error(
+        "Cannot save: SMV does not match any configured SAM range in Parameters.",
+      );
+      return;
+    }
+    if (calcs.isQtyOutOfRange) {
+      toast.error(
+        "Cannot save: Order Quantity does not match any configured Quantity Band in Parameters.",
+      );
+      return;
+    }
 
-    setIsSaving(true);
     const snapshot: SavedCostSheetItem = {
       ...loadedCostSheet,
       customerName,
@@ -985,15 +1444,15 @@ function CostSheetContent() {
       deliveryDestination,
       exFactoryDate,
       inhouseOrSubcontract,
-      rebatePct: rebatePct / 100,
+      rebatePct: (parseFloat(rebateInput) || 0) / 100,
       costingDate,
       costingStage,
       country,
       paymentTerms,
       shipmentMode,
       deliveryTerms,
-      paritySale,
-      parityProcurement,
+      paritySale: paritySale ?? 0,
+      parityProcurement: parityProcurement ?? 0,
       manpower,
       efficiencyOverride:
         efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
@@ -1002,11 +1461,14 @@ function CostSheetContent() {
       lineTargetOverride:
         lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
 
-      discountRate,
-      paymentTermsDays,
-      factoringDays,
-      commissionPct: commissionPct / 100,
-      foreignBankCharges,
+      discountRate: (parseFloat(discountRateInput) || 0) / 100,
+      paymentTermsDays: parseFloat(paymentTermsDaysInput) || 0,
+      factoringDays: parseFloat(factoringDaysInput) || 0,
+      commissionPct: (parseFloat(commissionInput) || 0) / 100,
+      foreignBankCharges: parseFloat(foreignBankChargesInput) || 0,
+      taxEdsPct: (parseFloat(taxEdsInput) || 0) / 100,
+      inlandFreightPct: (parseFloat(inlandFreightInput) || 0) / 100,
+      localBankChargesPct: (parseFloat(localBankChargesInput) || 0) / 100,
       orderFOB: (() => {
         const q =
           quotedPriceInput !== ""
@@ -1054,6 +1516,7 @@ function CostSheetContent() {
       await saveCostSheet(snapshot);
       setLoadedCostSheet(snapshot);
       toast.success("Saved Cost Sheet updated successfully");
+      setIsDirty(false);
     } catch (e) {
       toast.error("Failed to update cost sheet");
     } finally {
@@ -1093,7 +1556,10 @@ function CostSheetContent() {
       styleCategory,
       washType,
       orderQuantity,
-      orderType,
+      orderType:
+        (orderType as "Denim" | "Non Denim") ||
+        activeStyle.orderType ||
+        "Denim",
       smvSewing: parseFloat(smvSewingInput) || activeStyle.smvSewing,
     };
 
@@ -1101,24 +1567,24 @@ function CostSheetContent() {
       overriddenStyle,
       {
         orderFOB: calculatedOrderFOB,
-        paritySale,
-        parityProcurement,
+        paritySale: paritySale ?? 0,
+        parityProcurement: parityProcurement ?? 0,
         manpower,
         efficiencyOverride: effOv,
         rejectionOverride: rejOv,
         lineTargetOverride: tgtOv,
         costingStage,
         paymentTerms,
-        discountRate,
-        paymentTermsDays,
-        factoringDays,
-        commissionPct: commissionPct / 100,
-        foreignBankCharges,
-        taxEdsPct,
-        inlandFreightPct,
-        localBankChargesPct,
+        discountRate: (parseFloat(discountRateInput) || 0) / 100,
+        paymentTermsDays: parseFloat(paymentTermsDaysInput) || 0,
+        factoringDays: parseFloat(factoringDaysInput) || 0,
+        commissionPct: (parseFloat(commissionInput) || 0) / 100,
+        foreignBankCharges: parseFloat(foreignBankChargesInput) || 0,
+        taxEdsPct: (parseFloat(taxEdsInput) || 0) / 100,
+        inlandFreightPct: (parseFloat(inlandFreightInput) || 0) / 100,
+        localBankChargesPct: (parseFloat(localBankChargesInput) || 0) / 100,
         inhouseOrSubcontract,
-        rebatePct: rebatePct / 100,
+        rebatePct: (parseFloat(rebateInput) || 0) / 100,
       },
       {
         directLabourFoh,
@@ -1146,16 +1612,16 @@ function CostSheetContent() {
     lineTargetOverride,
     costingStage,
     paymentTerms,
-    discountRate,
-    taxEdsPct,
-    inlandFreightPct,
-    localBankChargesPct,
-    paymentTermsDays,
-    factoringDays,
-    commissionPct,
-    foreignBankCharges,
+    discountRateInput,
+    taxEdsInput,
+    inlandFreightInput,
+    localBankChargesInput,
+    paymentTermsDaysInput,
+    factoringDaysInput,
+    commissionInput,
+    foreignBankChargesInput,
     inhouseOrSubcontract,
-    rebatePct,
+    rebateInput,
     directLabourFoh,
     cutToShipGrid,
     rejectionGrid,
@@ -1174,6 +1640,9 @@ function CostSheetContent() {
   // Helper formatting classes
   const isProfitPositive = calcs.netProfitUSD >= 0;
   const isEbitdaPositive = calcs.ebitdaUSD >= 0;
+  const isDbSelected = Boolean(
+    activeStyle && activeStyle.id && activeStyle.id !== "custom",
+  );
   const bomCostUSD =
     calcs.fabricCostUSD +
     calcs.liningCostUSD +
@@ -1182,7 +1651,11 @@ function CostSheetContent() {
     calcs.specialChargesCostUSD;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div
+      onChangeCapture={markDirty}
+      onInputCapture={markDirty}
+      className="space-y-6 max-w-7xl mx-auto"
+    >
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1197,13 +1670,61 @@ function CostSheetContent() {
                 Snapshot: {loadedCostSheet.id} ({loadedCostSheet.referenceName})
               </Badge>
             )}
+            {isDirty && (
+              <Badge
+                variant="outline"
+                className="text-xs border-amber-300 bg-amber-50 text-amber-800 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm"
+              >
+                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                Unsaved Changes
+              </Badge>
+            )}
           </div>
           <p className="text-sm text-muted-foreground">
             Real-time interactive order costing dashboard connected directly
             with style specifications and factory overheads.
           </p>
         </div>
-        <div className="flex gap-2 print:hidden">
+        <div className="flex items-center gap-2 print:hidden">
+          {loadedCostSheet ? (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSaveDialogOpen(true)}
+                className="h-9"
+              >
+                <Copy className="mr-1.5 size-4" /> Save as New
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleUpdateExisting}
+                disabled={isSaving}
+                className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
+              >
+                {isSaving ? (
+                  <RefreshCw className="mr-1.5 size-4 animate-spin" />
+                ) : (
+                  <Save className="mr-1.5 size-4" />
+                )}
+                {isSaving ? "Updating…" : "Update Cost Sheet"}
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => setSaveDialogOpen(true)}
+              disabled={isSaving}
+              className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
+            >
+              {isSaving ? (
+                <RefreshCw className="mr-1.5 size-4 animate-spin" />
+              ) : (
+                <Save className="mr-1.5 size-4" />
+              )}
+              Save Cost Sheet
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -1212,24 +1733,11 @@ function CostSheetContent() {
           >
             <Printer className="mr-1.5 size-4" /> Print
           </Button>
-          {loadedCostSheet && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setLoadedCostSheet(null);
-                router.push(`/cost-sheet?styleId=${activeStyle.id}`);
-              }}
-              className="h-9"
-            >
-              Exit Snapshot Mode
-            </Button>
-          )}
         </div>
       </div>{" "}
       {/* ZONE 1: 4-COLUMN PARAMETERS SPREADSHEET LAYOUT */}
-      <Card className="shadow-sm border-slate-200/85 bg-white dark:bg-slate-900 overflow-hidden">
-        <div className="bg-blue-50/50 dark:bg-slate-800/45 px-4 py-2.5 border-b border-slate-200/80">
+      <Card className="shadow-sm border-slate-200/85 bg-white dark:bg-slate-900 overflow-visible">
+        <div className="bg-blue-50/50 dark:bg-slate-800/45 px-4 py-2.5 border-b border-slate-200/80 rounded-t-xl">
           <h2 className="text-xs font-bold text-blue-900/85 dark:text-blue-300 uppercase tracking-wider">
             📊 Pre-Order Cost Sheet Header
           </h2>
@@ -1258,135 +1766,171 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Customer Name:
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <input
+                  type="text"
+                  disabled={isDbSelected}
+                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-left focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                >
-                  {customersList.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Order Type
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={orderType}
-                  onChange={(e) =>
-                    setOrderType(e.target.value as "Denim" | "Non Denim")
-                  }
-                >
-                  {orderTypesList.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setOrderType(val as "Denim" | "Non Denim")}
+                  options={[
+                    { value: "", label: "" },
+                    ...orderTypesList.map((t) => ({ value: t, label: t })),
+                  ]}
+                />
               </div>
 
-              <div className="flex flex-col gap-1.5 bg-slate-50/50 dark:bg-slate-950/20 p-1.5 rounded border border-slate-100">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-blue-900/80 dark:text-blue-300">
-                    Work Order No.
-                  </span>
-                  <select
-                    className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-white dark:bg-slate-900 font-semibold rounded focus:outline-none"
-                    value={workOrderNumber}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      const wo = workOrders.find((w) => w.id === id);
-                      setWorkOrderNumber(id);
-                      if (wo && wo.styleId !== activeStyle.id) {
-                        handleStyleChange(wo.styleId);
-                      }
-                    }}
-                  >
-                    <option value="">-- Select --</option>
-                    {(activeStyle.id === "custom"
-                      ? workOrders
-                      : workOrders.filter((w) => w.styleId === activeStyle.id)
-                    ).map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-blue-900/80 dark:text-blue-300">
-                    Style Select
-                  </span>
-                  <select
-                    className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-white dark:bg-slate-900 font-semibold rounded focus:outline-none"
-                    value={activeStyle.id}
-                    onChange={(e) => {
-                      handleStyleChange(e.target.value);
-                      const currentWO = workOrders.find(
-                        (w) => w.id === workOrderNumber,
-                      );
-                      if (currentWO && currentWO.styleId !== e.target.value) {
-                        setWorkOrderNumber("");
-                      }
-                    }}
-                  >
-                    <option value="custom">-- Custom Style --</option>
-                    {styles.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {activeStyle.id === "custom" && (
-                  <div className="flex items-center justify-between gap-2 pl-2">
-                    <span className="text-[10px] text-muted-foreground font-semibold">
-                      Custom Name *
-                    </span>
-                    <input
-                      type="text"
-                      className="w-32 h-7 px-2 text-xs border border-slate-200 bg-white dark:bg-slate-900 font-semibold rounded text-right focus:outline-none"
-                      value={activeStyle.styleName || ""}
-                      onChange={(e) =>
-                        setActiveStyle({
-                          ...activeStyle,
-                          styleName: e.target.value,
-                        })
-                      }
-                      placeholder="Enter Style Name"
-                    />
-                  </div>
-                )}
+              {/* ── Style Select ──────────────────────────── */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Style Select
+                </span>
+                <SearchableSelect
+                  className="w-32"
+                  placeholder="Search style…"
+                  value={activeStyle.id === "custom" ? "" : activeStyle.id}
+                  onChange={(val) => {
+                    handleStyleChange(val || "custom");
+                  }}
+                  options={[
+                    { value: "custom", label: "-- Custom Style --" },
+                    // Indus-plus styles from SQL Server (deduplicated by StyleCode)
+                    ...Array.from(
+                      new Map(
+                        indusStyleRows.map((r) => [r.styleCode, r]),
+                      ).values(),
+                    ).map((r) => ({
+                      value: r.styleCode,
+                      label: `${r.styleCode}${r.styleName ? ` — ${r.styleName}` : ""}${r.customer ? ` (${r.customer})` : ""}`,
+                    })),
+                  ]}
+                />
+              </div>
+
+              {/* ── Work Order No. ────────────────────────── */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Work Order No.
+                </span>
+                <SearchableSelect
+                  className="w-32"
+                  placeholder="Search WO…"
+                  value={workOrderNumber}
+                  onChange={(id) => {
+                    setWorkOrderNumber(id);
+                    if (!id) return;
+                    // If from indus-plus, sync style code
+                    const indusWO = indusStyleRows.find(
+                      (r) => r.workOrderNo === id,
+                    );
+                    if (indusWO) {
+                      const rawCust = indusWO.customer?.trim() || "";
+                      const matchedCust =
+                        customersList.find(
+                          (c) => c.toLowerCase() === rawCust.toLowerCase(),
+                        ) ||
+                        rawCust ||
+                        customerName;
+                      setCustomerName(matchedCust);
+                      setOrderQuantity(indusWO.poQty ?? orderQuantity);
+                      const baseStyle = ensureStyleBOMDefaults({
+                        ...CUSTOM_STYLE,
+                        id: indusWO.styleCode,
+                        styleName: indusWO.styleName,
+                        customerName: matchedCust,
+                        orderQuantity: indusWO.poQty ?? orderQuantity,
+                      });
+                      setActiveStyle(baseStyle);
+                      // Async: fetch BOM from indus-plus and merge
+                      fetchIndusBOM(indusWO.styleCode).then((bom) => {
+                        if (!bom) return;
+                        const mapped = mapIndusBOMToStyle(bom);
+                        setActiveStyle((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                bomFabric: mapped.bomFabric.length
+                                  ? mapped.bomFabric
+                                  : prev.bomFabric,
+                                bomLining: mapped.bomLining.length
+                                  ? mapped.bomLining
+                                  : prev.bomLining,
+                                bomAccessories: mapped.bomAccessories.length
+                                  ? mapped.bomAccessories
+                                  : prev.bomAccessories,
+                                smvSewing: mapped.smvSewing ?? prev.smvSewing,
+                                washType: mapped.washType ?? prev.washType,
+                                styleCategory:
+                                  mapped.styleCategory ?? prev.styleCategory,
+                              }
+                            : prev,
+                        );
+                        if (mapped.smvSewing)
+                          setSmvSewingInput(mapped.smvSewing.toString());
+                        if (mapped.washType) setWashType(mapped.washType);
+                        if (mapped.styleCategory)
+                          setStyleCategory(mapped.styleCategory);
+                      });
+                    }
+                  }}
+                  options={[
+                    { value: "", label: "-- Select --" },
+                    // Indus-plus WOs — deduplicated by workOrderNo, filtered to current style if chosen
+                    ...Array.from(
+                      new Map(
+                        indusStyleRows
+                          .filter((r) =>
+                            !activeStyle?.id ||
+                            activeStyle.id === "custom" ||
+                            activeStyle.id === ""
+                              ? true
+                              : r.styleCode === activeStyle.id,
+                          )
+                          .map((r) => [r.workOrderNo, r]),
+                      ).values(),
+                    ).map((r) => ({
+                      value: r.workOrderNo,
+                      label: `${r.workOrderNo}${r.styleName ? ` — ${r.styleName}` : ""}${r.customer ? ` (${r.customer})` : ""}`,
+                    })),
+                  ]}
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Style Category
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
+                  disabled={isDbSelected}
                   value={styleCategory}
-                  onChange={(e) => setStyleCategory(e.target.value)}
-                >
-                  {categoriesList.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setStyleCategory(val)}
+                  options={[
+                    { value: "", label: "" },
+                    ...categoriesList.map((t) => ({ value: t, label: t })),
+                  ]}
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Order Size
                 </span>
-                <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {calcs.sizeBracket}
+                <span
+                  className={`font-bold pr-2 ${!calcs.sizeBracket && orderQuantity > 0 ? "text-red-600 dark:text-red-400" : "text-slate-800 dark:text-slate-200"}`}
+                >
+                  {calcs.sizeBracket ||
+                    (orderQuantity > 0 ? "Out of Range" : "—")}
                 </span>
               </div>
 
@@ -1396,7 +1940,12 @@ function CostSheetContent() {
                 </span>
                 <input
                   type="number"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  disabled={isDbSelected}
+                  className={`w-32 h-7 px-2 text-xs font-semibold rounded text-right focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors ${
+                    calcs.isQtyOutOfRange
+                      ? "border-2 border-red-500 bg-red-50/80 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-500"
+                      : "border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95"
+                  }`}
                   value={orderQuantity || ""}
                   onChange={(e) => setOrderQuantity(Number(e.target.value))}
                 />
@@ -1430,17 +1979,16 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Wash Type:
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
+                  disabled={isDbSelected}
                   value={washType}
-                  onChange={(e) => setWashType(e.target.value)}
-                >
-                  {washTypesList.map((w) => (
-                    <option key={w} value={w}>
-                      {w}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setWashType(val)}
+                  options={[
+                    { value: "", label: "" },
+                    ...washTypesList.map((t) => ({ value: t, label: t })),
+                  ]}
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
@@ -1493,90 +2041,89 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Costing Stage
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={costingStage}
-                  onChange={(e) => setCostingStage(e.target.value)}
-                >
-                  <option value="Quote">Quote</option>
-                  <option value="Final">Final</option>
-                </select>
+                  onChange={(val) => setCostingStage(val)}
+                  options={[
+                    { value: "", label: "" },
+                    ...costingStageList.map((t) => ({ value: t, label: t })),
+                  ]}
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Country
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                >
-                  {countriesList.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setCountry(val)}
+                  options={[
+                    { value: "", label: "" },
+                    ...countriesList.map((t) => ({ value: t, label: t })),
+                  ]}
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Payment Terms
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={paymentTerms}
-                  onChange={(e) => setPaymentTerms(e.target.value)}
-                >
-                  {paymentTermsList.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setPaymentTerms(val)}
+                  options={[
+                    { value: "", label: "" },
+                    ...paymentTermsList.map((t) => ({ value: t, label: t })),
+                  ]}
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Shipment mode
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={shipmentMode}
-                  onChange={(e) => setShipmentMode(e.target.value)}
-                >
-                  <option value="Sea">Sea</option>
-                  <option value="Air">Air</option>
-                </select>
+                  onChange={(val) => setShipmentMode(val)}
+                  options={[
+                    { value: "", label: "" },
+                    ...shipmentModeList.map((t) => ({ value: t, label: t })),
+                  ]}
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Delivery terms
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={deliveryTerms}
-                  onChange={(e) => setDeliveryTerms(e.target.value)}
-                >
-                  {deliveryTermsList.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setDeliveryTerms(val)}
+                  options={[
+                    { value: "", label: "" },
+                    ...deliveryTermsList.map((t) => ({ value: t, label: t })),
+                  ]}
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   Merch_Group
                 </span>
-                <input
-                  type="text"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={merchGroup}
-                  onChange={(e) => setMerchGroup(e.target.value)}
+                  onChange={(val) => setMerchGroup(val)}
+                  options={[
+                    { value: "", label: "" },
+                    ...merchGroupList.map((t) => ({ value: t, label: t })),
+                  ]}
                 />
               </div>
 
@@ -1584,14 +2131,15 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Delv. Destination
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={deliveryDestination}
-                  onChange={(e) => setDeliveryDestination(e.target.value)}
-                >
-                  <option value="EURO">EURO</option>
-                  <option value="USA">USA</option>
-                </select>
+                  onChange={(val) => setDeliveryDestination(val)}
+                  options={[
+                    { value: "", label: "" },
+                    ...delvDestinationList.map((t) => ({ value: t, label: t })),
+                  ]}
+                />
               </div>
 
               <div className="flex items-center justify-between gap-2">
@@ -1622,14 +2170,18 @@ function CostSheetContent() {
                 <span className="font-semibold text-muted-foreground">
                   Inhouse/Sub-contract
                 </span>
-                <select
-                  className="w-32 h-7 px-1.5 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded focus:bg-white focus:outline-none"
+                <SearchableSelect
+                  className="w-32"
                   value={inhouseOrSubcontract}
-                  onChange={(e) => setInhouseOrSubcontract(e.target.value)}
-                >
-                  <option value="INHOUSE">INHOUSE</option>
-                  <option value="CMT">CMT (Sub-contract)</option>
-                </select>
+                  onChange={(val) => setInhouseOrSubcontract(val)}
+                  options={[
+                    { value: "", label: "" },
+                    ...inhouseSubcontractList.map((t) => ({
+                      value: t,
+                      label: t,
+                    })),
+                  ]}
+                />
               </div>
             </div>
 
@@ -1656,10 +2208,7 @@ function CostSheetContent() {
                   EBITDA/Min-Cents
                 </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {(
-                    (calcs.ebitdaUSD * 100) /
-                    (parseFloat(smvSewingInput) || 1)
-                  ).toFixed(2)}
+                  {calcs.ebitdaMinCents.toFixed(2)}
                 </span>
               </div>
 
@@ -1700,10 +2249,7 @@ function CostSheetContent() {
                   Net Profit/Min-Cents
                 </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {(
-                    (calcs.netProfitUSD * 100) /
-                    (parseFloat(smvSewingInput) || 1)
-                  ).toFixed(2)}
+                  {calcs.netProfitMinCents.toFixed(2)}
                 </span>
               </div>
 
@@ -1712,10 +2258,7 @@ function CostSheetContent() {
                   Target CM/SMV-Cents
                 </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {(
-                    ((calcs.targetFobUSD - bomCostUSD) * 100) /
-                    (parseFloat(smvSewingInput) || 1)
-                  ).toFixed(2)}
+                  {calcs.targetCmSmvCents.toFixed(2)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-2">
@@ -1734,10 +2277,7 @@ function CostSheetContent() {
                   Order CM-SMV-Cents
                 </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
-                  {(
-                    (calcs.cmUSD * 100) /
-                    (parseFloat(smvSewingInput) || 1)
-                  ).toFixed(2)}
+                  {calcs.orderCmSmvCents.toFixed(2)}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-2">
@@ -1754,15 +2294,35 @@ function CostSheetContent() {
               <div className="border-t border-slate-700 self-end" />
               <div className="border-t border-slate-700 self-end" />
 
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">SMV</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
-                  value={smvSewingInput}
-                  onChange={(e) => setSmvSewingInput(e.target.value)}
-                />
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-muted-foreground">
+                      SMV
+                    </span>
+                    {calcs.isSmvOutOfRange && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900 leading-none">
+                        Out of Range
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className={`w-32 h-7 px-2 text-xs font-semibold rounded text-right focus:bg-white focus:outline-none transition-colors ${
+                      calcs.isSmvOutOfRange
+                        ? "border-2 border-red-500 bg-red-50/80 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-500"
+                        : "border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95"
+                    }`}
+                    value={smvSewingInput}
+                    onChange={(e) => setSmvSewingInput(e.target.value)}
+                  />
+                </div>
+                {calcs.isSmvOutOfRange && (
+                  <p className="text-[11px] font-medium text-red-600 dark:text-red-400 text-right leading-tight">
+                    ⚠️ SMV {smvSewingInput} does not match any table range
+                  </p>
+                )}
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
@@ -1773,12 +2333,11 @@ function CostSheetContent() {
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={
-                      commissionPct ? (commissionPct * 100).toFixed(2) : ""
-                    }
-                    onChange={(e) =>
-                      setCommissionPct(Number(e.target.value) / 100)
-                    }
+                    value={commissionInput}
+                    onChange={(e) => {
+                      markDirty();
+                      setCommissionInput(e.target.value);
+                    }}
                   />
                   <span className="text-yellow-750 font-bold">%</span>
                 </div>
@@ -1804,8 +2363,11 @@ function CostSheetContent() {
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={taxEdsPct ? (taxEdsPct * 100).toFixed(2) : ""}
-                    onChange={(e) => setTaxEdsPct(Number(e.target.value) / 100)}
+                    value={taxEdsInput}
+                    onChange={(e) => {
+                      markDirty();
+                      setTaxEdsInput(e.target.value);
+                    }}
                   />
                   <span className="text-yellow-750 font-bold">%</span>
                 </div>
@@ -1820,7 +2382,7 @@ function CostSheetContent() {
                     type="number"
                     step="0.1"
                     className="w-28 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
-                    placeholder={`${(calcs.efficiency * 100).toFixed(1)}%`}
+                    placeholder={`${(calcs.efficiency * 100).toFixed(0)}%`}
                     value={efficiencyOverride}
                     onChange={(e) => setEfficiencyOverride(e.target.value)}
                   />
@@ -1836,14 +2398,11 @@ function CostSheetContent() {
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={
-                      inlandFreightPct
-                        ? (inlandFreightPct * 100).toFixed(2)
-                        : ""
-                    }
-                    onChange={(e) =>
-                      setInlandFreightPct(Number(e.target.value) / 100)
-                    }
+                    value={inlandFreightInput}
+                    onChange={(e) => {
+                      markDirty();
+                      setInlandFreightInput(e.target.value);
+                    }}
                   />
                   <span className="text-yellow-750 font-bold">%</span>
                 </div>
@@ -1870,14 +2429,11 @@ function CostSheetContent() {
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={
-                      localBankChargesPct
-                        ? (localBankChargesPct * 100).toFixed(2)
-                        : ""
-                    }
-                    onChange={(e) =>
-                      setLocalBankChargesPct(Number(e.target.value) / 100)
-                    }
+                    value={localBankChargesInput}
+                    onChange={(e) => {
+                      markDirty();
+                      setLocalBankChargesInput(e.target.value);
+                    }}
                   />
                   <span className="text-yellow-750 font-bold">%</span>
                 </div>
@@ -1893,10 +2449,11 @@ function CostSheetContent() {
                     type="number"
                     step="0.01"
                     className="w-24 h-7 px-2 text-xs border border-yellow-300 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
-                    value={discountRate ? (discountRate * 100).toFixed(0) : ""}
-                    onChange={(e) =>
-                      setDiscountRate(Number(e.target.value) / 100)
-                    }
+                    value={discountRateInput}
+                    onChange={(e) => {
+                      markDirty();
+                      setDiscountRateInput(e.target.value);
+                    }}
                   />
                   <span className="text-yellow-700 font-bold">%</span>
                 </div>
@@ -2081,560 +2638,588 @@ function CostSheetContent() {
         </Card>
       </div>
       {/* ZONE 3: SPLIT PANEL VIEW */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* LEFT PANEL: FINANCIAL SUMMARY TABLE */}
-        <Card className="lg:col-span-5 shadow-md border-muted/60 bg-card overflow-hidden">
-          <div className="bg-muted/40 p-4 border-b flex justify-between items-center">
-            <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
-              <Calculator className="size-4 text-primary" /> Cost &
+        <Card className="lg:col-span-5 shadow-sm border-muted/60 bg-card overflow-hidden">
+          <div className="bg-muted/40 px-3.5 py-2 border-b flex justify-between items-center">
+            <h2 className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+              <Calculator className="size-3.5 text-primary" /> Cost &amp;
               Profitability Summary
             </h2>
-            <span className="text-[10px] bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 font-semibold px-2 py-0.5 rounded-full">
+            <span className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 font-semibold px-2 py-0.5 rounded-full">
               Per Pc Calculations
             </span>
           </div>
           <CardContent className="p-0 text-xs">
-            <Table>
-              <TableHeader className="bg-muted/30">
-                <TableRow>
-                  <TableHead className="font-semibold text-foreground">
-                    Cost Element
-                  </TableHead>
-                  <TableHead className="text-right font-semibold text-foreground w-20">
-                    PKR
-                  </TableHead>
-                  <TableHead className="text-right font-semibold text-foreground w-20">
-                    USD
-                  </TableHead>
-                  <TableHead className="text-right font-semibold text-foreground w-16">
-                    % Sales
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {/* REVENUE */}
-                <TableRow className="bg-muted/10 font-semibold">
-                  <TableCell>Selling Price (FOB)</TableCell>
-                  <TableCell className="text-right">
-                    PKR. {calcs.sellingPricePKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.sellingPriceUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">100.0%</TableCell>
-                </TableRow>
+            {(() => {
+              const fmtPct = (val: number, decimals: number = 2): string => {
+                if (!isFinite(val) || isNaN(val)) return "0.00%";
+                return `${(val * 100).toFixed(decimals)}%`;
+              };
 
-                {/* DEDUCTIONS */}
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Tax &amp; EDS ({(taxEdsPct * 100).toFixed(2)}%)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.taxEDS_PKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.taxEDS_USD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.taxEDS_Pct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
-                    Rebate (add)
-                  </TableCell>
-                  <TableCell className="p-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">
-                        %:
-                      </span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={rebatePct || ""}
-                        onChange={(e) => setRebatePct(Number(e.target.value))}
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.rebateUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.rebatePct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Inland Freight & Clearing
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.freightPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.freightUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.freightPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Local Bank Charges ({(localBankChargesPct * 100).toFixed(2)}
-                    %)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.bankChargesPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.bankChargesUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.bankChargesPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
-                    Markup & Discounting
-                    <span
-                      className="cursor-help"
-                      title="PKR Selling Price * (Discount Rate / 365) * Discount Days"
+              return (
+                <Table className="table-fixed w-full text-xs">
+                  <TableHeader className="bg-muted/30">
+                    <TableRow className="h-8">
+                      <TableHead className="w-[42%] font-semibold text-foreground px-2 py-1 text-left text-xs">
+                        Cost Element
+                      </TableHead>
+                      <TableHead className="w-[20%] text-right font-semibold text-foreground px-1.5 py-1 text-xs">
+                        PKR
+                      </TableHead>
+                      <TableHead className="w-[19%] text-right font-semibold text-foreground px-1.5 py-1 text-xs">
+                        USD
+                      </TableHead>
+                      <TableHead className="w-[19%] text-right font-semibold text-foreground px-1.5 py-1 text-xs">
+                        % Sales
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {/* REVENUE */}
+                    <TableRow className="bg-muted/10 font-semibold h-7">
+                      <TableCell className="px-2 py-1 text-foreground text-xs font-semibold">
+                        Selling Price (FOB)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-medium text-xs">
+                        Rs. {calcs.sellingPricePKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-medium text-xs">
+                        ${calcs.sellingPriceUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap text-xs">
+                        100.0%
+                      </TableCell>
+                    </TableRow>
+
+                    {/* DEDUCTIONS */}
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        Tax &amp; EDS (
+                        {fmtPct((parseFloat(taxEdsInput) || 0) / 100, 2)})
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.taxEDS_PKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.taxEDS_USD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.taxEDS_Pct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground text-xs">
+                        Rebate (add)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-xs">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-xs text-muted-foreground">
+                            %:
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-12 h-6 text-xs bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            value={rebateInput}
+                            onChange={(e) => {
+                              markDirty();
+                              setRebateInput(e.target.value);
+                            }}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.rebateUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.rebatePct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        Inland Freight & Clearing
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.freightPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.freightUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.freightPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        Local Bank Charges (
+                        {fmtPct(
+                          (parseFloat(localBankChargesInput) || 0) / 100,
+                          2,
+                        )}
+                        )
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.bankChargesPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.bankChargesUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.bankChargesPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        <span className="inline-flex items-center gap-1">
+                          Markup & Discounting
+                          <span
+                            className="cursor-help"
+                            title="Rs Selling Price * (Discount Rate / 365) * Discount Days"
+                          >
+                            <Info className="size-3 text-muted-foreground" />
+                          </span>
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-xs">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-xs text-muted-foreground">
+                            Days:
+                          </span>
+                          <input
+                            type="number"
+                            className="w-12 h-6 text-xs bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            value={paymentTermsDaysInput}
+                            onChange={(e) => {
+                              markDirty();
+                              setPaymentTermsDaysInput(e.target.value);
+                            }}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.markupDiscountUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.markupDiscountPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        <span className="inline-flex items-center gap-1">
+                          Factoring Cost
+                          <span
+                            className="cursor-help"
+                            title="Rs Selling Price * (Discount Rate / 365) * Factoring Days"
+                          >
+                            <Info className="size-3 text-muted-foreground" />
+                          </span>
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-xs">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-xs text-muted-foreground">
+                            Days:
+                          </span>
+                          <input
+                            type="number"
+                            className="w-12 h-6 text-xs bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            value={factoringDaysInput}
+                            onChange={(e) => {
+                              markDirty();
+                              setFactoringDaysInput(e.target.value);
+                            }}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.factoringUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.factoringPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        Customer Commission
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-xs">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-xs text-muted-foreground">
+                            %:
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-12 h-6 text-xs bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            value={commissionInput}
+                            onChange={(e) => {
+                              markDirty();
+                              setCommissionInput(e.target.value);
+                            }}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.commissionUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.commissionPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        Foreign Bank Charges ($)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-xs">
+                        <div className="flex justify-end items-center gap-1">
+                          <span className="text-xs text-muted-foreground">
+                            $
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-12 h-6 text-xs bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            value={foreignBankChargesInput}
+                            onChange={(e) => {
+                              markDirty();
+                              setForeignBankChargesInput(e.target.value);
+                            }}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.foreignBankChargesUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.foreignBankChargesPct, 2)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* NET SELLING PRICE */}
+                    <TableRow className="bg-blue-50/30 dark:bg-blue-950/20 font-semibold border-t border-b h-7">
+                      <TableCell className="px-2 py-1 text-foreground text-xs font-semibold">
+                        Net Selling Price
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
+                        Rs. {calcs.netPricePKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
+                        ${calcs.netPriceUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
+                        {fmtPct(calcs.netPricePct, 1)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* VARIABLE COSTS */}
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 font-medium text-foreground truncate text-xs">
+                        Fabric Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        Rs. {calcs.fabricCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.fabricCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.fabricCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 font-medium text-foreground truncate text-xs">
+                        Lining Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        Rs. {calcs.liningCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.liningCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.liningCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 font-medium text-foreground truncate text-xs">
+                        Accessories Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        Rs. {calcs.accessoriesCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.accessoriesCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.accessoriesCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 font-medium text-foreground truncate text-xs">
+                        Chemical &amp; Washing Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        Rs. {calcs.chemicalsCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.chemicalsCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.chemicalsCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 font-medium text-foreground truncate text-xs">
+                        Special Charges Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        Rs. {calcs.specialChargesCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.specialChargesCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.specialChargesCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 font-medium text-foreground truncate text-xs">
+                        Direct Labor Cost (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        Rs. {calcs.directLaborCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.directLaborCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.directLaborCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 font-medium text-foreground truncate text-xs">
+                        Utilities Cost (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        Rs. {calcs.utilitiesCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.utilitiesCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.utilitiesCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 font-medium text-foreground truncate text-xs">
+                        Leftover Factor Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        Rs. {calcs.leftoverCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right font-medium tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.leftoverCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.leftoverCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* TOTAL VARIABLE COST */}
+                    <TableRow className="bg-gray-100/90 dark:bg-gray-800/80 font-bold border-y-2 border-gray-300 dark:border-gray-600 text-foreground h-8">
+                      <TableCell className="px-2 py-1 font-bold text-foreground text-xs">
+                        Total Variable Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-foreground text-xs">
+                        Rs. {calcs.totalVariableCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-foreground text-xs">
+                        ${calcs.totalVariableCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-foreground text-xs">
+                        {fmtPct(calcs.totalVariableCostPct, 1)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* CM / PC */}
+                    <TableRow className="bg-emerald-50/30 dark:bg-emerald-950/10 font-bold text-emerald-800 dark:text-emerald-400 h-7">
+                      <TableCell className="px-2 py-1 text-xs">
+                        Gross CM / PC
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-xs">
+                        Rs. {calcs.cmPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-xs">
+                        ${calcs.cmUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-xs">
+                        {fmtPct(calcs.cmPct, 1)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* OVERHEADS */}
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        Salaries Cost (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.salariesCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.salariesCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.salariesCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        FOH/Admin Cost (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.fohAdminCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.fohAdminCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.fohAdminCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        Repair &amp; Maintenance (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.repairMtcCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.repairMtcCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.repairMtcCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* TOTAL COST */}
+                    <TableRow className="font-semibold border-t h-7">
+                      <TableCell className="px-2 py-1 text-foreground text-xs font-semibold">
+                        Total Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
+                        Rs. {calcs.totalCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
+                        ${calcs.totalCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
+                        {fmtPct(calcs.totalCostPct, 1)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        Conversion Cost per Minute
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        Rs. {calcs.conversionCostPerMinPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.conversionCostPerMinUSD.toFixed(2)}¢
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        -
+                      </TableCell>
+                    </TableRow>
+
+                    {/* EBITDA */}
+                    <TableRow
+                      className={`font-extrabold border-t border-b h-7 ${isEbitdaPositive ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50/10" : "text-red-700 dark:text-red-400 bg-red-50/10"}`}
                     >
-                      <Info className="size-3 text-muted-foreground" />
-                    </span>
-                  </TableCell>
-                  <TableCell className="p-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">
-                        Days:
-                      </span>
-                      <input
-                        type="number"
-                        className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={paymentTermsDays || ""}
-                        onChange={(e) =>
-                          setPaymentTermsDays(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.markupDiscountUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.markupDiscountPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
-                    Factoring Cost
-                    <span
-                      className="cursor-help"
-                      title="PKR Selling Price * (Discount Rate / 365) * Factoring Days"
+                      <TableCell className="px-2 py-1 text-xs">
+                        EBITDA / PC
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold text-xs">
+                        Rs. {calcs.ebitdaPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold text-xs">
+                        ${calcs.ebitdaUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold text-xs">
+                        {fmtPct(calcs.ebitdaPct, 1)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* DEPRECIATION */}
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        Depreciation Cost (CPM-linked)
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.depreciationCostPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.depreciationCostUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.depreciationCostPct, 2)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* NET PROFIT */}
+                    <TableRow
+                      className={`font-black border-t-2 h-8 ${isProfitPositive ? "text-emerald-800 dark:text-emerald-400 bg-emerald-50/40" : "text-red-800 dark:text-red-400 bg-red-50/40"}`}
                     >
-                      <Info className="size-3 text-muted-foreground" />
-                    </span>
-                  </TableCell>
-                  <TableCell className="p-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">
-                        Days:
-                      </span>
-                      <input
-                        type="number"
-                        className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={factoringDays || ""}
-                        onChange={(e) =>
-                          setFactoringDays(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.factoringUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.factoringPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground flex items-center gap-1">
-                    Customer Commission
-                  </TableCell>
-                  <TableCell className="p-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">
-                        %:
-                      </span>
-                      <input
-                        type="number"
-                        className="w-10 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={commissionPct || ""}
-                        onChange={(e) =>
-                          setCommissionPct(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.commissionUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.commissionPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Foreign Bank Charges ($)
-                  </TableCell>
-                  <TableCell className="p-2 text-right">
-                    <div className="flex justify-end gap-1">
-                      <span className="text-[10px] text-muted-foreground align-middle">
-                        $
-                      </span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="w-12 h-5 text-[11px] bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                        value={foreignBankCharges || ""}
-                        onChange={(e) =>
-                          setForeignBankCharges(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.foreignBankChargesUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.foreignBankChargesPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* NET SELLING PRICE */}
-                <TableRow className="bg-blue-50/30 font-semibold border-t border-b">
-                  <TableCell>Net Selling Price</TableCell>
-                  <TableCell className="text-right">
-                    PKR. {calcs.netPricePKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.netPriceUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.netPricePct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* VARIABLE COSTS */}
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Fabric Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    PKR. {calcs.fabricCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.fabricCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.fabricCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Lining Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    PKR. {calcs.liningCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.liningCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.liningCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Accessories Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    PKR. {calcs.accessoriesCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.accessoriesCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.accessoriesCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Chemical & Washing Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    PKR. {calcs.chemicalsCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.chemicalsCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.chemicalsCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Special Charges Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    PKR. {calcs.specialChargesCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.specialChargesCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.specialChargesCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Direct Labor Cost (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    PKR. {calcs.directLaborCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.directLaborCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.directLaborCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Utilities Cost (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    PKR. {calcs.utilitiesCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.utilitiesCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.utilitiesCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-4 font-medium text-foreground">
-                    Leftover Factor Cost
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    PKR. {calcs.leftoverCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    ${calcs.leftoverCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.leftoverCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* TOTAL VARIABLE COST */}
-                <TableRow className="bg-[#fcf5e3]/60 dark:bg-amber-950/20 font-semibold border-t border-b">
-                  <TableCell>Total Variable Cost</TableCell>
-                  <TableCell className="text-right">
-                    PKR. {calcs.totalVariableCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.totalVariableCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.totalVariableCostPct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* CM / PC */}
-                <TableRow className="bg-emerald-50/30 dark:bg-emerald-950/10 font-bold text-emerald-800 dark:text-emerald-400">
-                  <TableCell>Gross CM / PC</TableCell>
-                  <TableCell className="text-right">
-                    PKR. {calcs.cmPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.cmUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.cmPct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* OVERHEADS */}
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Salaries Cost (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.salariesCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.salariesCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.salariesCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    FOH/Admin Cost (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.fohAdminCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.fohAdminCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.fohAdminCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Repair & Maintenance (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.repairMtcCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.repairMtcCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.repairMtcCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* TOTAL COST */}
-                <TableRow className="font-semibold border-t">
-                  <TableCell>Total Cost</TableCell>
-                  <TableCell className="text-right">
-                    PKR. {calcs.totalCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.totalCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.totalCostPct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Conversion Cost per Minute
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    PKR. {calcs.conversionCostPerMinPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.conversionCostPerMinUSD.toFixed(2)}¢
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    -
-                  </TableCell>
-                </TableRow>
-
-                {/* EBITDA */}
-                <TableRow
-                  className={`font-extrabold border-t border-b ${isEbitdaPositive ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50/10" : "text-red-700 dark:text-red-400 bg-red-50/10"}`}
-                >
-                  <TableCell>EBITDA / PC</TableCell>
-                  <TableCell className="text-right">
-                    PKR. {calcs.ebitdaPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.ebitdaUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.ebitdaPct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* DEPRECIATION */}
-                <TableRow>
-                  <TableCell className="pl-6 text-muted-foreground">
-                    Depreciation Cost (CPM-linked)
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {calcs.depreciationCostPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${calcs.depreciationCostUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {(calcs.depreciationCostPct * 100).toFixed(2)}%
-                  </TableCell>
-                </TableRow>
-
-                {/* NET PROFIT */}
-                <TableRow
-                  className={`font-black border-t-2 text-sm ${isProfitPositive ? "text-emerald-800 dark:text-emerald-400 bg-emerald-50/40" : "text-red-800 dark:text-red-400 bg-red-50/40"}`}
-                >
-                  <TableCell>Net Profit / PC</TableCell>
-                  <TableCell className="text-right">
-                    PKR. {calcs.netProfitPKR.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${calcs.netProfitUSD.toFixed(3)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {(calcs.netProfitPct * 100).toFixed(1)}%
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+                      <TableCell className="px-2 py-1 font-bold text-xs">
+                        Net Profit / PC
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-xs">
+                        Rs. {calcs.netProfitPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-xs">
+                        ${calcs.netProfitUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-xs">
+                        {fmtPct(calcs.netProfitPct, 1)}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              );
+            })()}
           </CardContent>
         </Card>
 
         {/* RIGHT PANEL: DETAILED INTERACTIVE BOM & EXPENSE TABLES */}
-        <div className="lg:col-span-7 space-y-6">
+        <div className="lg:col-span-7 space-y-4">
           {/* FABRIC BOM */}
-          <Card className="shadow-md border-muted/60 bg-card overflow-hidden">
-            <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center">
-              <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
-                <Layers className="size-4 text-primary" /> Fabric Details (USD
-                input)
+          <Card className="shadow-sm border-muted/60 bg-card overflow-hidden">
+            <div className="bg-muted/40 px-3.5 py-2 border-b flex justify-between items-center">
+              <h2 className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                <Layers className="size-3.5 text-primary" /> Fabric Details (PKR
+                Input)
               </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => {
-                  setActiveStyle({
-                    ...activeStyle,
-                    bomFabric: [
-                      ...activeStyle.bomFabric,
-                      {
-                        itemName: "",
-                        consumptionPerPc: 0,
-                        rateUSD: 0,
-                        ratePKR: 0,
-                        fabricCostPKR: 0,
-                      },
-                    ],
-                  });
-                }}
-              >
-                <Plus className="mr-1 size-3.5" /> Add Fabric
-              </Button>
             </div>
             <CardContent className="p-0 text-xs">
-              <Table>
+              <Table className="table-fixed w-full text-xs">
                 <TableHeader className="bg-muted/30">
-                  <TableRow>
-                    <TableHead>Fabric Item Name</TableHead>
-                    <TableHead className="w-20">Cons. (Mtr)</TableHead>
-                    <TableHead className="w-24">Rate (PKR)</TableHead>
-                    <TableHead className="w-24 text-right">Rate ($)</TableHead>
-                    <TableHead className="w-28 text-right">
-                      Cost (PKR)
+                  <TableRow className="h-8">
+                    <TableHead className="w-[36%] px-2 py-1 text-left text-xs font-semibold text-foreground">
+                      Fabric Item Name
                     </TableHead>
-                    <TableHead className="w-10"></TableHead>
+                    <TableHead className="w-[13%] px-1 py-1 text-center text-xs font-semibold text-foreground">
+                      Cons. (Mtr)
+                    </TableHead>
+                    <TableHead className="w-[15%] px-1 py-1 text-center text-xs font-semibold text-foreground">
+                      Rate ($)
+                    </TableHead>
+                    <TableHead className="w-[15%] px-1 py-1 text-center text-xs font-semibold text-foreground">
+                      Rate (Rs)
+                    </TableHead>
+                    <TableHead className="w-[17%] px-2 py-1 text-right text-xs font-semibold text-foreground">
+                      Cost (Rs)
+                    </TableHead>
+                    <TableHead className="w-[4%] px-0 py-1 text-center"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -2651,43 +3236,53 @@ function CostSheetContent() {
                     };
                     const isEditable = true;
                     return (
-                      <TableRow key={idx}>
-                        <TableCell className="p-1.5">
+                      <TableRow key={idx} className="h-7">
+                        <TableCell className="p-1">
                           {isEditable ? (
-                            <select
-                              className="w-full h-7 px-2 border bg-background text-xs rounded focus:outline-none"
+                            <SearchableSelect
+                              className="w-full text-xs"
+                              placeholder="Search fabric…"
                               value={item.itemName}
-                              onChange={(e) =>
-                                updateFabricBOM(idx, "itemName", e.target.value)
-                              }
-                            >
-                              <option value="">-- Select Fabric --</option>
-                              {fabricCatalog.map((c) => (
-                                <option key={c.id} value={c.name}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </select>
+                              onChange={(val) => {
+                                const chosen = val;
+                                const found = fabricCatalog.find(
+                                  (c) => c.itemName === chosen,
+                                );
+                                updateFabricBOM(idx, {
+                                  itemName: chosen,
+                                  ...(found && found.ratePKR
+                                    ? { ratePKR: found.ratePKR }
+                                    : {}),
+                                });
+                              }}
+                              options={[
+                                { value: "", label: "-- Select Fabric --" },
+                                ...fabricCatalog.map((c) => ({
+                                  value: c.itemName,
+                                  label: c.itemName,
+                                })),
+                              ]}
+                            />
                           ) : (
                             <input
                               type="text"
                               disabled
                               placeholder={`Fabric ${idx + 1}`}
-                              className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              className="w-full h-6 px-1.5 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed truncate"
                               value={item.itemName}
+                              title={item.itemName}
                               onChange={(e) =>
                                 updateFabricBOM(idx, "itemName", e.target.value)
                               }
                             />
                           )}
                         </TableCell>
-                        <TableCell className="p-1.5">
+                        <TableCell className="p-1">
                           <input
                             type="number"
-                            disabled={!isEditable}
-                            step="0.01"
-                            placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-6 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.consumptionPerPc || ""}
                             onChange={(e) =>
                               updateFabricBOM(
@@ -2698,31 +3293,40 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
+                        <TableCell className="p-1">
                           <input
                             type="number"
-                            disabled={!isEditable}
-                            step="0.01"
-                            placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.ratePKR || ""}
-                            onChange={(e) =>
-                              updateFabricBOM(
-                                idx,
-                                "ratePKR",
-                                Number(e.target.value),
-                              )
+                            disabled
+                            readOnly
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-6 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                            value={
+                              item.rateUSD !== undefined && item.rateUSD > 0
+                                ? Number(item.rateUSD.toFixed(4))
+                                : item.ratePKR &&
+                                    parityProcurement &&
+                                    parityProcurement > 0
+                                  ? Number(
+                                      (
+                                        item.ratePKR / parityProcurement
+                                      ).toFixed(4),
+                                    )
+                                  : ""
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
+                        <TableCell className="p-1">
                           <input
                             type="number"
-                            disabled={!isEditable}
-                            step="0.01"
+                            step="0.0001"
                             placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.rateUSD || ""}
+                            className="w-full h-6 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            value={
+                              item.ratePKR
+                                ? Number(item.ratePKR.toFixed(4))
+                                : ""
+                            }
                             onChange={(e) =>
                               updateFabricBOM(
                                 idx,
@@ -2732,37 +3336,74 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          PKR. {item.fabricCostPKR.toFixed(1)}
+                        <TableCell className="p-1 text-right font-semibold text-foreground align-middle pr-2 whitespace-nowrap text-xs">
+                          Rs. {item.fabricCostPKR.toFixed(2)}
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          {isEditable && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-6 text-destructive"
-                              onClick={() => {
-                                setActiveStyle({
-                                  ...activeStyle,
-                                  bomFabric: activeStyle.bomFabric.filter(
-                                    (_, i) => i !== idx,
-                                  ),
+                        <TableCell className="p-1 text-center">
+                          <button
+                            type="button"
+                            title="Remove fabric"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                            onClick={() => {
+                              markDirty();
+                              setActiveStyle({
+                                ...activeStyle,
+                                bomFabric: activeStyle.bomFabric.filter(
+                                  (_, i) => i !== idx,
+                                ),
+                              });
+                              setNewFabricRows((prev) => {
+                                const next = new Set<number>();
+                                prev.forEach((i) => {
+                                  if (i < idx) next.add(i);
+                                  else if (i > idx) next.add(i - 1);
                                 });
-                              }}
-                            >
-                              <X className="size-3.5" />
-                            </Button>
-                          )}
+                                return next;
+                              });
+                            }}
+                          >
+                            <X className="size-3.5 stroke-[2.5]" />
+                          </button>
                         </TableCell>
                       </TableRow>
                     );
                   })}
-                  <TableRow className="bg-muted/10 font-bold">
-                    <TableCell colSpan={4} className="text-right">
+                  <TableRow className="bg-muted/10 font-bold h-7">
+                    <TableCell colSpan={2} className="p-1 pl-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={() => {
+                          markDirty();
+                          const newIdx = activeStyle.bomFabric.length;
+                          setActiveStyle({
+                            ...activeStyle,
+                            bomFabric: [
+                              ...activeStyle.bomFabric,
+                              {
+                                itemName: "",
+                                consumptionPerPc: 0,
+                                rateUSD: 0,
+                                ratePKR: 0,
+                                fabricCostPKR: 0,
+                              },
+                            ],
+                          });
+                          setNewFabricRows((prev) => new Set(prev).add(newIdx));
+                        }}
+                      >
+                        <Plus className="mr-1 size-3" /> Add Fabric
+                      </Button>
+                    </TableCell>
+                    <TableCell
+                      colSpan={2}
+                      className="text-right align-middle text-xs font-semibold px-2"
+                    >
                       Total Fabric Cost:
                     </TableCell>
-                    <TableCell className="text-right text-primary pr-4">
-                      PKR. {calcs.fabricCostPKR.toFixed(1)}
+                    <TableCell className="text-right text-primary pr-2 align-middle whitespace-nowrap text-xs font-bold">
+                      Rs. {calcs.fabricCostPKR.toFixed(2)}
                     </TableCell>
                     <TableCell />
                   </TableRow>
@@ -2772,47 +3413,33 @@ function CostSheetContent() {
           </Card>
 
           {/* POCKET LINING BOM */}
-          <Card className="shadow-md border-muted/60 bg-card overflow-hidden">
-            <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center">
-              <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
-                <Layers className="size-4 text-primary" /> Pocket Lining Details
-                (USD input)
+          <Card className="shadow-sm border-muted/60 bg-card overflow-hidden">
+            <div className="bg-muted/40 px-3.5 py-2 border-b flex justify-between items-center">
+              <h2 className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                <Layers className="size-3.5 text-primary" /> Pocket Lining
+                Details (PKR Input)
               </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => {
-                  setActiveStyle({
-                    ...activeStyle,
-                    bomLining: [
-                      ...activeStyle.bomLining,
-                      {
-                        itemName: "",
-                        consumptionPerPc: 0,
-                        rateUSD: 0,
-                        ratePKR: 0,
-                        liningCostPKR: 0,
-                      },
-                    ],
-                  });
-                }}
-              >
-                <Plus className="mr-1 size-3.5" /> Add Lining
-              </Button>
             </div>
             <CardContent className="p-0 text-xs">
-              <Table>
+              <Table className="table-fixed w-full text-xs">
                 <TableHeader className="bg-muted/30">
-                  <TableRow>
-                    <TableHead>Lining Item Name</TableHead>
-                    <TableHead className="w-20">Cons. (Mtr)</TableHead>
-                    <TableHead className="w-24">Rate (PKR)</TableHead>
-                    <TableHead className="w-24 text-right">Rate ($)</TableHead>
-                    <TableHead className="w-28 text-right">
-                      Cost (PKR)
+                  <TableRow className="h-8">
+                    <TableHead className="w-[36%] px-2 py-1 text-left text-xs font-semibold text-foreground">
+                      Lining Item Name
                     </TableHead>
-                    <TableHead className="w-10"></TableHead>
+                    <TableHead className="w-[13%] px-1 py-1 text-center text-xs font-semibold text-foreground">
+                      Cons. (Mtr)
+                    </TableHead>
+                    <TableHead className="w-[15%] px-1 py-1 text-center text-xs font-semibold text-foreground">
+                      Rate ($)
+                    </TableHead>
+                    <TableHead className="w-[15%] px-1 py-1 text-center text-xs font-semibold text-foreground">
+                      Rate (Rs)
+                    </TableHead>
+                    <TableHead className="w-[17%] px-2 py-1 text-right text-xs font-semibold text-foreground">
+                      Cost (Rs)
+                    </TableHead>
+                    <TableHead className="w-[4%] px-0 py-1 text-center"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -2829,43 +3456,53 @@ function CostSheetContent() {
                     };
                     const isEditable = true;
                     return (
-                      <TableRow key={idx}>
-                        <TableCell className="p-1.5">
+                      <TableRow key={idx} className="h-7">
+                        <TableCell className="p-1">
                           {isEditable ? (
-                            <select
-                              className="w-full h-7 px-2 border bg-background text-xs rounded focus:outline-none"
+                            <SearchableSelect
+                              className="w-full text-xs"
+                              placeholder="Search lining…"
                               value={item.itemName}
-                              onChange={(e) =>
-                                updateLiningBOM(idx, "itemName", e.target.value)
-                              }
-                            >
-                              <option value="">-- Select Lining --</option>
-                              {liningCatalog.map((c) => (
-                                <option key={c.id} value={c.name}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </select>
+                              onChange={(val) => {
+                                const chosen = val;
+                                const found = fabricCatalog.find(
+                                  (c) => c.itemName === chosen,
+                                );
+                                updateLiningBOM(idx, {
+                                  itemName: chosen,
+                                  ...(found && found.ratePKR
+                                    ? { ratePKR: found.ratePKR }
+                                    : {}),
+                                });
+                              }}
+                              options={[
+                                { value: "", label: "-- Select Lining --" },
+                                ...fabricCatalog.map((c) => ({
+                                  value: c.itemName,
+                                  label: c.itemName,
+                                })),
+                              ]}
+                            />
                           ) : (
                             <input
                               type="text"
                               disabled
                               placeholder={`Lining ${idx + 1}`}
-                              className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                              className="w-full h-6 px-1.5 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed truncate"
                               value={item.itemName}
+                              title={item.itemName}
                               onChange={(e) =>
                                 updateLiningBOM(idx, "itemName", e.target.value)
                               }
                             />
                           )}
                         </TableCell>
-                        <TableCell className="p-1.5">
+                        <TableCell className="p-1">
                           <input
                             type="number"
-                            disabled={!isEditable}
-                            step="0.01"
-                            placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-6 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.consumptionPerPc || ""}
                             onChange={(e) =>
                               updateLiningBOM(
@@ -2876,31 +3513,40 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
+                        <TableCell className="p-1">
                           <input
                             type="number"
-                            disabled={!isEditable}
-                            step="0.01"
-                            placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.ratePKR || ""}
-                            onChange={(e) =>
-                              updateLiningBOM(
-                                idx,
-                                "ratePKR",
-                                Number(e.target.value),
-                              )
+                            disabled
+                            readOnly
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-6 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                            value={
+                              item.rateUSD !== undefined && item.rateUSD > 0
+                                ? Number(item.rateUSD.toFixed(4))
+                                : item.ratePKR &&
+                                    parityProcurement &&
+                                    parityProcurement > 0
+                                  ? Number(
+                                      (
+                                        item.ratePKR / parityProcurement
+                                      ).toFixed(4),
+                                    )
+                                  : ""
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
+                        <TableCell className="p-1">
                           <input
                             type="number"
-                            disabled={!isEditable}
-                            step="0.01"
+                            step="0.0001"
                             placeholder="0.00"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.rateUSD || ""}
+                            className="w-full h-6 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            value={
+                              item.ratePKR
+                                ? Number(item.ratePKR.toFixed(4))
+                                : ""
+                            }
                             onChange={(e) =>
                               updateLiningBOM(
                                 idx,
@@ -2910,37 +3556,74 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          PKR. {item.liningCostPKR.toFixed(1)}
+                        <TableCell className="p-1 text-right font-semibold text-foreground align-middle pr-2 whitespace-nowrap text-xs">
+                          Rs. {item.liningCostPKR.toFixed(2)}
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          {isEditable && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-6 text-destructive"
-                              onClick={() => {
-                                setActiveStyle({
-                                  ...activeStyle,
-                                  bomLining: activeStyle.bomLining.filter(
-                                    (_, i) => i !== idx,
-                                  ),
+                        <TableCell className="p-1 text-center">
+                          <button
+                            type="button"
+                            title="Remove lining"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                            onClick={() => {
+                              markDirty();
+                              setActiveStyle({
+                                ...activeStyle,
+                                bomLining: activeStyle.bomLining.filter(
+                                  (_, i) => i !== idx,
+                                ),
+                              });
+                              setNewLiningRows((prev) => {
+                                const next = new Set<number>();
+                                prev.forEach((i) => {
+                                  if (i < idx) next.add(i);
+                                  else if (i > idx) next.add(i - 1);
                                 });
-                              }}
-                            >
-                              <X className="size-3.5" />
-                            </Button>
-                          )}
+                                return next;
+                              });
+                            }}
+                          >
+                            <X className="size-3.5 stroke-[2.5]" />
+                          </button>
                         </TableCell>
                       </TableRow>
                     );
                   })}
-                  <TableRow className="bg-muted/10 font-bold">
-                    <TableCell colSpan={4} className="text-right">
+                  <TableRow className="bg-muted/10 font-bold h-7">
+                    <TableCell colSpan={2} className="p-1 pl-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={() => {
+                          markDirty();
+                          const newIdx = activeStyle.bomLining.length;
+                          setActiveStyle({
+                            ...activeStyle,
+                            bomLining: [
+                              ...activeStyle.bomLining,
+                              {
+                                itemName: "",
+                                consumptionPerPc: 0,
+                                rateUSD: 0,
+                                ratePKR: 0,
+                                liningCostPKR: 0,
+                              },
+                            ],
+                          });
+                          setNewLiningRows((prev) => new Set(prev).add(newIdx));
+                        }}
+                      >
+                        <Plus className="mr-1 size-3" /> Add Lining
+                      </Button>
+                    </TableCell>
+                    <TableCell
+                      colSpan={2}
+                      className="text-right align-middle text-xs font-semibold px-2"
+                    >
                       Total Lining Cost:
                     </TableCell>
-                    <TableCell className="text-right text-primary pr-4">
-                      PKR. {calcs.liningCostPKR.toFixed(1)}
+                    <TableCell className="text-right text-primary pr-2 align-middle whitespace-nowrap text-xs font-bold">
+                      Rs. {calcs.liningCostPKR.toFixed(2)}
                     </TableCell>
                     <TableCell />
                   </TableRow>
@@ -2950,63 +3633,129 @@ function CostSheetContent() {
           </Card>
 
           {/* ACCESSORIES, CHEMICALS, & SPECIAL CHARGES */}
-          <Card className="shadow-md border-muted/60 bg-card overflow-hidden">
-            <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center">
-              <h2 className="text-sm font-semibold flex items-center gap-1.5 text-foreground">
-                <Layers className="size-4 text-primary" /> Trims, Chemicals &
-                Special Charges (PKR Input)
+          <Card className="shadow-sm border-muted/60 bg-card overflow-hidden">
+            <div className="bg-muted/40 px-3.5 py-2 border-b flex justify-between items-center">
+              <h2 className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                <Layers className="size-3.5 text-primary" /> Trims, Chemicals
+                &amp; Special Charges (PKR Input)
               </h2>
             </div>
             <CardContent className="p-0 text-xs">
-              <div className="max-h-[350px] overflow-auto">
-                <Table>
-                  <TableHeader className="bg-muted/30 sticky top-0 z-10">
-                    <TableRow>
-                      <TableHead className="w-28">Category</TableHead>
-                      <TableHead>Item Name</TableHead>
-                      <TableHead className="w-16">Cons.</TableHead>
-                      <TableHead className="w-24 text-center">
-                        Rate (PKR)
-                      </TableHead>
-                      <TableHead className="w-24 text-center">
-                        Rate ($)
-                      </TableHead>
-                      <TableHead className="w-28 text-right">
-                        Cost (PKR)
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {/* ACCESSORIES */}
-                    <TableRow className="bg-muted/20 font-bold">
-                      <TableCell colSpan={6}>
-                        Accessories (Before & After Wash)
-                      </TableCell>
-                    </TableRow>
-                    {activeStyle.bomAccessories.map((item, idx) => (
-                      <TableRow key={`acc-${idx}`}>
-                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
-                          {item.category}
+              <Table className="table-fixed w-full text-xs">
+                <TableHeader className="bg-muted/30">
+                  <TableRow className="h-8">
+                    <TableHead className="w-[16%] px-2 py-1 text-left text-xs font-semibold text-foreground">
+                      Category
+                    </TableHead>
+                    <TableHead className="w-[30%] px-2 py-1 text-left text-xs font-semibold text-foreground">
+                      Item Name
+                    </TableHead>
+                    <TableHead className="w-[11%] px-1 py-1 text-center text-xs font-semibold text-foreground">
+                      Cons.
+                    </TableHead>
+                    <TableHead className="w-[13%] px-1 py-1 text-center text-xs font-semibold text-foreground">
+                      Rate ($)
+                    </TableHead>
+                    <TableHead className="w-[13%] px-1 py-1 text-center text-xs font-semibold text-foreground">
+                      Rate (Rs)
+                    </TableHead>
+                    <TableHead className="w-[13%] px-2 py-1 text-right text-xs font-semibold text-foreground">
+                      Cost (Rs)
+                    </TableHead>
+                    <TableHead className="w-[4%] px-0 py-1 text-center"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {/* ACCESSORIES */}
+                  <TableRow className="bg-muted/20 font-bold h-6">
+                    <TableCell
+                      colSpan={7}
+                      className="px-2 py-0.5 text-xs font-bold text-foreground"
+                    >
+                      Accessories (Before &amp; After Wash)
+                    </TableCell>
+                  </TableRow>
+                  {activeStyle.bomAccessories.map((item, idx) => {
+                    const isAccEditable =
+                      activeStyle.id === "custom" || newAccessoryRows.has(idx);
+                    return (
+                      <TableRow key={`acc-${idx}`} className="h-7">
+                        <TableCell className="p-1 pl-2">
+                          {isAccEditable ? (
+                            <input
+                              type="text"
+                              className="w-full h-6 px-1.5 text-xs border rounded bg-background truncate"
+                              value={item.category}
+                              placeholder="Category"
+                              onChange={(e) =>
+                                updateAccessoriesBOM(
+                                  idx,
+                                  "category",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          ) : (
+                            <div
+                              className="truncate text-xs text-muted-foreground font-normal"
+                              title={item.category}
+                            >
+                              {item.category}
+                            </div>
+                          )}
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="text"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.itemName}
-                            onChange={(e) =>
-                              updateAccessoriesBOM(
-                                idx,
-                                "itemName",
-                                e.target.value,
-                              )
-                            }
-                          />
+                        <TableCell className="p-1">
+                          {isAccEditable ? (
+                            <SearchableSelect
+                              className="w-full text-xs"
+                              placeholder="Search trim…"
+                              value={item.itemName}
+                              onChange={(val) => {
+                                const chosen = val;
+                                const found = trimsCatalog.find(
+                                  (t) => t.itemName === chosen,
+                                );
+                                updateAccessoriesBOM(idx, {
+                                  itemName: chosen,
+                                  ...(found?.category
+                                    ? { category: found.category }
+                                    : {}),
+                                  ...(found?.ratePKR
+                                    ? { ratePKR: found.ratePKR }
+                                    : {}),
+                                });
+                              }}
+                              options={[
+                                { value: "", label: "-- Select Trim --" },
+                                ...trimsCatalog.map((t) => ({
+                                  value: t.itemName,
+                                  label: `[${t.category ?? t.groupName ?? "Trim"}] ${t.itemName}`,
+                                })),
+                              ]}
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              disabled
+                              className="w-full h-6 px-1.5 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed truncate"
+                              value={item.itemName}
+                              title={item.itemName}
+                              onChange={(e) =>
+                                updateAccessoriesBOM(
+                                  idx,
+                                  "itemName",
+                                  e.target.value,
+                                )
+                              }
+                            />
+                          )}
                         </TableCell>
-                        <TableCell className="p-1.5">
+                        <TableCell className="p-1">
                           <input
                             type="number"
-                            step="0.01"
-                            className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-6 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.consPerPc || ""}
                             onChange={(e) =>
                               updateAccessoriesBOM(
@@ -3017,10 +3766,35 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
+                        <TableCell className="p-1">
                           <input
                             type="number"
-                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            disabled
+                            readOnly
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-6 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                            value={
+                              item.rateUSD !== undefined && item.rateUSD > 0
+                                ? Number(item.rateUSD.toFixed(4))
+                                : item.ratePKR &&
+                                    parityProcurement &&
+                                    parityProcurement > 0
+                                  ? Number(
+                                      (
+                                        item.ratePKR / parityProcurement
+                                      ).toFixed(4),
+                                    )
+                                  : ""
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="p-1">
+                          <input
+                            type="number"
+                            step="0.0001"
+                            placeholder="0.00"
+                            className="w-full h-6 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.ratePKR || ""}
                             onChange={(e) =>
                               updateAccessoriesBOM(
@@ -3031,80 +3805,143 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            step="0.0001"
-                            placeholder="0.0000"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={
-                              item.rateUSD !== undefined
-                                ? item.rateUSD || ""
-                                : item.ratePKR
-                                  ? Number(
-                                      (
-                                        item.ratePKR / parityProcurement
-                                      ).toFixed(4),
-                                    )
-                                  : ""
-                            }
-                            onChange={(e) =>
-                              updateAccessoriesBOM(
-                                idx,
-                                "rateUSD",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
+                        <TableCell className="p-1 text-right font-semibold text-foreground align-middle pr-2 whitespace-nowrap text-xs">
+                          Rs. {(item.totalCostPKR || 0).toFixed(2)}
                         </TableCell>
-                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          PKR {(item.totalCostPKR || 0).toFixed(1)}
+                        <TableCell className="p-1 text-center">
+                          <button
+                            type="button"
+                            title="Remove accessory"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                            onClick={() => {
+                              markDirty();
+                              setActiveStyle({
+                                ...activeStyle,
+                                bomAccessories:
+                                  activeStyle.bomAccessories.filter(
+                                    (_, i) => i !== idx,
+                                  ),
+                              });
+                              setNewAccessoryRows((prev) => {
+                                const next = new Set<number>();
+                                prev.forEach((i) => {
+                                  if (i < idx) next.add(i);
+                                  else if (i > idx) next.add(i - 1);
+                                });
+                                return next;
+                              });
+                            }}
+                          >
+                            <X className="size-3.5 stroke-[2.5]" />
+                          </button>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    );
+                  })}
+                  <TableRow className="bg-muted/10 font-bold h-7">
+                    <TableCell colSpan={2} className="p-1 pl-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-xs px-2"
+                        onClick={() => {
+                          markDirty();
+                          const newIdx = activeStyle.bomAccessories.length;
+                          setActiveStyle({
+                            ...activeStyle,
+                            bomAccessories: [
+                              ...activeStyle.bomAccessories,
+                              {
+                                category: "Trims Mix Materials",
+                                itemName: "",
+                                consPerPc: 0,
+                                rateUSD: 0,
+                                ratePKR: 0,
+                                totalCostPKR: 0,
+                              },
+                            ],
+                          });
+                          setNewAccessoryRows((prev) =>
+                            new Set(prev).add(newIdx),
+                          );
+                        }}
+                      >
+                        <Plus className="mr-1 size-3" /> Add Trim
+                      </Button>
+                    </TableCell>
+                    <TableCell
+                      colSpan={3}
+                      className="text-right align-middle text-xs font-semibold px-2"
+                    >
+                      Total Accessories Cost:
+                    </TableCell>
+                    <TableCell className="text-right text-primary pr-2 align-middle whitespace-nowrap text-xs font-bold">
+                      Rs. {calcs.accessoriesCostPKR.toFixed(2)}
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
 
-                    {/* CHEMICALS */}
-                    <TableRow className="bg-muted/20 font-bold">
-                      <TableCell colSpan={6}>Chemical Costs</TableCell>
-                    </TableRow>
-                    {activeStyle.bomChemicals.map((item, idx) => (
-                      <TableRow key={`chem-${idx}`}>
-                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
+                  {/* CHEMICALS */}
+                  <TableRow className="bg-muted/20 font-bold h-6">
+                    <TableCell
+                      colSpan={7}
+                      className="px-2 py-0.5 text-xs font-bold text-foreground"
+                    >
+                      Chemical Costs
+                    </TableCell>
+                  </TableRow>
+                  {activeStyle.bomChemicals.map((item, idx) => {
+                    return (
+                      <TableRow key={`chem-${idx}`} className="h-7">
+                        <TableCell className="p-1 pl-2 text-xs text-muted-foreground font-semibold uppercase truncate">
                           Chemicals
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="text"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                        <TableCell colSpan={2} className="p-1">
+                          <SearchableSelect
+                            className="w-full text-xs"
+                            placeholder="Select chemical…"
                             value={item.washItem}
-                            onChange={(e) =>
-                              updateChemicalsBOM(
-                                idx,
-                                "washItem",
-                                e.target.value,
-                              )
+                            onChange={(val) => {
+                              updateChemicalsBOM(idx, "washItem", val);
+                            }}
+                            options={[
+                              { value: "", label: "-- Select Chemical --" },
+                              ...chemicalsList.map((c) => ({
+                                value: c,
+                                label: c,
+                              })),
+                            ]}
+                          />
+                        </TableCell>
+                        <TableCell className="p-1">
+                          <input
+                            type="number"
+                            disabled
+                            readOnly
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-6 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                            value={
+                              item.rateUSD !== undefined && item.rateUSD > 0
+                                ? Number(item.rateUSD.toFixed(4))
+                                : item.ratePKR &&
+                                    parityProcurement &&
+                                    parityProcurement > 0
+                                  ? Number(
+                                      (
+                                        item.ratePKR / parityProcurement
+                                      ).toFixed(4),
+                                    )
+                                  : ""
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
+                        <TableCell className="p-1">
                           <input
                             type="number"
-                            step="0.01"
-                            className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.consPerPc || ""}
-                            onChange={(e) =>
-                              updateChemicalsBOM(
-                                idx,
-                                "consPerPc",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            step="0.0001"
+                            placeholder="0.00"
+                            className="w-full h-6 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.ratePKR || ""}
                             onChange={(e) =>
                               updateChemicalsBOM(
@@ -3115,71 +3952,142 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            step="0.0001"
-                            placeholder="0.0000"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={
-                              item.rateUSD !== undefined
-                                ? item.rateUSD || ""
-                                : item.ratePKR
-                                  ? Number(
-                                      (
-                                        item.ratePKR / parityProcurement
-                                      ).toFixed(4),
-                                    )
-                                  : ""
-                            }
-                            onChange={(e) =>
-                              updateChemicalsBOM(
-                                idx,
-                                "rateUSD",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
+                        <TableCell className="p-1 text-right font-semibold text-foreground align-middle pr-2 whitespace-nowrap text-xs">
+                          Rs.{" "}
+                          {(item.totalCostPKR || item.ratePKR || 0).toFixed(2)}
                         </TableCell>
-                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          PKR {(item.totalCostPKR || 0).toFixed(1)}
+                        <TableCell className="p-1 text-center">
+                          <button
+                            type="button"
+                            title="Remove chemical"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                            onClick={() => {
+                              markDirty();
+                              setActiveStyle({
+                                ...activeStyle,
+                                bomChemicals: activeStyle.bomChemicals.filter(
+                                  (_, i) => i !== idx,
+                                ),
+                              });
+                              setNewChemicalRows((prev) => {
+                                const next = new Set<number>();
+                                prev.forEach((i) => {
+                                  if (i < idx) next.add(i);
+                                  else if (i > idx) next.add(i - 1);
+                                });
+                                return next;
+                              });
+                            }}
+                          >
+                            <X className="size-3.5 stroke-[2.5]" />
+                          </button>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    );
+                  })}
+                  <TableRow className="bg-muted/10 font-bold h-7">
+                    <TableCell colSpan={2} className="p-1 pl-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-xs px-2"
+                        onClick={() => {
+                          markDirty();
+                          const newIdx = activeStyle.bomChemicals.length;
+                          setActiveStyle({
+                            ...activeStyle,
+                            bomChemicals: [
+                              ...activeStyle.bomChemicals,
+                              {
+                                washItem: "",
+                                consPerPc: 0,
+                                rateUSD: 0,
+                                ratePKR: 0,
+                                totalCostPKR: 0,
+                              },
+                            ],
+                          });
+                          setNewChemicalRows((prev) =>
+                            new Set(prev).add(newIdx),
+                          );
+                        }}
+                      >
+                        <Plus className="mr-1 size-3" /> Add Chemical
+                      </Button>
+                    </TableCell>
+                    <TableCell
+                      colSpan={3}
+                      className="text-right align-middle text-xs font-semibold px-2"
+                    >
+                      Total Chemical Cost:
+                    </TableCell>
+                    <TableCell className="text-right text-primary pr-2 align-middle whitespace-nowrap text-xs font-bold">
+                      Rs. {calcs.chemicalsCostPKR.toFixed(2)}
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
 
-                    {/* SPECIAL CHARGES */}
-                    <TableRow className="bg-muted/20 font-bold">
-                      <TableCell colSpan={6}>
-                        Special Charges (Embroidery, Testing, etc.)
-                      </TableCell>
-                    </TableRow>
-                    {activeStyle.bomSpecialCharges.map((item, idx) => (
-                      <TableRow key={`chg-${idx}`}>
-                        <TableCell className="p-1.5 pl-4 text-[10px] text-muted-foreground font-semibold uppercase">
-                          {item.itemName}
+                  {/* SPECIAL CHARGES */}
+                  <TableRow className="bg-muted/20 font-bold h-6">
+                    <TableCell
+                      colSpan={7}
+                      className="px-2 py-0.5 text-xs font-bold text-foreground"
+                    >
+                      Special Charges (Embroidery, Testing, etc.)
+                    </TableCell>
+                  </TableRow>
+                  {activeStyle.bomSpecialCharges.map((item, idx) => {
+                    return (
+                      <TableRow key={`chg-${idx}`} className="h-7">
+                        <TableCell className="p-1 pl-2 text-xs text-muted-foreground font-semibold uppercase truncate">
+                          Charges
                         </TableCell>
-                        <TableCell className="p-1.5 font-medium text-xs align-middle">
-                          {item.itemName} Charges
+                        <TableCell colSpan={2} className="p-1">
+                          <SearchableSelect
+                            className="w-full text-xs"
+                            placeholder="Select charge…"
+                            value={item.itemName}
+                            onChange={(val) => {
+                              updateSpecialChargesBOM(idx, "itemName", val);
+                            }}
+                            options={[
+                              { value: "", label: "-- Select Charge --" },
+                              ...specialChargesList.map((c) => ({
+                                value: c,
+                                label: c,
+                              })),
+                            ]}
+                          />
                         </TableCell>
-                        <TableCell className="p-1.5">
+                        <TableCell className="p-1">
                           <input
                             type="number"
-                            step="0.01"
-                            className="w-full h-7 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={item.consPerPc || ""}
-                            onChange={(e) =>
-                              updateSpecialChargesBOM(
-                                idx,
-                                "consPerPc",
-                                Number(e.target.value),
-                              )
+                            disabled
+                            readOnly
+                            step="0.0001"
+                            placeholder="0.0000"
+                            className="w-full h-6 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                            value={
+                              item.rateUSD !== undefined && item.rateUSD > 0
+                                ? Number(item.rateUSD.toFixed(4))
+                                : item.ratePKR &&
+                                    parityProcurement &&
+                                    parityProcurement > 0
+                                  ? Number(
+                                      (
+                                        item.ratePKR / parityProcurement
+                                      ).toFixed(4),
+                                    )
+                                  : ""
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
+                        <TableCell className="p-1">
                           <input
                             type="number"
-                            className="w-full h-7 px-2 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
+                            step="0.0001"
+                            placeholder="0.00"
+                            className="w-full h-6 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
                             value={item.ratePKR || ""}
                             onChange={(e) =>
                               updateSpecialChargesBOM(
@@ -3190,40 +4098,83 @@ function CostSheetContent() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="p-1.5">
-                          <input
-                            type="number"
-                            step="0.0001"
-                            placeholder="0.0000"
-                            className="w-full h-7 px-2 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed"
-                            value={
-                              item.rateUSD !== undefined
-                                ? item.rateUSD || ""
-                                : item.ratePKR
-                                  ? Number(
-                                      (
-                                        item.ratePKR / parityProcurement
-                                      ).toFixed(4),
-                                    )
-                                  : ""
-                            }
-                            onChange={(e) =>
-                              updateSpecialChargesBOM(
-                                idx,
-                                "rateUSD",
-                                Number(e.target.value),
-                              )
-                            }
-                          />
+                        <TableCell className="p-1 text-right font-semibold text-foreground align-middle pr-2 whitespace-nowrap text-xs">
+                          Rs.{" "}
+                          {(item.totalCostPKR || item.ratePKR || 0).toFixed(2)}
                         </TableCell>
-                        <TableCell className="p-1.5 text-right font-semibold text-foreground align-middle pr-4">
-                          PKR {(item.totalCostPKR || 0).toFixed(1)}
+                        <TableCell className="p-1 text-center">
+                          <button
+                            type="button"
+                            title="Remove special charge"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                            onClick={() => {
+                              markDirty();
+                              setActiveStyle({
+                                ...activeStyle,
+                                bomSpecialCharges:
+                                  activeStyle.bomSpecialCharges.filter(
+                                    (_, i) => i !== idx,
+                                  ),
+                              });
+                              setNewSpecialChargeRows((prev) => {
+                                const next = new Set<number>();
+                                prev.forEach((i) => {
+                                  if (i < idx) next.add(i);
+                                  else if (i > idx) next.add(i - 1);
+                                });
+                                return next;
+                              });
+                            }}
+                          >
+                            <X className="size-3.5 stroke-[2.5]" />
+                          </button>
                         </TableCell>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    );
+                  })}
+                  <TableRow className="bg-muted/10 font-bold h-7">
+                    <TableCell colSpan={2} className="p-1 pl-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-xs px-2"
+                        onClick={() => {
+                          markDirty();
+                          const newIdx = activeStyle.bomSpecialCharges.length;
+                          setActiveStyle({
+                            ...activeStyle,
+                            bomSpecialCharges: [
+                              ...activeStyle.bomSpecialCharges,
+                              {
+                                itemName: "",
+                                consPerPc: 0,
+                                rateUSD: 0,
+                                ratePKR: 0,
+                                totalCostPKR: 0,
+                              },
+                            ],
+                          });
+                          setNewSpecialChargeRows((prev) =>
+                            new Set(prev).add(newIdx),
+                          );
+                        }}
+                      >
+                        <Plus className="mr-1 size-3" /> Add Special Charge
+                      </Button>
+                    </TableCell>
+                    <TableCell
+                      colSpan={3}
+                      className="text-right align-middle text-xs font-semibold px-2"
+                    >
+                      Total Special Charges Cost:
+                    </TableCell>
+                    <TableCell className="text-right text-primary pr-2 align-middle whitespace-nowrap text-xs font-bold">
+                      Rs. {calcs.specialChargesCostPKR.toFixed(2)}
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
 
@@ -3232,16 +4183,7 @@ function CostSheetContent() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                if (loadedCostSheet) {
-                  // Restore values of the loaded snapshot
-                  router.push(`/cost-sheet?costSheetId=${loadedCostSheet.id}`);
-                  toast.info("Calculator reset to snapshot defaults");
-                } else {
-                  setActiveStyle({ ...activeStyle });
-                  toast.info("Calculator reset to Style Master defaults");
-                }
-              }}
+              onClick={handleResetClick}
               className="h-9"
             >
               <RefreshCw className="mr-1.5 size-4" /> Reset Calculator
@@ -3260,7 +4202,7 @@ function CostSheetContent() {
                   size="sm"
                   onClick={handleUpdateExisting}
                   disabled={isSaving}
-                  className="h-9"
+                  className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
                 >
                   {isSaving ? (
                     <RefreshCw className="mr-1.5 size-4 animate-spin" />
@@ -3274,9 +4216,15 @@ function CostSheetContent() {
               <Button
                 size="sm"
                 onClick={() => setSaveDialogOpen(true)}
-                className="h-9"
+                disabled={isSaving}
+                className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
               >
-                <Save className="mr-1.5 size-4" /> Save Cost Sheet
+                {isSaving ? (
+                  <RefreshCw className="mr-1.5 size-4 animate-spin" />
+                ) : (
+                  <Save className="mr-1.5 size-4" />
+                )}
+                Save Cost Sheet
               </Button>
             )}
           </div>
@@ -3324,6 +4272,60 @@ function CostSheetContent() {
                   {isSaving ? "Saving…" : "Save"}
                 </Button>
               </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Unsaved Changes Confirmation Dialog */}
+          <Dialog open={unsavedModalOpen} onOpenChange={setUnsavedModalOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="size-5 text-amber-600" />
+                  Unsaved Changes
+                </DialogTitle>
+                <DialogDescription className="pt-2 text-sm text-slate-600 dark:text-slate-300">
+                  You have unsaved changes on this cost sheet. If you leave or
+                  change page without saving, your changes will be lost.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-2 text-xs text-muted-foreground">
+                Do you want to save your changes to this cost sheet before
+                proceeding?
+              </div>
+              <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:justify-end border-t pt-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setUnsavedModalOpen(false);
+                    setPendingNavigation(null);
+                  }}
+                >
+                  Stay on Page
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    proceedWithPendingNavigation();
+                  }}
+                >
+                  Discard Changes
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={handleSaveAndProceed}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <RefreshCw className="mr-1.5 size-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-1.5 size-4" />
+                  )}
+                  Save &amp; Continue
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>

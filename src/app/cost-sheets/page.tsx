@@ -30,7 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   subscribeToCostSheets,
   deleteCostSheet,
-} from "@/lib/cost-sheet/firestore";
+} from "@/lib/cost-sheet/api";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 
 export default function SavedCostSheetsPage() {
@@ -38,10 +38,8 @@ export default function SavedCostSheetsPage() {
   const [costSheets, setCostSheets] = useState<SavedCostSheetItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter States
+  // Filter State
   const [search, setSearch] = useState("");
-  const [customerFilter, setCustomerFilter] = useState("all");
-  const [stageFilter, setStageFilter] = useState("all");
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -83,10 +81,13 @@ export default function SavedCostSheetsPage() {
         "Are you sure you want to permanently delete this costing snapshot?",
       )
     ) {
+      const prevSheets = [...costSheets];
+      setCostSheets((prev) => prev.filter((item) => item.id !== id));
       try {
         await deleteCostSheet(id);
         toast.success("Costing snapshot deleted");
       } catch (err) {
+        setCostSheets(prevSheets);
         toast.error("Failed to delete cost sheet");
       }
     }
@@ -120,29 +121,22 @@ export default function SavedCostSheetsPage() {
     toast.success("Costing grid exported to Excel");
   }
 
-  // Derive filter list values
-  const uniqueCustomers = Array.from(
-    new Set(costSheets.map((c) => c.customerName)),
-  );
-
   // Filter & Search Logic
   const filteredSheets = costSheets.filter((s) => {
-    const matchesSearch =
-      s.referenceName.toLowerCase().includes(search.toLowerCase()) ||
-      s.styleId.toLowerCase().includes(search.toLowerCase()) ||
-      s.styleName.toLowerCase().includes(search.toLowerCase()) ||
-      s.id.toLowerCase().includes(search.toLowerCase());
-
-    const matchesCustomer =
-      customerFilter === "all" || s.customerName === customerFilter;
-    const matchesStage =
-      stageFilter === "all" || s.costingStage === stageFilter;
-
-    return matchesSearch && matchesCustomer && matchesStage;
+    const q = search.toLowerCase();
+    return (
+      s.referenceName?.toLowerCase().includes(q) ||
+      s.styleId?.toLowerCase().includes(q) ||
+      s.styleName?.toLowerCase().includes(q) ||
+      s.id?.toLowerCase().includes(q) ||
+      s.customerName?.toLowerCase().includes(q) ||
+      s.costingStage?.toLowerCase().includes(q) ||
+      s.workOrderNumber?.toLowerCase().includes(q)
+    );
   });
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
@@ -174,39 +168,16 @@ export default function SavedCostSheetsPage() {
 
       {/* Filter Control Header */}
       <Card className="bg-card/50 backdrop-blur-sm border-muted/60">
-        <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
+        <CardContent className="p-4">
+          <div className="relative w-full">
             <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
             <Input
               type="text"
               placeholder="Search by ID, Style ID, Name, or Scenario..."
-              className="pl-9 h-9"
+              className="pl-9 h-9 w-full"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-          </div>
-          <div className="flex flex-wrap gap-2 sm:w-auto">
-            <select
-              className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none"
-              value={customerFilter}
-              onChange={(e) => setCustomerFilter(e.target.value)}
-            >
-              <option value="all">All Customers</option>
-              {uniqueCustomers.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none"
-              value={stageFilter}
-              onChange={(e) => setStageFilter(e.target.value)}
-            >
-              <option value="all">All Stages</option>
-              <option value="Quote">Quote</option>
-              <option value="Final">Final</option>
-            </select>
           </div>
         </CardContent>
       </Card>
@@ -226,48 +197,63 @@ export default function SavedCostSheetsPage() {
               </span>
             </div>
           ) : (
-            <Table>
+            <Table className="w-full text-xs">
               <TableHeader className="bg-muted/40">
                 <TableRow>
-                  <TableHead className="font-semibold text-foreground w-40">
+                  <TableHead className="font-semibold text-foreground py-2.5 pl-3">
                     Cost Sheet ID
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground">
+                  <TableHead className="font-semibold text-foreground py-2.5 px-2">
                     Scenario Name
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground">
+                  <TableHead className="font-semibold text-foreground py-2.5 px-2">
                     Style ID & Name
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground">
+                  <TableHead className="font-semibold text-foreground py-2.5 px-2">
                     Customer
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground">
+                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-right">
                     Order Qty
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground">
+                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-right">
                     Order FOB
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground">
+                  <TableHead className="font-semibold text-foreground py-2.5 px-1.5 text-center">
                     Stage
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground text-right">
+                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-right">
                     EBITDA / Min
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground text-right">
+                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-right">
                     Net Profit/Pc
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground text-right">
+                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-right">
                     Net Profit %
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground text-right w-24">
+                  <TableHead className="font-semibold text-foreground py-2.5 pr-3 text-right">
                     Actions
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredSheets.map((sheet) => {
-                  const profitPct = sheet.calculations.netProfitPct * 100;
+                  const calcs = sheet.calculations || {};
+                  const ebitdaMinCents = typeof calcs.ebitdaMinCents === "number" && !isNaN(calcs.ebitdaMinCents) ? calcs.ebitdaMinCents : 0;
+                  const netProfitUSD = typeof calcs.netProfitUSD === "number" && !isNaN(calcs.netProfitUSD) ? calcs.netProfitUSD : 0;
+                  const netProfitPct = typeof calcs.netProfitPct === "number" && !isNaN(calcs.netProfitPct) ? calcs.netProfitPct : 0;
+                  const profitPct = netProfitPct * 100;
                   const isProfitPositive = profitPct >= 0;
+                  const orderFOB = typeof sheet.orderFOB === "number" && !isNaN(sheet.orderFOB) ? sheet.orderFOB : 0;
+                  const orderQuantity = typeof sheet.orderQuantity === "number" && !isNaN(sheet.orderQuantity) ? sheet.orderQuantity : 0;
+
+                  const formattedProfitUSD = netProfitUSD >= 0
+                    ? `$${netProfitUSD.toFixed(2)}`
+                    : `-$${Math.abs(netProfitUSD).toFixed(2)}`;
+
+                  const formattedEbitda = ebitdaMinCents >= 0
+                    ? `${ebitdaMinCents.toFixed(2)}¢`
+                    : `-${Math.abs(ebitdaMinCents).toFixed(2)}¢`;
+
                   return (
                     <TableRow
                       key={sheet.id}
@@ -276,56 +262,56 @@ export default function SavedCostSheetsPage() {
                         router.push(`/cost-sheet?costSheetId=${sheet.id}`)
                       }
                     >
-                      <TableCell className="font-mono text-xs font-semibold text-primary">
+                      <TableCell className="font-mono text-[11px] font-semibold text-primary py-2.5 pl-3">
                         {sheet.id}
                       </TableCell>
-                      <TableCell className="font-semibold text-foreground text-xs">
+                      <TableCell className="font-semibold text-foreground text-xs py-2.5 px-2">
                         {sheet.referenceName}
                       </TableCell>
-                      <TableCell className="text-xs">
-                        <span className="font-semibold text-primary block">
+                      <TableCell className="text-xs py-2.5 px-2">
+                        <span className="font-semibold text-primary block text-[11px]">
                           {sheet.styleId}
                         </span>
-                        <span className="text-muted-foreground">
+                        <span className="text-muted-foreground text-[10px] block truncate max-w-[150px]" title={sheet.styleName}>
                           {sheet.styleName}
                         </span>
                       </TableCell>
-                      <TableCell className="text-xs font-medium">
+                      <TableCell className="text-xs font-medium py-2.5 px-2">
                         {sheet.customerName}
                       </TableCell>
-                      <TableCell className="text-xs font-semibold text-muted-foreground">
-                        {sheet.orderQuantity.toLocaleString()} pcs
+                      <TableCell className="text-xs font-semibold text-muted-foreground text-right py-2.5 px-2">
+                        {orderQuantity.toLocaleString()} pcs
                       </TableCell>
-                      <TableCell className="text-xs font-bold text-foreground">
-                        ${sheet.orderFOB.toFixed(2)}
+                      <TableCell className="text-xs font-bold text-foreground text-right py-2.5 px-2">
+                        ${orderFOB.toFixed(2)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center py-2.5 px-1.5">
                         <Badge
                           variant={
                             sheet.costingStage === "Final"
                               ? "secondary"
                               : "outline"
                           }
-                          className="text-[10px] font-bold"
+                          className="text-[9px] px-1.5 py-0 font-bold"
                         >
                           {sheet.costingStage}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right text-xs font-semibold">
-                        {sheet.calculations.ebitdaMinCents.toFixed(2)}¢
+                      <TableCell className="text-right text-xs font-semibold py-2.5 px-2">
+                        {formattedEbitda}
                       </TableCell>
                       <TableCell
-                        className={`text-right text-xs font-bold ${isProfitPositive ? "text-emerald-700" : "text-red-600"}`}
+                        className={`text-right text-xs font-bold py-2.5 px-2 ${isProfitPositive ? "text-emerald-700" : "text-red-600"}`}
                       >
-                        ${sheet.calculations.netProfitUSD.toFixed(2)}
+                        {formattedProfitUSD}
                       </TableCell>
                       <TableCell
-                        className={`text-right text-xs font-extrabold ${isProfitPositive ? "text-emerald-700" : "text-red-600"}`}
+                        className={`text-right text-xs font-extrabold py-2.5 px-2 ${isProfitPositive ? "text-emerald-700" : "text-red-600"}`}
                       >
                         {profitPct.toFixed(2)}%
                       </TableCell>
                       <TableCell
-                        className="text-right"
+                        className="text-right py-2.5 pr-3"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="flex justify-end gap-1">
