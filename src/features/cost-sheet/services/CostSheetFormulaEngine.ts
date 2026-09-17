@@ -659,7 +659,7 @@ export function runFormulaEngine(
   const targetCmSmvCents = smv > 0 ? (targetCmUSD * (efficiency / smv)) * 100 : 0;
   const targetNetProfitUSD = targetFobUSD * 0.10;
   const orderCmSmvCents = cmMinuteUSD;
-
+ 
   const ebitdaMinCents = smv > 0 && (1 + rejectionPct) !== 0 ? (ebitdaUSD * efficiency / smv) / (1 + rejectionPct) * 100 : 0;
   const ebitdaPcUSD = ebitdaUSD;
   const netProfitMinCents = smv > 0 ? (netProfitUSD * efficiency / smv) * 100 : 0;
