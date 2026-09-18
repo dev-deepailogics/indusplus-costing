@@ -19,10 +19,10 @@ export function CostSheetProcessesSection({ results }: CostSheetProcessesSection
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Variable Costs Table */}
-      <Card className="shadow-xs border-muted/70">
-        <CardHeader className="py-3 px-4 bg-muted/20 border-b flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-bold">4. Variable Costs &amp; CM</CardTitle>
-          <span className="text-xs font-semibold text-primary">
+      <Card className="shadow-xs border-muted/70 overflow-hidden">
+        <CardHeader className="py-3 px-4 bg-slate-800 dark:bg-slate-900 border-b border-slate-700 flex flex-row items-center justify-between text-white">
+          <CardTitle className="text-sm font-bold text-white">4. Variable Costs &amp; CM</CardTitle>
+          <span className="text-xs font-semibold text-slate-200">
             CM: ${results.cmUSD.toFixed(2)} ({results.cmMinuteUSD.toFixed(2)}¢/min)
           </span>
         </CardHeader>
@@ -85,10 +85,10 @@ export function CostSheetProcessesSection({ results }: CostSheetProcessesSection
       </Card>
 
       {/* Fixed Overheads Table */}
-      <Card className="shadow-xs border-muted/70">
-        <CardHeader className="py-3 px-4 bg-muted/20 border-b flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-bold">5. Factory Overheads (FOH) &amp; EBITDA</CardTitle>
-          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+      <Card className="shadow-xs border-muted/70 overflow-hidden">
+        <CardHeader className="py-3 px-4 bg-slate-800 dark:bg-slate-900 border-b border-slate-700 flex flex-row items-center justify-between text-white">
+          <CardTitle className="text-sm font-bold text-white">5. Factory Overheads (FOH) &amp; EBITDA</CardTitle>
+          <span className="text-xs font-semibold text-emerald-400">
             EBITDA: ${results.ebitdaUSD.toFixed(2)}
           </span>
         </CardHeader>

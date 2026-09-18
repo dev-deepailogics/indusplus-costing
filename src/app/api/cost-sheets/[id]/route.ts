@@ -7,6 +7,14 @@ import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 // ---------------------------------------------------------------------------
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToItem(row: Record<string, any>): SavedCostSheetItem {
+  const calcs = JSON.parse(row.calculations || "{}");
+  const effectiveRejection =
+    row.rejection_pct !== null && row.rejection_pct !== undefined
+      ? row.rejection_pct
+      : row.rejection_override !== null && row.rejection_override !== undefined
+      ? row.rejection_override
+      : calcs.rejectionPct ?? null;
+
   return {
     id: row.id,
     referenceName: row.reference_name,
@@ -18,6 +26,9 @@ function rowToItem(row: Record<string, any>): SavedCostSheetItem {
     smvSewing: row.smv_sewing,
     orderType: row.order_type,
     washType: row.wash_type,
+    directLabourFohSnapshot: row.direct_labour_foh_snapshot
+      ? JSON.parse(row.direct_labour_foh_snapshot)
+      : undefined,
     costingDate: row.costing_date,
     costingStage: row.costing_stage,
     country: row.country,
@@ -28,7 +39,8 @@ function rowToItem(row: Record<string, any>): SavedCostSheetItem {
     parityProcurement: row.parity_procurement,
     manpower: row.manpower,
     efficiencyOverride: row.efficiency_override ?? null,
-    rejectionOverride: row.rejection_override ?? null,
+    rejectionOverride: row.rejection_override ?? effectiveRejection,
+    rejectionPct: effectiveRejection,
     lineTargetOverride: row.line_target_override ?? null,
     discountRate: row.discount_rate,
     paymentTermsDays: row.payment_terms_days,
@@ -54,7 +66,7 @@ function rowToItem(row: Record<string, any>): SavedCostSheetItem {
     bomAccessories: JSON.parse(row.bom_accessories || "[]"),
     bomChemicals: JSON.parse(row.bom_chemicals || "[]"),
     bomSpecialCharges: JSON.parse(row.bom_special_charges || "[]"),
-    calculations: JSON.parse(row.calculations || "{}"),
+    calculations: calcs,
     savedAt: row.saved_at,
   };
 }
@@ -127,6 +139,10 @@ async function ensureTable(pool: Awaited<ReturnType<typeof getPool>>) {
       ALTER TABLE pre_order_cost_sheets ADD inland_freight_pct FLOAT NULL;
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'local_bank_charges_pct')
       ALTER TABLE pre_order_cost_sheets ADD local_bank_charges_pct FLOAT NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'rejection_pct')
+      ALTER TABLE pre_order_cost_sheets ADD rejection_pct FLOAT NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'direct_labour_foh_snapshot')
+      ALTER TABLE pre_order_cost_sheets ADD direct_labour_foh_snapshot NVARCHAR(MAX) NULL;
   `);
   isTableEnsured = true;
 }
@@ -149,10 +165,11 @@ export async function GET(
       .query("SELECT * FROM pre_order_cost_sheets WHERE id = @id");
 
     if (result.recordset.length === 0) {
-      return Response.json({ error: "Not found" }, { status: 404 });
+      return Response.json({ error: "Cost sheet not found" }, { status: 404 });
     }
 
-    return Response.json(rowToItem(result.recordset[0]));
+    const item = rowToItem(result.recordset[0]);
+    return Response.json(item);
   } catch (err) {
     console.error("[GET /api/cost-sheets/[id]]", err);
     return Response.json(
@@ -163,7 +180,7 @@ export async function GET(
 }
 
 // ---------------------------------------------------------------------------
-// PUT /api/cost-sheets/[id]  — full update of existing cost sheet
+// PUT /api/cost-sheets/[id]  — update an existing cost sheet
 // ---------------------------------------------------------------------------
 export async function PUT(
   request: NextRequest,
@@ -174,6 +191,11 @@ export async function PUT(
     const item: SavedCostSheetItem = await request.json();
     const pool = await getPool();
     await ensureTable(pool);
+
+    const effectiveRejection =
+      item.rejectionPct ??
+      item.rejectionOverride ??
+      (item.calculations?.rejectionPct ?? null);
 
     await pool
       .request()
@@ -197,7 +219,8 @@ export async function PUT(
       .input("parity_procurement", item.parityProcurement)
       .input("manpower", item.manpower)
       .input("efficiency_override", item.efficiencyOverride ?? null)
-      .input("rejection_override", item.rejectionOverride ?? null)
+      .input("rejection_override", item.rejectionOverride ?? effectiveRejection)
+      .input("rejection_pct", effectiveRejection)
       .input("line_target_override", item.lineTargetOverride ?? null)
       .input("discount_rate", item.discountRate)
       .input("payment_terms_days", item.paymentTermsDays)
@@ -223,6 +246,7 @@ export async function PUT(
       .input("bom_accessories", JSON.stringify(item.bomAccessories || []))
       .input("bom_chemicals", JSON.stringify(item.bomChemicals || []))
       .input("bom_special_charges", JSON.stringify(item.bomSpecialCharges || []))
+      .input("direct_labour_foh_snapshot", item.directLabourFohSnapshot ? JSON.stringify(item.directLabourFohSnapshot) : null)
       .input("calculations", JSON.stringify(item.calculations || {}))
       .input("saved_at", item.savedAt)
       .query(`
@@ -247,6 +271,7 @@ export async function PUT(
           manpower               = @manpower,
           efficiency_override    = @efficiency_override,
           rejection_override     = @rejection_override,
+          rejection_pct          = @rejection_pct,
           line_target_override   = @line_target_override,
           discount_rate          = @discount_rate,
           payment_terms_days     = @payment_terms_days,
@@ -272,6 +297,7 @@ export async function PUT(
           bom_accessories        = @bom_accessories,
           bom_chemicals          = @bom_chemicals,
           bom_special_charges    = @bom_special_charges,
+          direct_labour_foh_snapshot = @direct_labour_foh_snapshot,
           calculations           = @calculations,
           saved_at               = @saved_at
         WHERE id = @id

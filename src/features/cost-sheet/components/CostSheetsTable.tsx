@@ -1,5 +1,5 @@
 import { useRouter } from "next/navigation";
-import { ArrowRight, Trash2 } from "lucide-react";
+import { Eye, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -62,7 +62,7 @@ export function CostSheetsTable({
                   <TableRow
                     key={sheet.id}
                     className="hover:bg-muted/20 cursor-pointer"
-                    onClick={() => router.push(`/cost-sheet?costSheetId=${sheet.id}`)}
+                    onClick={() => router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=view`)}
                   >
                     <TableCell className="font-medium text-xs text-primary font-mono">
                       {sheet.id}
@@ -102,11 +102,20 @@ export function CostSheetsTable({
                         <Button
                           variant="outline"
                           size="icon"
-                          className="size-8 text-blue-600 border-blue-200 bg-blue-50/50 hover:bg-blue-50"
-                          onClick={() => router.push(`/cost-sheet?costSheetId=${sheet.id}`)}
-                          title="Open Cost Sheet"
+                          className="size-8 text-sky-600 border-sky-200 bg-sky-50/50 hover:bg-sky-50"
+                          onClick={() => router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=view`)}
+                          title="View Cost Sheet (Read-Only)"
                         >
-                          <ArrowRight className="size-4" />
+                          <Eye className="size-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="size-8 text-emerald-600 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50"
+                          onClick={() => router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=edit`)}
+                          title="Edit Cost Sheet"
+                        >
+                          <Pencil className="size-4" />
                         </Button>
                         <Button
                           variant="outline"

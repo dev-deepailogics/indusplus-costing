@@ -32,6 +32,7 @@ BEGIN
         manpower              INT            NOT NULL DEFAULT 0,
         efficiency_override   FLOAT          NULL,
         rejection_override    FLOAT          NULL,
+        rejection_pct         FLOAT          NULL,
         line_target_override  FLOAT          NULL,
 
         -- Financial Parameters
@@ -62,6 +63,9 @@ BEGIN
         bom_chemicals         NVARCHAR(MAX)  NOT NULL DEFAULT '[]',
         bom_special_charges   NVARCHAR(MAX)  NOT NULL DEFAULT '[]',
 
+        -- Direct Labour & FOH parameters active card snapshot (JSON)
+        direct_labour_foh_snapshot NVARCHAR(MAX) NULL,
+
         -- Calculated KPIs snapshot (JSON)
         calculations          NVARCHAR(MAX)  NOT NULL DEFAULT '{}',
 
@@ -71,6 +75,10 @@ BEGIN
     CREATE INDEX IX_pcs_style_id ON pre_order_cost_sheets (style_id);
     CREATE INDEX IX_pcs_saved_at ON pre_order_cost_sheets (saved_at DESC);
 END
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'direct_labour_foh_snapshot')
+    ALTER TABLE pre_order_cost_sheets ADD direct_labour_foh_snapshot NVARCHAR(MAX) NULL;
+
 
 -- ---------------------------------------------------------------------------
 -- PARAMETER TABLES

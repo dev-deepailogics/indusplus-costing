@@ -237,6 +237,13 @@ export function useCostSheetFacade() {
         if (sheet) {
           setLoadedCostSheet(sheet);
 
+          const savedRejection =
+            sheet.rejectionPct !== null && sheet.rejectionPct !== undefined
+              ? sheet.rejectionPct
+              : sheet.rejectionOverride !== null && sheet.rejectionOverride !== undefined
+              ? sheet.rejectionOverride
+              : sheet.calculations?.rejectionPct ?? 0.0415;
+
           const styleFromSheet: StyleMasterItem = {
             id: sheet.styleId,
             styleName: sheet.styleName,
@@ -248,7 +255,7 @@ export function useCostSheetFacade() {
             washType: sheet.washType,
             sizeBracket: sheet.calculations.sizeBracket,
             targetEfficiency: sheet.calculations.efficiency,
-            rejectionPct: sheet.calculations.rejectionPct,
+            rejectionPct: savedRejection,
             baseSellingPrice: sheet.orderFOB,
             bomFabric: sheet.bomFabric || [],
             bomLining: sheet.bomLining || [],
@@ -274,7 +281,11 @@ export function useCostSheetFacade() {
             sheet.efficiencyOverride !== null ? (sheet.efficiencyOverride * 100).toString() : ""
           );
           setRejectionOverride(
-            sheet.rejectionOverride !== null ? (sheet.rejectionOverride * 100).toString() : ""
+            sheet.rejectionOverride !== null
+              ? (sheet.rejectionOverride * 100).toString()
+              : sheet.rejectionPct !== null && sheet.rejectionPct !== undefined
+              ? (sheet.rejectionPct * 100).toString()
+              : (savedRejection * 100).toString()
           );
           setLineTargetOverride(
             sheet.lineTargetOverride !== null ? sheet.lineTargetOverride.toString() : ""
@@ -312,6 +323,7 @@ export function useCostSheetFacade() {
     const effOverrideVal = efficiencyOverride ? parseFloat(efficiencyOverride) / 100 : null;
     const rejOverrideVal = rejectionOverride ? parseFloat(rejectionOverride) / 100 : null;
     const targetOverrideVal = lineTargetOverride ? parseFloat(lineTargetOverride) : null;
+    const effectiveDLF = loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh;
 
     return runFormulaEngine(
       activeStyle,
@@ -337,7 +349,7 @@ export function useCostSheetFacade() {
         rebatePct: rebatePct / 100,
       },
       {
-        directLabourFoh,
+        directLabourFoh: effectiveDLF,
         cutToShipGrid,
         rejectionGrid,
         stylesCategoryGrid: stylesGrid,
@@ -367,6 +379,7 @@ export function useCostSheetFacade() {
     cutToShipGrid,
     rejectionGrid,
     stylesGrid,
+    loadedCostSheet,
   ]);
 
   // Handle Style Selection
@@ -417,14 +430,19 @@ export function useCostSheetFacade() {
               };
             });
 
-            const bomAccessories: BOMAccessoriesItem[] = (data.accessories || []).map((a) => ({
-              category: a.category,
-              itemName: a.itemName,
-              consPerPc: a.consumption || 0,
-              ratePKR: a.ratePKR || 0,
-              rateUSD: parityProcurement > 0 ? (a.ratePKR || 0) / parityProcurement : 0,
-              totalCostPKR: (a.consumption || 0) * (a.ratePKR || 0),
-            }));
+            const bomAccessories: BOMAccessoriesItem[] = (data.accessories || [])
+              .map((a) => ({
+                category: a.category,
+                itemName: a.itemName,
+                consPerPc: a.consumption || 0,
+                ratePKR: a.ratePKR || 0,
+                rateUSD: parityProcurement > 0 ? (a.ratePKR || 0) / parityProcurement : 0,
+                totalCostPKR: (a.consumption || 0) * (a.ratePKR || 0),
+              }))
+              .sort((a, b) =>
+                (a.category || "").localeCompare(b.category || "", undefined, { sensitivity: "base" }) ||
+                (a.itemName || "").localeCompare(b.itemName || "", undefined, { sensitivity: "base" })
+              );
 
             const loadedStyle: StyleMasterItem = {
               id: indusItem.styleCode,
@@ -489,6 +507,7 @@ export function useCostSheetFacade() {
       const effOverrideVal = efficiencyOverride ? parseFloat(efficiencyOverride) / 100 : null;
       const rejOverrideVal = rejectionOverride ? parseFloat(rejectionOverride) / 100 : null;
       const lineTargetOverrideVal = lineTargetOverride ? parseFloat(lineTargetOverride) : null;
+      const effectiveRejection = rejOverrideVal !== null ? rejOverrideVal : results.rejectionPct;
 
       const costSheetItem: SavedCostSheetItem = {
         id: sheetId,
@@ -513,7 +532,8 @@ export function useCostSheetFacade() {
 
         manpower,
         efficiencyOverride: effOverrideVal,
-        rejectionOverride: rejOverrideVal,
+        rejectionOverride: effectiveRejection,
+        rejectionPct: effectiveRejection,
         lineTargetOverride: lineTargetOverrideVal,
 
         discountRate,
@@ -541,6 +561,8 @@ export function useCostSheetFacade() {
         bomAccessories: activeStyle.bomAccessories,
         bomChemicals: activeStyle.bomChemicals,
         bomSpecialCharges: activeStyle.bomSpecialCharges,
+
+        directLabourFohSnapshot: loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh ?? null,
 
         calculations: {
           targetFobUSD: results.targetFobUSD,

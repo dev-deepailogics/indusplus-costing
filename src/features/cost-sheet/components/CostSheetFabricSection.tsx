@@ -50,14 +50,14 @@ export function CostSheetFabricSection({
   const totalFabricPct = netPriceUSD > 0 ? (totalFabricUSD / netPriceUSD) * 100 : 0;
 
   return (
-    <Card className="shadow-xs border-muted/70">
-      <CardHeader className="py-3 px-4 bg-muted/20 border-b flex flex-row items-center justify-between">
-        <CardTitle className="text-sm font-bold">1. Fabric Requirements (BOM)</CardTitle>
+    <Card className="shadow-xs border-muted/70 overflow-hidden">
+      <CardHeader className="py-3 px-4 bg-slate-800 dark:bg-slate-900 border-b border-slate-700 flex flex-row items-center justify-between text-white">
+        <CardTitle className="text-sm font-bold text-white">1. Fabric Requirements (BOM)</CardTitle>
         <div className="flex items-center gap-3 text-xs font-semibold">
           <span>
-            Total: <strong>Rs. {totalFabricPKR.toFixed(1)}</strong> (${totalFabricUSD.toFixed(2)})
+            Total: <strong className="text-white">Rs. {totalFabricPKR.toFixed(1)}</strong> (${totalFabricUSD.toFixed(2)})
           </span>
-          <span className="text-muted-foreground font-mono">({totalFabricPct.toFixed(1)}%)</span>
+          <span className="text-slate-300 font-mono">({totalFabricPct.toFixed(1)}%)</span>
         </div>
       </CardHeader>
       <CardContent className="p-0">

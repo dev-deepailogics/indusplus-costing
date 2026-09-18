@@ -14,6 +14,8 @@ import {
   Plus,
   X,
   AlertTriangle,
+  Eye,
+  Pencil,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -104,7 +106,10 @@ function ensureStyleBOMDefaults(style: StyleMasterItem): StyleMasterItem {
     ...style,
     bomFabric: style.bomFabric || [],
     bomLining: style.bomLining || [],
-    bomAccessories: style.bomAccessories || [],
+    bomAccessories: (style.bomAccessories || []).slice().sort((a, b) =>
+      (a.category || "").localeCompare(b.category || "", undefined, { sensitivity: "base" }) ||
+      (a.itemName || "").localeCompare(b.itemName || "", undefined, { sensitivity: "base" })
+    ),
     bomChemicals: style.bomChemicals || [],
     bomSpecialCharges: style.bomSpecialCharges || [],
   };
@@ -168,7 +173,10 @@ function mapIndusBOMToStyle(bom: IndusBOMData, parityProc = 278) {
       });
     }
   }
-  const bomAccessories = Array.from(accMap.values());
+  const bomAccessories = Array.from(accMap.values()).sort((a, b) =>
+    (a.category || "").localeCompare(b.category || "", undefined, { sensitivity: "base" }) ||
+    (a.itemName || "").localeCompare(b.itemName || "", undefined, { sensitivity: "base" })
+  );
 
   return {
     bomFabric,
@@ -185,6 +193,28 @@ function CostSheetContent() {
   const searchParams = useSearchParams();
   const styleIdParam = searchParams.get("styleId");
   const costSheetIdParam = searchParams.get("costSheetId");
+  const modeParam = searchParams.get("mode");
+
+  // Read-only / View vs Edit mode state
+  const [isReadOnly, setIsReadOnly] = useState<boolean>(() => modeParam === "view");
+
+  useEffect(() => {
+    if (modeParam === "view") {
+      setIsReadOnly(true);
+    } else if (modeParam === "edit") {
+      setIsReadOnly(false);
+    }
+  }, [modeParam]);
+
+  const enableEditMode = () => {
+    setIsReadOnly(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("mode", "edit");
+      window.history.replaceState({}, "", url.toString());
+    }
+    toast.info("Edit mode enabled. Fields are now editable.");
+  };
 
   // Snapshot States
   const [loadedCostSheet, setLoadedCostSheet] =
@@ -618,6 +648,13 @@ function CostSheetContent() {
         if (sheet) {
           setLoadedCostSheet(sheet);
 
+          const savedRejection =
+            sheet.rejectionPct !== null && sheet.rejectionPct !== undefined
+              ? sheet.rejectionPct
+              : sheet.rejectionOverride !== null && sheet.rejectionOverride !== undefined
+              ? sheet.rejectionOverride
+              : sheet.calculations?.rejectionPct ?? 0.0415;
+
           // Reconstruct activeStyle from snapshot
           const styleFromSheet: StyleMasterItem = {
             id: sheet.styleId,
@@ -630,7 +667,7 @@ function CostSheetContent() {
             washType: sheet.washType,
             sizeBracket: sheet.calculations.sizeBracket,
             targetEfficiency: sheet.calculations.efficiency,
-            rejectionPct: sheet.calculations.rejectionPct,
+            rejectionPct: savedRejection,
             baseSellingPrice: sheet.orderFOB,
             bomFabric: sheet.bomFabric || [],
             bomLining: sheet.bomLining || [],
@@ -661,7 +698,9 @@ function CostSheetContent() {
           setRejectionOverride(
             sheet.rejectionOverride !== null && sheet.rejectionOverride !== undefined
               ? parseFloat((sheet.rejectionOverride * 100).toFixed(4)).toString()
-              : "",
+              : sheet.rejectionPct !== null && sheet.rejectionPct !== undefined
+              ? parseFloat((sheet.rejectionPct * 100).toFixed(4)).toString()
+              : parseFloat((savedRejection * 100).toFixed(4)).toString(),
           );
           setLineTargetOverride(
             sheet.lineTargetOverride !== null && sheet.lineTargetOverride !== undefined
@@ -739,13 +778,13 @@ function CostSheetContent() {
               : styleFromSheet.smvSewing?.toString() || "",
           );
           setNoOfColors(sheet.noOfColors !== undefined ? sheet.noOfColors : 1);
-          setMerchGroup(sheet.merchGroup || "Ayaz");
+          setMerchGroup(sheet.merchGroup || "");
           setWorkOrderNumber(sheet.workOrderNumber || "");
-          setDeliveryDestination(sheet.deliveryDestination || "EURO");
+          setDeliveryDestination(sheet.deliveryDestination || "");
           setExFactoryDate(
             sheet.exFactoryDate || new Date().toISOString().split("T")[0],
           );
-          setInhouseOrSubcontract(sheet.inhouseOrSubcontract || "INHOUSE");
+          setInhouseOrSubcontract(sheet.inhouseOrSubcontract || "");
         } else {
           toast.error("Saved Cost Sheet not found");
         }
@@ -792,14 +831,14 @@ function CostSheetContent() {
           activeStyle.smvSewing ? activeStyle.smvSewing.toString() : ""
         );
         setNoOfColors(1);
-        setMerchGroup("Ayaz");
-        setDeliveryDestination("EURO");
+        setMerchGroup("");
+        setDeliveryDestination("");
         setExFactoryDate(() => {
           const d = new Date();
           d.setMonth(d.getMonth() + 3);
           return d.toISOString().split("T")[0];
         });
-        setInhouseOrSubcontract("INHOUSE");
+        setInhouseOrSubcontract("");
         setRebateInput("0");
       });
     }
@@ -1210,6 +1249,11 @@ function CostSheetContent() {
 
     setIsSaving(true);
     const nextId = await getNextCostSheetId(activeStyle.id);
+    const effRejection =
+      rejectionOverride !== ""
+        ? parseFloat(rejectionOverride) / 100
+        : calcs.rejectionPct;
+
     const snapshot: SavedCostSheetItem = {
       id: nextId,
       referenceName: name,
@@ -1240,8 +1284,8 @@ function CostSheetContent() {
       manpower,
       efficiencyOverride:
         efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
-      rejectionOverride:
-        rejectionOverride !== "" ? parseFloat(rejectionOverride) / 100 : null,
+      rejectionOverride: effRejection,
+      rejectionPct: effRejection,
       lineTargetOverride:
         lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
 
@@ -1277,6 +1321,8 @@ function CostSheetContent() {
       bomAccessories: activeStyle.bomAccessories,
       bomChemicals: activeStyle.bomChemicals,
       bomSpecialCharges: activeStyle.bomSpecialCharges,
+
+      directLabourFohSnapshot: loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh ?? null,
 
       calculations: {
         targetFobUSD: calcs.targetFobUSD,
@@ -1322,6 +1368,11 @@ function CostSheetContent() {
       return;
     }
 
+    const effRejection =
+      rejectionOverride !== ""
+        ? parseFloat(rejectionOverride) / 100
+        : calcs.rejectionPct;
+
     const snapshot: SavedCostSheetItem = {
       ...loadedCostSheet,
       customerName,
@@ -1348,8 +1399,8 @@ function CostSheetContent() {
       manpower,
       efficiencyOverride:
         efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
-      rejectionOverride:
-        rejectionOverride !== "" ? parseFloat(rejectionOverride) / 100 : null,
+      rejectionOverride: effRejection,
+      rejectionPct: effRejection,
       lineTargetOverride:
         lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
 
@@ -1385,6 +1436,8 @@ function CostSheetContent() {
       bomAccessories: activeStyle.bomAccessories,
       bomChemicals: activeStyle.bomChemicals,
       bomSpecialCharges: activeStyle.bomSpecialCharges,
+
+      directLabourFohSnapshot: loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh ?? null,
 
       calculations: {
         targetFobUSD: calcs.targetFobUSD,
@@ -1452,6 +1505,8 @@ function CostSheetContent() {
       smvSewing: parseFloat(smvSewingInput) || activeStyle.smvSewing,
     };
 
+    const effectiveDLF = loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh;
+
     return runFormulaEngine(
       overriddenStyle,
       {
@@ -1476,7 +1531,7 @@ function CostSheetContent() {
         rebatePct: (parseFloat(rebateInput) || 0) / 100,
       },
       {
-        directLabourFoh,
+        directLabourFoh: effectiveDLF,
         cutToShipGrid,
         rejectionGrid,
         stylesCategoryGrid,
@@ -1516,6 +1571,7 @@ function CostSheetContent() {
     rejectionGrid,
     stylesCategoryGrid,
     smvSewingInput,
+    loadedCostSheet,
   ]);
 
   if (loadingStyles || !activeStyle || !calcs) {
@@ -1559,7 +1615,16 @@ function CostSheetContent() {
                 Snapshot: {loadedCostSheet.id} ({loadedCostSheet.referenceName})
               </Badge>
             )}
-            {isDirty && (
+            {isReadOnly && (
+              <Badge
+                variant="outline"
+                className="text-xs border-amber-300 bg-amber-50 text-amber-900 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm"
+              >
+                <Eye className="size-3.5 text-amber-700" />
+                View Mode (Read-Only)
+              </Badge>
+            )}
+            {isDirty && !isReadOnly && (
               <Badge
                 variant="outline"
                 className="text-xs border-amber-300 bg-amber-50 text-amber-800 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm"
@@ -1575,7 +1640,15 @@ function CostSheetContent() {
           </p>
         </div>
         <div className="flex items-center gap-2 print:hidden">
-          {loadedCostSheet ? (
+          {isReadOnly ? (
+            <Button
+              size="sm"
+              onClick={enableEditMode}
+              className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm px-4 flex items-center gap-1.5"
+            >
+              <Pencil className="size-4" /> Edit Cost Sheet
+            </Button>
+          ) : loadedCostSheet ? (
             <>
               <Button
                 size="sm"
@@ -1623,11 +1696,45 @@ function CostSheetContent() {
             <Printer className="mr-1.5 size-4" /> Print
           </Button>
         </div>
-      </div>{" "}
+      </div>
+
+      {/* View Mode Warning Banner */}
+      {isReadOnly && (
+        <div className="bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded-xl p-3.5 px-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
+              <Eye className="size-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-amber-900 dark:text-amber-200 text-sm">
+                  View Mode (Read-Only)
+                </span>
+                <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-800 dark:text-amber-300 bg-amber-100/60 py-0">
+                  Locked
+                </Badge>
+              </div>
+              <p className="text-xs text-amber-700/90 dark:text-amber-400 mt-0.5">
+                This cost sheet is opened for viewing. Click &quot;Edit Cost Sheet&quot; to enable editing of all fields and BOM items.
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={enableEditMode}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 px-4 shadow-sm flex items-center gap-1.5 shrink-0"
+          >
+            <Pencil className="size-3.5" /> Edit Cost Sheet
+          </Button>
+        </div>
+      )}
+
+      {/* MAIN COST SHEET EDITABLE BODY (Disabled when isReadOnly) */}
+      <fieldset disabled={isReadOnly} className="space-y-6 border-0 p-0 m-0 min-w-0">
       {/* ZONE 1: 4-COLUMN PARAMETERS SPREADSHEET LAYOUT */}
-      <Card className="shadow-sm border-slate-200/85 bg-white dark:bg-slate-900 overflow-visible">
-        <div className="bg-blue-50/50 dark:bg-slate-800/45 px-4 py-2.5 border-b border-slate-200/80 rounded-t-xl">
-          <h2 className="text-xs font-bold text-blue-900/85 dark:text-blue-300 uppercase tracking-wider">
+      <Card className="shadow-sm border-slate-200/85 bg-white dark:bg-slate-900 overflow-hidden py-0 gap-0">
+        <div className="bg-slate-800 dark:bg-slate-900 px-4 py-2.5 border-b border-slate-700">
+          <h2 className="text-xs font-bold text-white uppercase tracking-wider">
             📊 Pre-Order Cost Sheet Header
           </h2>
         </div>
@@ -2471,12 +2578,12 @@ function CostSheetContent() {
       {/* ZONE 3: SPLIT PANEL VIEW */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         {/* LEFT PANEL: FINANCIAL SUMMARY TABLE */}
-        <Card className="lg:col-span-5 shadow-sm border-muted/60 bg-card overflow-hidden">
-          <div className="bg-muted/40 px-3.5 py-2 border-b flex justify-between items-center">
-            <h2 className="text-xs font-bold flex items-center gap-1.5 text-foreground">
-              <Calculator className="size-3.5 text-primary" /> Cost &amp; Profitability Summary
+        <Card className="lg:col-span-5 shadow-sm border-muted/60 bg-card overflow-hidden py-0 gap-0">
+          <div className="bg-slate-800 dark:bg-slate-900 px-3.5 py-2 border-b border-slate-700 flex justify-between items-center">
+            <h2 className="text-xs font-bold flex items-center gap-1.5 text-white">
+              <Calculator className="size-3.5 text-slate-200" /> Cost &amp; Profitability Summary
             </h2>
-            <span className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 font-semibold px-2 py-0.5 rounded-full">
+            <span className="text-xs bg-slate-700 text-slate-100 dark:bg-slate-800 dark:text-slate-200 font-semibold px-2 py-0.5 rounded-full border border-slate-600/60">
               Per Pc Calculations
             </span>
           </div>
@@ -3001,10 +3108,10 @@ function CostSheetContent() {
         {/* RIGHT PANEL: DETAILED INTERACTIVE BOM & EXPENSE TABLES */}
         <div className="lg:col-span-7 space-y-4">
           {/* FABRIC BOM */}
-          <Card className="shadow-sm border-muted/60 bg-card overflow-hidden">
-            <div className="bg-muted/40 px-3.5 py-2 border-b flex justify-between items-center">
-              <h2 className="text-xs font-bold flex items-center gap-1.5 text-foreground">
-                <Layers className="size-3.5 text-primary" /> Fabric Details (PKR Input)
+          <Card className="shadow-sm border-muted/60 bg-card overflow-hidden py-0 gap-0">
+            <div className="bg-slate-800 dark:bg-slate-900 px-3.5 py-2 border-b border-slate-700 flex justify-between items-center">
+              <h2 className="text-xs font-bold flex items-center gap-1.5 text-white">
+                <Layers className="size-3.5 text-slate-200" /> Fabric Details (PKR Input)
               </h2>
             </div>
             <CardContent className="p-0 text-xs">
@@ -3206,10 +3313,10 @@ function CostSheetContent() {
           </Card>
 
           {/* POCKET LINING BOM */}
-          <Card className="shadow-sm border-muted/60 bg-card overflow-hidden">
-            <div className="bg-muted/40 px-3.5 py-2 border-b flex justify-between items-center">
-              <h2 className="text-xs font-bold flex items-center gap-1.5 text-foreground">
-                <Layers className="size-3.5 text-primary" /> Pocket Lining Details (PKR Input)
+          <Card className="shadow-sm border-muted/60 bg-card overflow-hidden py-0 gap-0">
+            <div className="bg-slate-800 dark:bg-slate-900 px-3.5 py-2 border-b border-slate-700 flex justify-between items-center">
+              <h2 className="text-xs font-bold flex items-center gap-1.5 text-white">
+                <Layers className="size-3.5 text-slate-200" /> Pocket Lining Details (PKR Input)
               </h2>
             </div>
             <CardContent className="p-0 text-xs">
@@ -3411,10 +3518,10 @@ function CostSheetContent() {
           </Card>
 
           {/* ACCESSORIES, CHEMICALS, & SPECIAL CHARGES */}
-          <Card className="shadow-sm border-muted/60 bg-card overflow-hidden">
-            <div className="bg-muted/40 px-3.5 py-2 border-b flex justify-between items-center">
-              <h2 className="text-xs font-bold flex items-center gap-1.5 text-foreground">
-                <Layers className="size-3.5 text-primary" /> Trims, Chemicals &amp; Special Charges (PKR Input)
+          <Card className="shadow-sm border-muted/60 bg-card overflow-hidden py-0 gap-0">
+            <div className="bg-slate-800 dark:bg-slate-900 px-3.5 py-2 border-b border-slate-700 flex justify-between items-center">
+              <h2 className="text-xs font-bold flex items-center gap-1.5 text-white">
+                <Layers className="size-3.5 text-slate-200" /> Trims, Chemicals &amp; Special Charges (PKR Input)
               </h2>
             </div>
             <CardContent className="p-0 text-xs">
@@ -3926,52 +4033,64 @@ function CostSheetContent() {
 
           {/* ACTION BUTTONS PANEL */}
           <div className="flex gap-2 justify-end print:hidden">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleResetClick}
-              className="h-9"
-            >
-              <RefreshCw className="mr-1.5 size-4" /> Reset Calculator
-            </Button>
-            {loadedCostSheet ? (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setSaveDialogOpen(true)}
-                  className="h-9 border-primary text-primary hover:bg-primary/5"
-                >
-                  <Copy className="mr-1.5 size-4" /> Save as New Sheet
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleUpdateExisting}
-                  disabled={isSaving}
-                  className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
-                >
-                  {isSaving ? (
-                    <RefreshCw className="mr-1.5 size-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-1.5 size-4" />
-                  )}
-                  {isSaving ? "Updating…" : "Update Cost Sheet"}
-                </Button>
-              </>
-            ) : (
+            {isReadOnly ? (
               <Button
                 size="sm"
-                onClick={() => setSaveDialogOpen(true)}
-                disabled={isSaving}
-                className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
+                onClick={enableEditMode}
+                className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm px-4 flex items-center gap-1.5"
               >
-                {isSaving ? (
-                  <RefreshCw className="mr-1.5 size-4 animate-spin" />
-                ) : (
-                  <Save className="mr-1.5 size-4" />
-                )}
-                Save Cost Sheet
+                <Pencil className="size-4" /> Edit Cost Sheet
               </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetClick}
+                  className="h-9"
+                >
+                  <RefreshCw className="mr-1.5 size-4" /> Reset Calculator
+                </Button>
+                {loadedCostSheet ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSaveDialogOpen(true)}
+                      className="h-9 border-primary text-primary hover:bg-primary/5"
+                    >
+                      <Copy className="mr-1.5 size-4" /> Save as New Sheet
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleUpdateExisting}
+                      disabled={isSaving}
+                      className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
+                    >
+                      {isSaving ? (
+                        <RefreshCw className="mr-1.5 size-4 animate-spin" />
+                      ) : (
+                        <Save className="mr-1.5 size-4" />
+                      )}
+                      {isSaving ? "Updating…" : "Update Cost Sheet"}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => setSaveDialogOpen(true)}
+                    disabled={isSaving}
+                    className="h-9 bg-[#a61c1c] hover:bg-[#8b1717] text-white font-medium shadow-sm px-4"
+                  >
+                    {isSaving ? (
+                      <RefreshCw className="mr-1.5 size-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-1.5 size-4" />
+                    )}
+                    Save Cost Sheet
+                  </Button>
+                )}
+              </>
             )}
           </div>
 
@@ -4074,6 +4193,7 @@ function CostSheetContent() {
           </Dialog>
         </div>
       </div>
+      </fieldset>
     </div>
   );
 }

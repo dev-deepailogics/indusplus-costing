@@ -1,9 +1,19 @@
 import type { StyleMasterItem } from "@/features/style-master/types";
 import type { SimpleTableData, MatrixTableData, ProcessMatrixTableData } from "@/features/parameters/types";
 
+function getActiveRows(tableData: SimpleTableData | undefined) {
+  if (!tableData) return [];
+  if (tableData.cards && tableData.cards.length > 0) {
+    const active = tableData.cards.find((c) => c.isActive) ?? tableData.cards[0];
+    if (active?.rows && active.rows.length > 0) return active.rows;
+  }
+  return tableData.rows || [];
+}
+
 function findRate(tableData: SimpleTableData | undefined, description: string): number {
-  if (!tableData?.rows) return 0;
-  const row = tableData.rows.find(
+  const rows = getActiveRows(tableData);
+  if (!rows || rows.length === 0) return 0;
+  const row = rows.find(
     (r) => r.values.description?.toLowerCase().replace(/\s+/g, "") === description.toLowerCase().replace(/\s+/g, "")
   );
   if (!row) return 0;
@@ -16,8 +26,9 @@ function findLaborOrFohCost(
   smv: number,
   efficiency: number
 ): number {
-  if (!tableData?.rows) return 0;
-  const row = tableData.rows.find(
+  const rows = getActiveRows(tableData);
+  if (!rows || rows.length === 0) return 0;
+  const row = rows.find(
     (r) =>
       r.values.description?.toLowerCase().replace(/\s+/g, "") ===
       description.toLowerCase().replace(/\s+/g, "")

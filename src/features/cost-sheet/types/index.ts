@@ -5,6 +5,7 @@ import type {
   BOMChemicalsItem,
   BOMSpecialChargesItem,
 } from "@/features/style-master/types";
+import type { SimpleTableData } from "@/features/parameters/types";
 
 export interface CostSheetCalculations {
   targetFobUSD: number;
@@ -24,6 +25,30 @@ export interface CostSheetCalculations {
   smvRangeError?: string;
   isQtyOutOfRange?: boolean;
   qtyRangeError?: string;
+
+  // Breakdown fields
+  directLaborCostPKR?: number;
+  directLaborCostUSD?: number;
+  utilitiesCostPKR?: number;
+  utilitiesCostUSD?: number;
+  leftoverCostPKR?: number;
+  leftoverCostUSD?: number;
+  totalVariableCostPKR?: number;
+  totalVariableCostUSD?: number;
+  salariesCostPKR?: number;
+  salariesCostUSD?: number;
+  fohAdminCostPKR?: number;
+  fohAdminCostUSD?: number;
+  repairMtcCostPKR?: number;
+  repairMtcCostUSD?: number;
+  totalCostPKR?: number;
+  totalCostUSD?: number;
+  depreciationCostPKR?: number;
+  depreciationCostUSD?: number;
+  conversionCostPerMinPKR?: number;
+  conversionCostPerMinUSD?: number;
+  grossCmPKR?: number;
+  grossCmUSD?: number;
 }
 
 export interface SavedCostSheetItem {
@@ -37,6 +62,7 @@ export interface SavedCostSheetItem {
   smvSewing: number;
   orderType: string;
   washType: string;
+  directLabourFohSnapshot?: SimpleTableData | null;
 
   // Costing & Order Inputs
   costingDate: string;
@@ -52,6 +78,7 @@ export interface SavedCostSheetItem {
   manpower: number;
   efficiencyOverride: number | null;
   rejectionOverride: number | null;
+  rejectionPct?: number | null;
   lineTargetOverride: number | null;
 
   // Financial Parameters
