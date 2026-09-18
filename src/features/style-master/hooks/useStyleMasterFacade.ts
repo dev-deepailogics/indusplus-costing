@@ -54,7 +54,7 @@ export function useStyleMasterFacade() {
 
   const [customerName, setCustomerName] = useState("");
   const [styleCategory, setStyleCategory] = useState("");
-  const [orderType, setOrderType] = useState<"Denim" | "Non Denim">("Denim");
+  const [orderType, setOrderType] = useState<string>("");
   const [washType, setWashType] = useState("");
   const [orderQuantity, setOrderQuantity] = useState(1000);
 
@@ -98,10 +98,22 @@ export function useStyleMasterFacade() {
       "dropdown-lists",
       (data) => {
         if (data?.lists) {
-          const cust = data.lists.find((l) => l.key === "customers");
-          if (cust?.items?.length) setCustomerOptions(cust.items);
-          const wash = data.lists.find((l) => l.key === "washes");
-          if (wash?.items?.length) setWashOptions(wash.items);
+          const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          const findList = (...targets: string[]) => {
+            const targetNorms = targets.map(norm);
+            return data.lists.find((l) => {
+              const kNorm = norm(l.key);
+              const lNorm = norm(l.label);
+              return targetNorms.includes(kNorm) || targetNorms.includes(lNorm);
+            })?.items;
+          };
+
+          const cust = findList("customers", "customer", "customername");
+          if (cust?.length) setCustomerOptions(cust);
+          const wash = findList("washtype", "washtypes", "wash", "washes", "wash_type", "wash-type", "wash type");
+          if (wash?.length) setWashOptions(wash);
+          const cats = findList("stylecategory", "stylecategories", "category", "categories", "style_category", "style-category", "style category");
+          if (cats?.length) setCategoryOptions(cats);
         }
       }
     );
@@ -111,7 +123,7 @@ export function useStyleMasterFacade() {
       (data) => {
         if (data?.rows?.length) {
           const cats = data.rows.map((r) => r.values.styleName).filter(Boolean);
-          if (cats.length) setCategoryOptions(cats);
+          if (cats.length) setCategoryOptions((prev) => Array.from(new Set([...prev, ...cats])));
         }
       }
     );
@@ -141,11 +153,11 @@ export function useStyleMasterFacade() {
           rejectionPct: style.rejectionPct || 0.0415,
           baseSellingPrice: style.baseSellingPrice || 0,
         });
-        setCustomerName(style.customerName || "Duer");
-        setStyleCategory(style.styleCategory || "Top Ware");
-        setOrderType(style.orderType || "Denim");
-        setWashType(style.washType || "Rinse");
-        setOrderQuantity(style.orderQuantity || 1000);
+        setCustomerName(style.customerName || "");
+        setStyleCategory(style.styleCategory || "");
+        setOrderType(style.orderType || "");
+        setWashType(style.washType || "");
+        setOrderQuantity(style.orderQuantity || 0);
 
         setFormFabric(
           style.bomFabric && style.bomFabric.length > 0
@@ -182,13 +194,13 @@ export function useStyleMasterFacade() {
           smvSewing: 15,
           targetEfficiency: 0.47,
           rejectionPct: 0.0415,
-          baseSellingPrice: 10,
+          baseSellingPrice: 0,
         });
-        setCustomerName("Duer");
-        setStyleCategory("Top Ware");
-        setOrderType("Denim");
-        setWashType("Rinse");
-        setOrderQuantity(1000);
+        setCustomerName("");
+        setStyleCategory("");
+        setOrderType("");
+        setWashType("");
+        setOrderQuantity(0);
 
         setFormFabric(
           Array.from({ length: 5 }, (_, i) => ({

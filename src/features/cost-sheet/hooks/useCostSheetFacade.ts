@@ -17,9 +17,9 @@ export const CUSTOM_STYLE: StyleMasterItem = {
   id: "custom",
   styleName: "",
   customerName: "",
-  styleCategory: "Top Ware",
-  orderType: "Denim",
-  washType: "Rinse",
+  styleCategory: "",
+  orderType: "",
+  washType: "",
   orderQuantity: 0,
   sizeBracket: "<=500",
   smvSewing: 0,
@@ -166,12 +166,22 @@ export function useCostSheetFacade() {
 
     const unsubDropdowns = ParametersService.subscribeToTable<DropdownListsData>("dropdown-lists", (data) => {
       if (data?.lists) {
-        const pTerms = data.lists.find((l) => l.key === "paymentTerms")?.items;
-        const dTerms = data.lists.find((l) => l.key === "deliveryTerms")?.items;
-        const countrs = data.lists.find((l) => l.key === "country")?.items;
-        const cats = data.lists.find((l) => l.key === "category")?.items;
-        const washes = data.lists.find((l) => l.key === "washType")?.items;
-        const oTypes = data.lists.find((l) => l.key === "orderType" || l.key === "Order Type")?.items;
+        const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const findList = (...targets: string[]) => {
+          const targetNorms = targets.map(norm);
+          return data.lists.find((l) => {
+            const kNorm = norm(l.key);
+            const lNorm = norm(l.label);
+            return targetNorms.includes(kNorm) || targetNorms.includes(lNorm);
+          })?.items;
+        };
+
+        const pTerms = findList("paymentterms", "paymentterm", "payment_terms", "payment-terms", "payment terms");
+        const dTerms = findList("deliveryterms", "deliveryterm", "delivery_terms", "delivery-terms", "delivery terms");
+        const countrs = findList("countries", "country");
+        const cats = findList("stylecategory", "stylecategories", "category", "categories", "style_category", "style-category", "style category");
+        const washes = findList("washtype", "washtypes", "wash", "washes", "wash_type", "wash-type", "wash type");
+        const oTypes = findList("ordertype", "ordertypes", "order_type", "order-type", "order type");
 
         if (pTerms) setPaymentTermsList(pTerms);
         if (dTerms) setDeliveryTermsList(dTerms);
@@ -248,11 +258,11 @@ export function useCostSheetFacade() {
             id: sheet.styleId,
             styleName: sheet.styleName,
             customerName: sheet.customerName,
-            styleCategory: sheet.styleCategory,
+            styleCategory: sheet.styleCategory || "",
             orderQuantity: sheet.orderQuantity,
             smvSewing: sheet.smvSewing,
-            orderType: (sheet.orderType as "Denim" | "Non Denim") || "Denim",
-            washType: sheet.washType,
+            orderType: (sheet.orderType as "Denim" | "Non Denim") || "",
+            washType: sheet.washType || "",
             sizeBracket: sheet.calculations.sizeBracket,
             targetEfficiency: sheet.calculations.efficiency,
             rejectionPct: savedRejection,
@@ -448,9 +458,9 @@ export function useCostSheetFacade() {
               id: indusItem.styleCode,
               styleName: indusItem.styleName,
               customerName: indusItem.customer || "Duer",
-              styleCategory: data.category || "Top Ware",
-              orderType: "Denim",
-              washType: data.wash || "Rinse",
+              styleCategory: data.category || "",
+              orderType: "",
+              washType: data.wash || "",
               orderQuantity: indusItem.poQty || 1000,
               sizeBracket: calculateSizeBracket(indusItem.poQty || 1000),
               smvSewing: data.smvSewing || 15,

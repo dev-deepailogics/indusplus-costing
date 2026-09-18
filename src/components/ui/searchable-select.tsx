@@ -127,7 +127,12 @@ export function SearchableSelect({
         <input
           ref={inputRef}
           type="text"
-          className="w-full h-6 pl-1.5 pr-5 text-xs border border-slate-200 dark:border-slate-700 bg-slate-50/80 hover:bg-slate-100/90 font-normal rounded text-left truncate focus:bg-white dark:focus:bg-slate-900 focus:outline-none transition-colors disabled:bg-slate-100/60 disabled:text-slate-500 disabled:cursor-not-allowed"
+          className={cn(
+            "w-full h-6 pl-1.5 pr-5 text-xs rounded text-left truncate transition-all outline-none",
+            disabled
+              ? "bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed select-none shadow-none"
+              : "bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 shadow-2xs hover:border-blue-500 focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 cursor-pointer font-medium"
+          )}
           placeholder={placeholder}
           value={displayVal}
           disabled={disabled}
@@ -136,7 +141,10 @@ export function SearchableSelect({
           onClick={handleOpen}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <div className="absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+        <div className={cn(
+          "absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none transition-colors",
+          disabled ? "text-slate-300 dark:text-slate-600" : "text-slate-400 dark:text-slate-400"
+        )}>
           <ChevronDown className="w-3 h-3" />
         </div>
       </div>

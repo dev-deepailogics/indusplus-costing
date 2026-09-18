@@ -241,10 +241,10 @@ export default function StyleMasterPage() {
 
     const styleItem: StyleMasterItem = {
       ...formMeta,
-      customerName: editingStyle?.customerName || "Duer",
-      styleCategory: editingStyle?.styleCategory || "Top Ware",
-      orderType: editingStyle?.orderType || "Denim",
-      washType: editingStyle?.washType || "Rinse",
+      customerName: editingStyle?.customerName || "",
+      styleCategory: editingStyle?.styleCategory || "",
+      orderType: editingStyle?.orderType || "",
+      washType: editingStyle?.washType || "",
       orderQuantity: editingStyle?.orderQuantity || qty,
       sizeBracket: calculatedBracket,
       bomFabric: formFabric.filter(

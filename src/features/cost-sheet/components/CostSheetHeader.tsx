@@ -174,9 +174,10 @@ export function CostSheetHeader({
               <label className="text-xs font-semibold text-muted-foreground">Category</label>
               <select
                 className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none"
-                value={activeStyle.styleCategory}
+                value={activeStyle.styleCategory || ""}
                 onChange={(e) => onUpdateStyle({ styleCategory: e.target.value })}
               >
+                <option value="">-- Select Category --</option>
                 {categoriesList.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
@@ -190,11 +191,12 @@ export function CostSheetHeader({
               <label className="text-xs font-semibold text-muted-foreground">Order Type</label>
               <select
                 className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none"
-                value={activeStyle.orderType}
+                value={activeStyle.orderType || ""}
                 onChange={(e) =>
                   onUpdateStyle({ orderType: e.target.value as "Denim" | "Non Denim" })
                 }
               >
+                <option value="">-- Select Order Type --</option>
                 {orderTypesList.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -208,9 +210,10 @@ export function CostSheetHeader({
               <label className="text-xs font-semibold text-muted-foreground">Wash Type</label>
               <select
                 className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none"
-                value={activeStyle.washType}
+                value={activeStyle.washType || ""}
                 onChange={(e) => onUpdateStyle({ washType: e.target.value })}
               >
+                <option value="">-- Select Wash Type --</option>
                 {washTypesList.map((w) => (
                   <option key={w} value={w}>
                     {w}

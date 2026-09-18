@@ -46,7 +46,7 @@ export interface StyleMasterItem {
   styleName: string;
   customerName: string;
   styleCategory: string;
-  orderType: "Denim" | "Non Denim";
+  orderType: string;
   washType: string;
   orderQuantity: number;
   sizeBracket: string; // Calculated

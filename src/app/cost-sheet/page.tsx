@@ -85,9 +85,9 @@ const CUSTOM_STYLE: StyleMasterItem = {
   id: "custom",
   styleName: "",
   customerName: "",
-  styleCategory: "Top Ware",
-  orderType: "Denim",
-  washType: "Rinse",
+  styleCategory: "",
+  orderType: "",
+  washType: "",
   orderQuantity: 0,
   sizeBracket: "<=500",
   smvSewing: 0,
@@ -513,46 +513,38 @@ function CostSheetContent() {
       "dropdown-lists",
       (data) => {
         if (data?.lists) {
-          const pTerms = data.lists.find(
-            (l) => l.key === "paymentTerms",
-          )?.items;
-          const dTerms = data.lists.find(
-            (l) => l.key === "deliveryTerms",
-          )?.items;
-          const countrs = data.lists.find(
-            (l) => l.key === "countries" || l.key === "country",
-          )?.items;
-          const custs = data.lists.find(
-            (l) => l.key === "customerName" || l.key === "customer",
-          )?.items;
-          const cats = data.lists.find((l) => l.key === "styleCategory")?.items;
-          const washes = data.lists.find((l) => l.key === "washType")?.items;
+          const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          const findList = (...targets: string[]) => {
+            const targetNorms = targets.map(norm);
+            return data.lists.find((l) => {
+              const kNorm = norm(l.key);
+              const lNorm = norm(l.label);
+              return targetNorms.includes(kNorm) || targetNorms.includes(lNorm);
+            })?.items;
+          };
+
+          const pTerms = findList("paymentterms", "paymentterm", "payment_terms", "payment-terms", "payment terms");
+          const dTerms = findList("deliveryterms", "deliveryterm", "delivery_terms", "delivery-terms", "delivery terms");
+          const countrs = findList("countries", "country");
+          const custs = findList("customers", "customer", "customername");
+          const cats = findList("stylecategory", "stylecategories", "category", "categories", "style_category", "style-category", "style category");
+          const washes = findList("washtype", "washtypes", "wash", "washes", "wash_type", "wash-type", "wash type");
+          const orderTypes = findList("ordertype", "ordertypes", "order_type", "order-type", "order type");
+          const cStage = findList("costingstage", "coststage", "costing_stage", "costing-stage", "costing stage");
+          const sMode = findList("shipmentmode", "shipmode", "shipment_mode", "shipment-mode", "shipment mode");
+          const mGroup = findList("merchgroup", "merchantgroup", "merch_group", "merch-group", "merch group");
+          const dDest = findList("deliverydestination", "destination", "delvdestination", "delivery_destination", "delivery-destination", "delivery destination");
+          const inhSub = findList("inhouseorsubcontract", "inhousesubcontract", "inhouse_or_subcontract", "inhouse-or-subcontract", "inhouse or subcontract");
+          const chems = findList("chemicalcosts", "chemicals", "chemical", "chemical_costs", "chemical-costs", "chemical costs");
+          const spCharges = findList("specialcharges", "specialcharge", "special_charges", "special-charges", "special charges");
 
           if (pTerms) setPaymentTermsList(pTerms);
           if (dTerms) setDeliveryTermsList(dTerms);
           if (countrs) setCountriesList(countrs);
+          if (custs && custs.length > 0) setCustomersList(custs);
           if (cats) setCategoriesList(cats);
           if (washes) setWashTypesList(washes);
-          const orderTypes = data.lists.find(
-            (l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "ordertype",
-          )?.items;
-          if (orderTypes && orderTypes.length > 0)
-            setOrderTypesList(orderTypes);
-
-          const cStage = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "costingstage")?.items;
-          const sMode = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "shipmentmode")?.items;
-          const mGroup = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "merchgroup")?.items;
-          const dDest = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "deliverydestination")?.items;
-          const inhSub = data.lists.find((l) => l.key.toLowerCase().replace(/[^a-z0-9]/g, "") === "inhouseorsubcontract")?.items;
-          const chems = data.lists.find((l) => {
-            const k = l.key.toLowerCase().replace(/[^a-z0-9]/g, "");
-            return k === "chemicalcosts" || k === "chemicals" || k === "chemical";
-          })?.items;
-          const spCharges = data.lists.find((l) => {
-            const k = l.key.toLowerCase().replace(/[^a-z0-9]/g, "");
-            return k === "specialcharges" || k === "specialcharge";
-          })?.items;
-
+          if (orderTypes && orderTypes.length > 0) setOrderTypesList(orderTypes);
           if (cStage) setCostingStageList(cStage);
           if (sMode) setShipmentModeList(sMode);
           if (mGroup) setMerchGroupList(mGroup);
@@ -768,10 +760,10 @@ function CostSheetContent() {
 
           // Set editable style fields from loaded sheet
           setCustomerName(sheet.customerName || "");
-          setStyleCategory(sheet.styleCategory || "Top Ware");
-          setWashType(sheet.washType || "Rinse");
+          setStyleCategory(sheet.styleCategory || "");
+          setWashType(sheet.washType || "");
           setOrderQuantity(sheet.orderQuantity || 0);
-          setOrderType((sheet.orderType || "Denim") as "Denim" | "Non Denim");
+          setOrderType((sheet.orderType || "") as "Denim" | "Non Denim" | "");
           setSmvSewingInput(
             sheet.smvSewing !== undefined
               ? sheet.smvSewing.toString()
@@ -821,11 +813,11 @@ function CostSheetContent() {
             (c) => c.toLowerCase() === rawCust.toLowerCase(),
           ) || rawCust;
         setCustomerName(matchedCust);
-        setStyleCategory(activeStyle.styleCategory || "Top Ware");
-        setWashType(activeStyle.washType || "Rinse");
+        setStyleCategory(activeStyle.styleCategory || "");
+        setWashType(activeStyle.washType || "");
         setOrderQuantity(activeStyle.orderQuantity || 0);
         setOrderType(
-          (activeStyle.orderType || "Denim") as "Denim" | "Non Denim",
+          (activeStyle.orderType || "") as "Denim" | "Non Denim" | "",
         );
         setSmvSewingInput(
           activeStyle.smvSewing ? activeStyle.smvSewing.toString() : ""
@@ -1501,7 +1493,7 @@ function CostSheetContent() {
       styleCategory,
       washType,
       orderQuantity,
-      orderType: (orderType as "Denim" | "Non Denim") || activeStyle.orderType || "Denim",
+      orderType: (orderType as "Denim" | "Non Denim") || activeStyle.orderType || "",
       smvSewing: parseFloat(smvSewingInput) || activeStyle.smvSewing,
     };
 
@@ -1752,7 +1744,7 @@ function CostSheetContent() {
                 </span>
                 <input
                   type="date"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  className="w-32 h-7 px-2 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-semibold rounded text-right shadow-2xs hover:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500/25"
                   value={costingDate}
                   onChange={(e) => setCostingDate(e.target.value)}
                 />
@@ -1765,7 +1757,11 @@ function CostSheetContent() {
                 <input
                   type="text"
                   disabled={isDbSelected}
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-left focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed"
+                  className={`w-32 h-7 px-2 text-xs font-semibold rounded text-left transition-all outline-none ${
+                    isDbSelected
+                      ? "bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed select-none shadow-none"
+                      : "bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25"
+                  }`}
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                 />
@@ -1911,10 +1907,12 @@ function CostSheetContent() {
                 <input
                   type="number"
                   disabled={isDbSelected}
-                  className={`w-32 h-7 px-2 text-xs font-semibold rounded text-right focus:bg-white focus:outline-none disabled:bg-slate-200/60 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors ${
-                    calcs.isQtyOutOfRange
+                  className={`w-32 h-7 px-2 text-xs font-semibold rounded text-right transition-all outline-none ${
+                    isDbSelected
+                      ? "bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed select-none shadow-none"
+                      : calcs.isQtyOutOfRange
                       ? "border-2 border-red-500 bg-red-50/80 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-500"
-                      : "border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95"
+                      : "bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25"
                   }`}
                   value={orderQuantity || ""}
                   onChange={(e) => setOrderQuantity(Number(e.target.value))}
@@ -1937,7 +1935,7 @@ function CostSheetContent() {
                 <input
                   type="number"
                   min="1"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  className="w-32 h-7 px-2 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold text-slate-900 dark:text-slate-100 rounded text-right shadow-2xs hover:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500/25"
                   value={noOfColors}
                   onChange={(e) =>
                     setNoOfColors(Math.max(1, Number(e.target.value)))
@@ -1963,12 +1961,11 @@ function CostSheetContent() {
                   Rejection %
                 </span>
                 <input
-                  type="number"
-                  step="0.01"
-                  className="w-32 h-7 px-2 text-xs border border-yellow-200 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
-                  placeholder={`${(calcs.rejectionPct * 100).toFixed(2)}%`}
-                  value={rejectionOverride}
-                  onChange={(e) => setRejectionOverride(e.target.value)}
+                  type="text"
+                  disabled
+                  className="w-32 h-7 px-2 text-xs font-semibold rounded text-right transition-all outline-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed select-none shadow-none"
+                  value={`${(calcs.rejectionPct * 100).toFixed(2)}%`}
+                  readOnly
                 />
               </div>
 
@@ -1978,7 +1975,7 @@ function CostSheetContent() {
                 </span>
                 <input
                   type="date"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  className="w-32 h-7 px-2 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold text-slate-900 dark:text-slate-100 rounded text-right shadow-2xs hover:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500/25"
                   value={exFactoryDate}
                   onChange={(e) => setExFactoryDate(e.target.value)}
                 />
@@ -2094,7 +2091,7 @@ function CostSheetContent() {
                 </span>
                 <input
                   type="number"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  className="w-32 h-7 px-2 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-slate-900 dark:text-slate-100 rounded text-right shadow-2xs hover:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500/25"
                   value={paritySale || ""}
                   onChange={(e) => setParitySale(Number(e.target.value))}
                 />
@@ -2106,7 +2103,7 @@ function CostSheetContent() {
                 </span>
                 <input
                   type="number"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  className="w-32 h-7 px-2 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-slate-900 dark:text-slate-100 rounded text-right shadow-2xs hover:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500/25"
                   value={parityProcurement || ""}
                   onChange={(e) => setParityProcurement(Number(e.target.value))}
                 />
@@ -2161,7 +2158,7 @@ function CostSheetContent() {
                   <input
                     type="number"
                     step="0.01"
-                    className="w-24 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-extrabold text-slate-900 rounded text-right focus:bg-white focus:outline-none transition-colors"
+                    className="w-24 h-7 px-2 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-extrabold text-slate-900 dark:text-slate-100 rounded text-right shadow-2xs hover:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500/25 transition-colors"
                     value={quotedPriceInput}
                     onChange={(e) => setQuotedPriceInput(e.target.value)}
                   />
@@ -2250,7 +2247,7 @@ function CostSheetContent() {
                     className={`w-32 h-7 px-2 text-xs font-semibold rounded text-right focus:bg-white focus:outline-none transition-colors ${
                       calcs.isSmvOutOfRange
                         ? "border-2 border-red-500 bg-red-50/80 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-500"
-                        : "border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95"
+                        : "border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25"
                     }`}
                     value={smvSewingInput}
                     onChange={(e) => setSmvSewingInput(e.target.value)}
@@ -2270,14 +2267,14 @@ function CostSheetContent() {
                   <input
                     type="number"
                     step="0.01"
-                    className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
+                    className="w-24 h-7 px-2 text-xs border border-amber-300 dark:border-amber-700/80 bg-amber-50/80 dark:bg-amber-950/30 hover:bg-amber-50 text-amber-950 dark:text-amber-200 font-bold rounded text-right shadow-2xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                     value={commissionInput}
                     onChange={(e) => {
                       markDirty();
                       setCommissionInput(e.target.value);
                     }}
                   />
-                  <span className="text-yellow-750 font-bold">%</span>
+                  <span className="text-amber-800 dark:text-amber-400 font-bold">%</span>
                 </div>
               </div>
 
@@ -2287,7 +2284,7 @@ function CostSheetContent() {
                 </span>
                 <input
                   type="number"
-                  className="w-32 h-7 px-2 text-xs border border-slate-200 bg-slate-100/80 hover:bg-slate-100/95 font-semibold rounded text-right focus:bg-white focus:outline-none"
+                  className="w-32 h-7 px-2 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-slate-900 dark:text-slate-100 rounded text-right shadow-2xs hover:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500/25"
                   value={manpower || ""}
                   onChange={(e) => setManpower(Number(e.target.value))}
                 />
@@ -2300,14 +2297,14 @@ function CostSheetContent() {
                   <input
                     type="number"
                     step="0.01"
-                    className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
+                    className="w-24 h-7 px-2 text-xs border border-amber-300 dark:border-amber-700/80 bg-amber-50/80 dark:bg-amber-950/30 hover:bg-amber-50 text-amber-950 dark:text-amber-200 font-bold rounded text-right shadow-2xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                     value={taxEdsInput}
                     onChange={(e) => {
                       markDirty();
                       setTaxEdsInput(e.target.value);
                     }}
                   />
-                  <span className="text-yellow-750 font-bold">%</span>
+                  <span className="text-amber-800 dark:text-amber-400 font-bold">%</span>
                 </div>
               </div>
 
@@ -2317,14 +2314,13 @@ function CostSheetContent() {
                 </span>
                 <div className="flex items-center gap-1">
                   <input
-                    type="number"
-                    step="0.1"
-                    className="w-28 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
-                    placeholder={`${(calcs.efficiency * 100).toFixed(0)}%`}
-                    value={efficiencyOverride}
-                    onChange={(e) => setEfficiencyOverride(e.target.value)}
+                    type="text"
+                    disabled
+                    className="w-28 h-7 px-2 text-xs font-semibold rounded text-right transition-all outline-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed select-none shadow-none"
+                    value={`${(calcs.efficiency * 100).toFixed(0)}%`}
+                    readOnly
                   />
-                  <span className="text-yellow-700 font-bold">%</span>
+                  <span className="text-slate-400 dark:text-slate-500 font-bold">%</span>
                 </div>
               </div>
               <div className="flex items-center justify-between gap-2">
@@ -2335,14 +2331,14 @@ function CostSheetContent() {
                   <input
                     type="number"
                     step="0.01"
-                    className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
+                    className="w-24 h-7 px-2 text-xs border border-amber-300 dark:border-amber-700/80 bg-amber-50/80 dark:bg-amber-950/30 hover:bg-amber-50 text-amber-950 dark:text-amber-200 font-bold rounded text-right shadow-2xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                     value={inlandFreightInput}
                     onChange={(e) => {
                       markDirty();
                       setInlandFreightInput(e.target.value);
                     }}
                   />
-                  <span className="text-yellow-750 font-bold">%</span>
+                  <span className="text-amber-800 dark:text-amber-400 font-bold">%</span>
                 </div>
               </div>
 
@@ -2351,11 +2347,11 @@ function CostSheetContent() {
                   Avg. Line Target
                 </span>
                 <input
-                  type="number"
-                  className="w-32 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 font-bold text-yellow-900 rounded text-right focus:bg-white focus:outline-none"
-                  placeholder={`${calcs.lineTarget.toFixed(0)}`}
-                  value={lineTargetOverride}
-                  onChange={(e) => setLineTargetOverride(e.target.value)}
+                  type="text"
+                  disabled
+                  className="w-32 h-7 px-2 text-xs font-semibold rounded text-right transition-all outline-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed select-none shadow-none"
+                  value={`${calcs.lineTarget.toFixed(0)}`}
+                  readOnly
                 />
               </div>
               <div className="flex items-center justify-between gap-2">
@@ -2366,34 +2362,34 @@ function CostSheetContent() {
                   <input
                     type="number"
                     step="0.01"
-                    className="w-24 h-7 px-2 text-xs border border-yellow-250 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
+                    className="w-24 h-7 px-2 text-xs border border-amber-300 dark:border-amber-700/80 bg-amber-50/80 dark:bg-amber-950/30 hover:bg-amber-50 text-amber-950 dark:text-amber-200 font-bold rounded text-right shadow-2xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                     value={localBankChargesInput}
                     onChange={(e) => {
                       markDirty();
                       setLocalBankChargesInput(e.target.value);
                     }}
                   />
-                  <span className="text-yellow-750 font-bold">%</span>
+                  <span className="text-amber-800 dark:text-amber-400 font-bold">%</span>
                 </div>
               </div>
 
               <div />
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground font-bold text-yellow-950">
+                <span className="font-semibold text-muted-foreground font-bold text-amber-950 dark:text-amber-300">
                   Discount Rate
                 </span>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
                     step="0.01"
-                    className="w-24 h-7 px-2 text-xs border border-yellow-300 bg-yellow-50/70 hover:bg-yellow-50 text-yellow-900 font-bold rounded text-right focus:bg-white focus:outline-none"
+                    className="w-24 h-7 px-2 text-xs border border-amber-300 dark:border-amber-700/80 bg-amber-50/80 dark:bg-amber-950/30 hover:bg-amber-50 text-amber-950 dark:text-amber-200 font-bold rounded text-right shadow-2xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                     value={discountRateInput}
                     onChange={(e) => {
                       markDirty();
                       setDiscountRateInput(e.target.value);
                     }}
                   />
-                  <span className="text-yellow-700 font-bold">%</span>
+                  <span className="text-amber-800 dark:text-amber-400 font-bold">%</span>
                 </div>
               </div>
             </div>
@@ -2750,7 +2746,7 @@ function CostSheetContent() {
                           </span>
                           <input
                             type="number"
-                            className="w-12 h-6 text-xs bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            className="w-14 h-6 px-1 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-semibold text-center rounded shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25"
                             value={factoringDaysInput}
                             onChange={(e) => {
                               markDirty();
@@ -2778,7 +2774,7 @@ function CostSheetContent() {
                           <input
                             type="number"
                             step="0.01"
-                            className="w-12 h-6 text-xs bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            className="w-14 h-6 px-1 text-xs border border-amber-300 dark:border-amber-700/80 bg-amber-50/80 dark:bg-amber-950/30 text-amber-950 dark:text-amber-200 font-bold text-center rounded shadow-2xs hover:bg-amber-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                             value={commissionInput}
                             onChange={(e) => {
                               markDirty();
@@ -2806,7 +2802,7 @@ function CostSheetContent() {
                           <input
                             type="number"
                             step="0.01"
-                            className="w-12 h-6 text-xs bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
+                            className="w-14 h-6 px-1 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-semibold text-center rounded shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25"
                             value={foreignBankChargesInput}
                             onChange={(e) => {
                               markDirty();
@@ -2835,6 +2831,16 @@ function CostSheetContent() {
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
                         {fmtPct(calcs.netPricePct, 1)}
                       </TableCell>
+                    </TableRow>
+
+                    {/* MATERIAL COST */}
+                    <TableRow className="h-7 bg-slate-100/90 dark:bg-slate-800/80 font-bold border-y border-slate-200 dark:border-slate-700">
+                      <TableCell className="px-2 py-1 font-bold text-foreground text-xs">
+                        Material Cost
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1" />
+                      <TableCell className="px-1.5 py-1" />
+                      <TableCell className="px-1.5 py-1" />
                     </TableRow>
 
                     {/* VARIABLE COSTS */}
@@ -3171,7 +3177,7 @@ function CostSheetContent() {
                               type="text"
                               disabled
                               placeholder={`Fabric ${idx + 1}`}
-                              className="w-full h-6 px-1.5 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed truncate"
+                              className="w-full h-6 px-1.5 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/90 text-slate-400 dark:text-slate-500 text-xs rounded truncate cursor-not-allowed select-none shadow-none font-normal"
                               value={item.itemName}
                               title={item.itemName}
                               onChange={(e) =>
@@ -3185,7 +3191,7 @@ function CostSheetContent() {
                             type="number"
                             step="0.0001"
                             placeholder="0.0000"
-                            className="w-full h-6 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            className="w-full h-6 px-1 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium text-xs rounded text-center shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 transition-colors"
                             value={item.consumptionPerPc || ""}
                             onChange={(e) =>
                               updateFabricBOM(
@@ -3203,7 +3209,7 @@ function CostSheetContent() {
                             readOnly
                             step="0.0001"
                             placeholder="0.0000"
-                            className="w-full h-6 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                            className="w-full h-6 px-1 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/90 text-slate-400 dark:text-slate-500 text-xs rounded text-center cursor-not-allowed select-none shadow-none font-normal"
                             value={
                               item.rateUSD !== undefined && item.rateUSD > 0
                                 ? Number(item.rateUSD.toFixed(4))
@@ -3224,7 +3230,7 @@ function CostSheetContent() {
                             type="number"
                             step="0.0001"
                             placeholder="0.00"
-                            className="w-full h-6 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            className="w-full h-6 px-1 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium text-xs rounded text-center shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 transition-colors"
                             value={
                               item.ratePKR
                                 ? Number(item.ratePKR.toFixed(4))
@@ -3240,33 +3246,35 @@ function CostSheetContent() {
                           />
                         </TableCell>
                         <TableCell className="p-1 text-right font-semibold text-foreground align-middle pr-2 whitespace-nowrap text-xs">
-                          Rs. {item.fabricCostPKR.toFixed(2)}
+                          Rs. {(item.fabricCostPKR || 0).toFixed(2)}
                         </TableCell>
                         <TableCell className="p-1 text-center">
-                          <button
-                            type="button"
-                            title="Remove fabric"
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
-                            onClick={() => {
-                              markDirty();
-                              setActiveStyle({
-                                ...activeStyle,
-                                bomFabric: activeStyle.bomFabric.filter(
-                                  (_, i) => i !== idx,
-                                ),
-                              });
-                              setNewFabricRows((prev) => {
-                                const next = new Set<number>();
-                                prev.forEach((i) => {
-                                  if (i < idx) next.add(i);
-                                  else if (i > idx) next.add(i - 1);
+                          {idx > 0 && (
+                            <button
+                              type="button"
+                              title="Remove fabric"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                              onClick={() => {
+                                markDirty();
+                                setActiveStyle({
+                                  ...activeStyle,
+                                  bomFabric: activeStyle.bomFabric.filter(
+                                    (_, i) => i !== idx,
+                                  ),
                                 });
-                                return next;
-                              });
-                            }}
-                          >
-                            <X className="size-3.5 stroke-[2.5]" />
-                          </button>
+                                setNewFabricRows((prev) => {
+                                  const next = new Set<number>();
+                                  prev.forEach((i) => {
+                                    if (i < idx) next.add(i);
+                                    else if (i > idx) next.add(i - 1);
+                                  });
+                                  return next;
+                                });
+                              }}
+                            >
+                              <X className="size-3.5 stroke-[2.5]" />
+                            </button>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -3376,7 +3384,7 @@ function CostSheetContent() {
                               type="text"
                               disabled
                               placeholder={`Lining ${idx + 1}`}
-                              className="w-full h-6 px-1.5 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed truncate"
+                              className="w-full h-6 px-1.5 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/90 text-slate-400 dark:text-slate-500 text-xs rounded truncate cursor-not-allowed select-none shadow-none font-normal"
                               value={item.itemName}
                               title={item.itemName}
                               onChange={(e) =>
@@ -3390,7 +3398,7 @@ function CostSheetContent() {
                             type="number"
                             step="0.0001"
                             placeholder="0.0000"
-                            className="w-full h-6 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            className="w-full h-6 px-1 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium text-xs rounded text-center shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 transition-colors"
                             value={item.consumptionPerPc || ""}
                             onChange={(e) =>
                               updateLiningBOM(
@@ -3408,7 +3416,7 @@ function CostSheetContent() {
                             readOnly
                             step="0.0001"
                             placeholder="0.0000"
-                            className="w-full h-6 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                            className="w-full h-6 px-1 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/90 text-slate-400 dark:text-slate-500 text-xs rounded text-center cursor-not-allowed select-none shadow-none font-normal"
                             value={
                               item.rateUSD !== undefined && item.rateUSD > 0
                                 ? Number(item.rateUSD.toFixed(4))
@@ -3429,7 +3437,7 @@ function CostSheetContent() {
                             type="number"
                             step="0.0001"
                             placeholder="0.00"
-                            className="w-full h-6 px-1 border bg-transparent text-xs rounded text-center focus:outline-none bg-blue-50/10 focus:bg-white"
+                            className="w-full h-6 px-1 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium text-xs rounded text-center shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 transition-colors"
                             value={
                               item.ratePKR
                                 ? Number(item.ratePKR.toFixed(4))
@@ -3445,33 +3453,35 @@ function CostSheetContent() {
                           />
                         </TableCell>
                         <TableCell className="p-1 text-right font-semibold text-foreground align-middle pr-2 whitespace-nowrap text-xs">
-                          Rs. {item.liningCostPKR.toFixed(2)}
+                          Rs. {(item.liningCostPKR || 0).toFixed(2)}
                         </TableCell>
                         <TableCell className="p-1 text-center">
-                          <button
-                            type="button"
-                            title="Remove lining"
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
-                            onClick={() => {
-                              markDirty();
-                              setActiveStyle({
-                                ...activeStyle,
-                                bomLining: activeStyle.bomLining.filter(
-                                  (_, i) => i !== idx,
-                                ),
-                              });
-                              setNewLiningRows((prev) => {
-                                const next = new Set<number>();
-                                prev.forEach((i) => {
-                                  if (i < idx) next.add(i);
-                                  else if (i > idx) next.add(i - 1);
+                          {idx > 0 && (
+                            <button
+                              type="button"
+                              title="Remove lining"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
+                              onClick={() => {
+                                markDirty();
+                                setActiveStyle({
+                                  ...activeStyle,
+                                  bomLining: activeStyle.bomLining.filter(
+                                    (_, i) => i !== idx,
+                                  ),
                                 });
-                                return next;
-                              });
-                            }}
-                          >
-                            <X className="size-3.5 stroke-[2.5]" />
-                          </button>
+                                setNewLiningRows((prev) => {
+                                  const next = new Set<number>();
+                                  prev.forEach((i) => {
+                                    if (i < idx) next.add(i);
+                                    else if (i > idx) next.add(i - 1);
+                                  });
+                                  return next;
+                                });
+                              }}
+                            >
+                              <X className="size-3.5 stroke-[2.5]" />
+                            </button>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -3560,7 +3570,7 @@ function CostSheetContent() {
                           {isAccEditable ? (
                             <input
                               type="text"
-                              className="w-full h-6 px-1.5 text-xs border rounded bg-background truncate"
+                              className="w-full h-6 px-1.5 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium rounded truncate shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25"
                               value={item.category}
                               placeholder="Category"
                               onChange={(e) =>
@@ -3606,7 +3616,7 @@ function CostSheetContent() {
                             <input
                               type="text"
                               disabled
-                              className="w-full h-6 px-1.5 border bg-transparent text-xs rounded focus:outline-none disabled:bg-slate-100/50 disabled:text-muted-foreground disabled:cursor-not-allowed truncate"
+                              className="w-full h-6 px-1.5 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/90 text-slate-400 dark:text-slate-500 text-xs rounded truncate cursor-not-allowed select-none shadow-none font-normal"
                               value={item.itemName}
                               title={item.itemName}
                               onChange={(e) =>
@@ -3624,7 +3634,7 @@ function CostSheetContent() {
                             type="number"
                             step="0.0001"
                             placeholder="0.0000"
-                            className="w-full h-6 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
+                            className="w-full h-6 px-1 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium text-xs rounded text-center shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 transition-colors"
                             value={item.consPerPc || ""}
                             onChange={(e) =>
                               updateAccessoriesBOM(
@@ -3642,7 +3652,7 @@ function CostSheetContent() {
                             readOnly
                             step="0.0001"
                             placeholder="0.0000"
-                            className="w-full h-6 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                            className="w-full h-6 px-1 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/90 text-slate-400 dark:text-slate-500 text-xs rounded text-center cursor-not-allowed select-none shadow-none font-normal"
                             value={
                               item.rateUSD !== undefined && item.rateUSD > 0
                                 ? Number(item.rateUSD.toFixed(4))
@@ -3663,7 +3673,7 @@ function CostSheetContent() {
                             type="number"
                             step="0.0001"
                             placeholder="0.00"
-                            className="w-full h-6 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
+                            className="w-full h-6 px-1 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium text-xs rounded text-center shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 transition-colors"
                             value={item.ratePKR || ""}
                             onChange={(e) =>
                               updateAccessoriesBOM(
@@ -3783,7 +3793,7 @@ function CostSheetContent() {
                               readOnly
                               step="0.0001"
                               placeholder="0.0000"
-                              className="w-full h-6 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                              className="w-full h-6 px-1 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/90 text-slate-400 dark:text-slate-500 text-xs rounded text-center cursor-not-allowed select-none shadow-none font-normal"
                               value={
                                 item.rateUSD !== undefined && item.rateUSD > 0
                                   ? Number(item.rateUSD.toFixed(4))
@@ -3804,7 +3814,7 @@ function CostSheetContent() {
                               type="number"
                               step="0.0001"
                               placeholder="0.00"
-                              className="w-full h-6 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
+                              className="w-full h-6 px-1 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium text-xs rounded text-center shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 transition-colors"
                               value={item.ratePKR || ""}
                               onChange={(e) =>
                                 updateChemicalsBOM(
@@ -3923,7 +3933,7 @@ function CostSheetContent() {
                               readOnly
                               step="0.0001"
                               placeholder="0.0000"
-                              className="w-full h-6 px-1 border bg-slate-100/50 dark:bg-slate-800/40 text-muted-foreground text-xs rounded text-center cursor-not-allowed select-none"
+                              className="w-full h-6 px-1 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/90 text-slate-400 dark:text-slate-500 text-xs rounded text-center cursor-not-allowed select-none shadow-none font-normal"
                               value={
                                 item.rateUSD !== undefined && item.rateUSD > 0
                                   ? Number(item.rateUSD.toFixed(4))
@@ -3944,7 +3954,7 @@ function CostSheetContent() {
                               type="number"
                               step="0.0001"
                               placeholder="0.00"
-                              className="w-full h-6 px-1 border bg-transparent text-xs text-center rounded focus:outline-none bg-blue-50/10 focus:bg-white"
+                              className="w-full h-6 px-1 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium text-xs rounded text-center shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 transition-colors"
                               value={item.ratePKR || ""}
                               onChange={(e) =>
                                 updateSpecialChargesBOM(
