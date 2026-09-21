@@ -18,6 +18,7 @@ export function SearchableSelect({
   className,
   align = "left",
   disabled,
+  allowCustom,
 }: {
   options: SearchableSelectOption[];
   value: string;
@@ -26,6 +27,7 @@ export function SearchableSelect({
   className?: string;
   align?: "left" | "right";
   disabled?: boolean;
+  allowCustom?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -116,6 +118,10 @@ export function SearchableSelect({
     o.label.toLowerCase().includes(query.toLowerCase()),
   );
 
+  const hasExactMatch = options.some(
+    (o) => o.label.trim().toLowerCase() === query.trim().toLowerCase() || o.value.trim().toLowerCase() === query.trim().toLowerCase()
+  );
+
   const displayVal = open ? query : selected ? selected.label : value || "";
 
   return (
@@ -140,6 +146,14 @@ export function SearchableSelect({
           onFocus={handleOpen}
           onClick={handleOpen}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && allowCustom && query.trim()) {
+              e.preventDefault();
+              onChange(query.trim());
+              setOpen(false);
+              setQuery("");
+            }
+          }}
         />
         <div className={cn(
           "absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none transition-colors",
@@ -164,7 +178,22 @@ export function SearchableSelect({
             }}
             className="max-h-64 overflow-auto rounded-lg border border-slate-200 bg-white dark:bg-slate-900 shadow-2xl py-1 text-slate-800 dark:text-slate-100 animate-in fade-in-50 zoom-in-95 duration-100"
           >
-            {filtered.length === 0 ? (
+            {allowCustom && query.trim() && !hasExactMatch && (
+              <button
+                type="button"
+                className="block w-full truncate px-3 py-2 text-left text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50/70 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border-b border-blue-200 dark:border-blue-800 transition-colors"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(query.trim());
+                  setOpen(false);
+                  setQuery("");
+                }}
+              >
+                ➕ Use &quot;{query.trim()}&quot; (Custom)
+              </button>
+            )}
+
+            {filtered.length === 0 && (!allowCustom || !query.trim()) ? (
               <div className="px-3 py-2 text-xs text-muted-foreground">
                 No matches found
               </div>

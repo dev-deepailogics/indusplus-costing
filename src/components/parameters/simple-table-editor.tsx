@@ -14,6 +14,8 @@ import {
   FolderOpen,
   AlertTriangle,
   Loader2,
+  Building2,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import type { SimpleTableData, SimpleTableCard, SimpleColumn, SimpleRow } from "@/lib/parameters/types";
 import { PromptDialog } from "./prompt-dialog";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
+import { CreateCardDialog, type CreateCardData } from "./create-card-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -366,12 +369,33 @@ export function SimpleTableEditor({
     }
   }
 
-  // Set card as active (only one card remains active at a time)
+  // Set card as active (scoped per-customer / default: one active card per customer group)
   async function handleSetActive(cardId: string) {
-    const nextCards = cards.map((c) => ({
-      ...c,
-      isActive: c.id === cardId,
-    }));
+    const targetCard = cards.find((c) => c.id === cardId);
+    if (!targetCard) return;
+
+    const targetCust = (targetCard.customer || "").trim().toLowerCase();
+    const isTargetDefault = targetCard.isDefault || !targetCust;
+
+    const nextCards = cards.map((c) => {
+      const cCust = (c.customer || "").trim().toLowerCase();
+      const isCDefault = c.isDefault || !cCust;
+
+      if (isTargetDefault) {
+        // Toggle only among default cards
+        if (isCDefault) {
+          return { ...c, isActive: c.id === cardId };
+        }
+        return c; // Keep other customer cards' isActive untouched
+      } else {
+        // Toggle only among this customer's cards
+        if (cCust === targetCust) {
+          return { ...c, isActive: c.id === cardId };
+        }
+        return c; // Keep other customers' and default cards' isActive untouched
+      }
+    });
+
     setCards(nextCards);
     const activeC = nextCards.find((c) => c.id === cardId) || nextCards[0];
     const payload: SimpleTableData = {
@@ -383,41 +407,76 @@ export function SimpleTableEditor({
     };
     await onSave(payload);
     setHasChanges(false);
-    toast.success(`"${activeC.name}" set as Active (Saved to DB)`);
+
+    const scopeLabel = isTargetDefault
+      ? "Default Cards"
+      : `Customer "${targetCard.customer}"`;
+    toast.success(`"${activeC.name}" is now Active for ${scopeLabel} (Saved to DB)`);
   }
 
   // Create a new card
-  async function handleCreateCard(cardName: string) {
+  async function handleCreateCard(cardData: CreateCardData) {
     const nextSerial = Math.max(0, ...cards.map((c) => c.serialNo || 0)) + 1;
     const newId = `card-${Date.now()}`;
-    const name = cardName.trim() || `Card ${nextSerial}`;
+    const name = cardData.name.trim() || `Card ${nextSerial}`;
 
     const firstColKey = currentColumns[0]?.key;
-    const templateCard = cards.find((c) => c.isActive) || cards[0] || currentCard;
+
+    // Determine source card to copy values from
+    let sourceCard: SimpleTableCard | undefined;
+    if (cardData.copyFromCardId === "active") {
+      sourceCard = cards.find((c) => c.isActive) || cards[0] || currentCard;
+    } else if (cardData.copyFromCardId) {
+      sourceCard = cards.find((c) => c.id === cardData.copyFromCardId);
+    }
+
+    const templateCard = sourceCard || cards.find((c) => c.isActive) || cards[0] || currentCard;
     const templateRows = (templateCard.rows && templateCard.rows.length > 0) ? templateCard.rows : currentRows;
 
-    // Fresh rows cloned from template / current with descriptor column preserved
-    const newRows: SimpleRow[] = templateRows.map((r, idx) => {
-      const emptyValues = { ...r.values };
-      for (const key of Object.keys(emptyValues)) {
-        if (
-          key !== firstColKey &&
-          !["styleName", "styleCategory", "description", "customer", "orderType", "useType", "use_type"].includes(key)
-        ) {
-          emptyValues[key] = "";
-        }
-      }
-      return {
+    let newRows: SimpleRow[];
+    if (sourceCard) {
+      // Full copy of values from source card
+      newRows = (sourceCard.rows && sourceCard.rows.length > 0 ? sourceCard.rows : templateRows).map((r, idx) => ({
         id: `row-${Date.now()}-${idx}`,
-        values: emptyValues,
-      };
+        values: { ...r.values },
+      }));
+    } else {
+      // Blank values with descriptors preserved
+      newRows = templateRows.map((r, idx) => {
+        const emptyValues = { ...r.values };
+        for (const key of Object.keys(emptyValues)) {
+          if (
+            key !== firstColKey &&
+            !["styleName", "styleCategory", "description", "customer", "orderType", "useType", "use_type"].includes(key)
+          ) {
+            emptyValues[key] = "";
+          }
+        }
+        return {
+          id: `row-${Date.now()}-${idx}`,
+          values: emptyValues,
+        };
+      });
+    }
+
+    const targetCust = (cardData.customer || "").trim().toLowerCase();
+    const isDef = cardData.isDefault || !targetCust;
+
+    // Check if there are already active cards for this customer/default group
+    const existingGroupCards = cards.filter((c) => {
+      const cCust = (c.customer || "").trim().toLowerCase();
+      const isCDef = c.isDefault || !cCust;
+      return isDef ? isCDef : cCust === targetCust;
     });
+    const hasActiveInGroup = existingGroupCards.some((c) => c.isActive);
 
     const newCard: SimpleTableCard = {
       id: newId,
       serialNo: nextSerial,
       name,
-      isActive: false,
+      customer: cardData.customer,
+      isDefault: cardData.isDefault,
+      isActive: !hasActiveInGroup, // Automatically active if first card in its customer group
       columns: [...currentColumns],
       rows: newRows,
     };
@@ -437,7 +496,7 @@ export function SimpleTableEditor({
 
     await onSave(payload);
     setHasChanges(false);
-    toast.success(`Created "${name}" (Saved to DB)`);
+    toast.success(`Created "${name}" ${cardData.customer ? `for ${cardData.customer}` : ""} (Saved to DB)`);
   }
 
   // Duplicate current card
@@ -456,6 +515,8 @@ export function SimpleTableEditor({
       id: newId,
       serialNo: nextSerial,
       name,
+      customer: cardToDuplicate.customer,
+      isDefault: cardToDuplicate.isDefault,
       isActive: false,
       columns: [...(cardToDuplicate.columns || currentColumns)],
       rows: newRows,
@@ -676,21 +737,33 @@ export function SimpleTableEditor({
                 <div>
                   {/* Top Bar on Card: Title & Active Badge */}
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-base font-bold text-foreground group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
                         {card.name}
                       </span>
                     </div>
 
-                    {card.isActive ? (
-                      <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px] px-2 py-0.5 font-semibold gap-1 shrink-0">
-                        <Check className="size-3" /> Active
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[10px] text-muted-foreground px-1.5 py-0.5 shrink-0">
-                        Inactive
-                      </Badge>
-                    )}
+                    <div className="flex flex-wrap items-center gap-1 shrink-0">
+                      {card.customer && (
+                        <Badge variant="outline" className="bg-blue-50/80 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 py-0.5 font-semibold gap-1 shrink-0">
+                          <Building2 className="size-3" /> {card.customer}
+                        </Badge>
+                      )}
+                      {card.isDefault && (
+                        <Badge variant="outline" className="bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-[10px] px-1.5 py-0.5 font-semibold gap-1 shrink-0">
+                          <Sparkles className="size-3" /> Default
+                        </Badge>
+                      )}
+                      {card.isActive ? (
+                        <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px] px-2 py-0.5 font-semibold gap-1 shrink-0">
+                          <Check className="size-3" /> Active
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] text-muted-foreground px-1.5 py-0.5 shrink-0">
+                          Inactive
+                        </Badge>
+                      )}
+                    </div>
                   </div>
 
                   {/* Card Description / Info */}
@@ -728,13 +801,23 @@ export function SimpleTableEditor({
               <FolderOpen className="size-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Opened Card:
                 </span>
                 <h3 className="text-lg font-bold text-foreground leading-none">
                   {currentCard.name}
                 </h3>
+                {currentCard.customer && (
+                  <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs px-2 py-0.5 font-semibold gap-1">
+                    <Building2 className="size-3" /> Customer: {currentCard.customer}
+                  </Badge>
+                )}
+                {currentCard.isDefault && (
+                  <Badge variant="outline" className="bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs px-2 py-0.5 font-semibold gap-1">
+                    <Sparkles className="size-3" /> Default Card
+                  </Badge>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -757,7 +840,7 @@ export function SimpleTableEditor({
             {currentCard.isActive ? (
               <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/60 border-2 border-emerald-500 text-emerald-900 dark:text-emerald-200 px-3.5 py-1.5 rounded-lg text-xs font-bold shadow-xs">
                 <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>ACTIVE (Used in Cost Sheet)</span>
+                <span>ACTIVE for {currentCard.customer ? `Customer "${currentCard.customer}"` : "Default"}</span>
               </div>
             ) : (
               <Button
@@ -767,7 +850,7 @@ export function SimpleTableEditor({
                 onClick={() => setActiveConfirmCardId(currentCard.id)}
               >
                 <Power className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Set as Active (Make Active in Cost Sheet)</span>
+                <span>Set as Active for {currentCard.customer ? `Customer "${currentCard.customer}"` : "Default"}</span>
               </Button>
             )}
 
@@ -993,14 +1076,10 @@ export function SimpleTableEditor({
         description="This will remove the row and its values from this card. Click Save Changes to commit."
         onConfirm={() => deleteRowId && handleDeleteRow(deleteRowId)}
       />
-      <PromptDialog
+      <CreateCardDialog
         open={newCardOpen}
         onOpenChange={setNewCardOpen}
-        title="Create New Card"
-        description="Create a new parameter card to save your data history or test new rates."
-        label={`Card ${Math.max(0, ...cards.map((c) => c.serialNo || 0)) + 1}`}
-        defaultValue={`Card ${Math.max(0, ...cards.map((c) => c.serialNo || 0)) + 1}`}
-        confirmLabel="Create Card"
+        existingCards={cards}
         onSubmit={handleCreateCard}
       />
 
@@ -1027,7 +1106,14 @@ export function SimpleTableEditor({
           <AlertDialogHeader>
             <AlertDialogTitle>Make this card active?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to set "{cards.find((c) => c.id === activeConfirmCardId)?.name}" as the active card? This card will be used in the Cost Sheet calculations.
+              {(() => {
+                const target = cards.find((c) => c.id === activeConfirmCardId);
+                if (!target) return "";
+                if (target.customer) {
+                  return `Are you sure you want to set "${target.name}" as the active card for customer "${target.customer}"? Other cards for "${target.customer}" will become inactive, while cards for other customers and default cards will remain active.`;
+                }
+                return `Are you sure you want to set "${target.name}" as the active Default card? It will be used as the active fallback for customers without custom cards.`;
+              })()}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

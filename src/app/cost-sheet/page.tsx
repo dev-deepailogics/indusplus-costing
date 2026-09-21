@@ -61,6 +61,7 @@ import type {
 } from "@/lib/style-master/types";
 import type {
   SimpleTableData,
+  SimpleTableCard,
   MatrixTableData,
   ProcessMatrixTableData,
   DropdownListsData,
@@ -256,6 +257,12 @@ function CostSheetContent() {
   const [directLabourFoh, setDirectLabourFoh] = useState<
     SimpleTableData | undefined
   >(undefined);
+  const [costOfSalesTable, setCostOfSalesTable] = useState<
+    SimpleTableData | undefined
+  >(undefined);
+  const [customerCommissionTable, setCustomerCommissionTable] = useState<
+    SimpleTableData | undefined
+  >(undefined);
   const [cutToShipGrid, setCutToShipGrid] = useState<
     MatrixTableData | undefined
   >(undefined);
@@ -283,6 +290,7 @@ function CostSheetContent() {
 
   // New editable style fields
   const [customerName, setCustomerName] = useState("");
+  const [isManualCustomer, setIsManualCustomer] = useState(false);
   const [styleCategory, setStyleCategory] = useState("");
   const [washType, setWashType] = useState("");
   const [orderQuantity, setOrderQuantity] = useState(0);
@@ -465,6 +473,142 @@ function CostSheetContent() {
       .catch((err) => console.error("[CostSheet] Failed to load styles/WOs:", err));
   }, [styleIdParam, costSheetIdParam]);
 
+  const applySpecificCard = (card: SimpleTableCard) => {
+    const rows = card.rows ?? [];
+    if (rows.length) {
+      const getVal = (desc: string) => {
+        const row = rows.find(
+          (r: SimpleTableCard["rows"][0]) =>
+            r.values.description?.toLowerCase().trim() ===
+            desc.toLowerCase().trim()
+        );
+        const val = row?.values?.percentOfSales;
+        if (!val || val.trim() === "" || val.trim() === "-") return null;
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? null : parsed;
+      };
+
+      const combinedTaxEds =
+        getVal("Tax & EDS") ?? getVal("Taxes & EDS") ?? getVal("Tax and EDS");
+      const eds = getVal("EDS");
+      const taxes = getVal("Taxes") ?? getVal("Tax");
+      const rebate = getVal("Rebate");
+      const exchangeRate = getVal("Exchange Rate");
+      const inlandFreight = getVal("Inland Freight");
+      const localBankCharges = getVal("Local Bank Charges");
+      const discountRateVal = getVal("Discount Rate");
+
+      const totalTaxEds =
+        combinedTaxEds !== null ? combinedTaxEds : (taxes || 0) + (eds || 0);
+      setTaxEdsInput(totalTaxEds > 0 ? totalTaxEds.toString() : "0");
+
+      if (exchangeRate !== null && exchangeRate > 0) {
+        setParitySale(exchangeRate);
+        setParityProcurement(exchangeRate);
+      }
+      setRebateInput(rebate !== null && rebate > 0 ? rebate.toString() : "0");
+      setInlandFreightInput(
+        inlandFreight !== null && inlandFreight > 0 ? inlandFreight.toString() : "0"
+      );
+      setLocalBankChargesInput(
+        localBankCharges !== null && localBankCharges > 0
+          ? localBankCharges.toString()
+          : "0"
+      );
+      setDiscountRateInput(
+        discountRateVal !== null && discountRateVal > 0
+          ? discountRateVal.toString()
+          : "0"
+      );
+    }
+  };
+
+  const applyCustomerParameters = (
+    cust: string,
+    cosTable?: SimpleTableData,
+    commTable?: SimpleTableData
+  ) => {
+    if (costSheetIdParam) return;
+    const custNorm = (cust || "").trim().toLowerCase();
+
+    // 1. Cost as % of Sales card lookup
+    if (cosTable) {
+      const cards = cosTable.cards || [];
+      const matchingCustomerCards = custNorm
+        ? cards.filter(
+            (c) =>
+              (c.customer && c.customer.trim().toLowerCase() === custNorm) ||
+              (!c.customer && c.name && c.name.trim().toLowerCase() === custNorm)
+          )
+        : [];
+
+      const defaultCards = cards.filter(
+        (c) => c.isDefault || (!c.customer || c.customer.trim() === "")
+      );
+
+      let matchedCard: SimpleTableCard | undefined;
+      if (matchingCustomerCards.length > 0) {
+        // Prioritize active card for this customer, otherwise the first
+        matchedCard =
+          matchingCustomerCards.find((c) => c.isActive) ||
+          matchingCustomerCards[0];
+      } else if (defaultCards.length > 0) {
+        matchedCard =
+          defaultCards.find((c) => c.isActive) ||
+          defaultCards.find((c) => c.isDefault) ||
+          defaultCards[0];
+      } else {
+        matchedCard = cards.find((c) => c.isActive) || cards[0];
+      }
+
+      if (matchedCard) {
+        applySpecificCard(matchedCard);
+      }
+    }
+
+    // 2. Customer Commission lookup
+    if (commTable) {
+      const cards = commTable.cards || [];
+      const matchingCustomerCards = custNorm
+        ? cards.filter(
+            (c) =>
+              (c.customer && c.customer.trim().toLowerCase() === custNorm) ||
+              (!c.customer && c.name && c.name.trim().toLowerCase() === custNorm)
+          )
+        : [];
+
+      const defaultCards = cards.filter(
+        (c) => c.isDefault || (!c.customer || c.customer.trim() === "")
+      );
+
+      let matchedCard: SimpleTableCard | undefined;
+      if (matchingCustomerCards.length > 0) {
+        matchedCard =
+          matchingCustomerCards.find((c) => c.isActive) ||
+          matchingCustomerCards[0];
+      } else if (defaultCards.length > 0) {
+        matchedCard =
+          defaultCards.find((c) => c.isActive) ||
+          defaultCards.find((c) => c.isDefault) ||
+          defaultCards[0];
+      } else {
+        matchedCard = cards.find((c) => c.isActive) || cards[0];
+      }
+
+      const rows = matchedCard?.rows ?? commTable.rows ?? [];
+      if (rows.length) {
+        const row = rows[0];
+        const val = row?.values?.commissionPercent;
+        if (val && val.trim() !== "" && val.trim() !== "-") {
+          const parsed = parseFloat(val);
+          setCommissionInput(!isNaN(parsed) && parsed > 0 ? parsed.toString() : "0");
+        } else {
+          setCommissionInput("0");
+        }
+      }
+    }
+  };
+
   useEffect(() => {
     setLoadingStyles(false);
 
@@ -559,62 +703,14 @@ function CostSheetContent() {
     const unsubCustomerCommission = subscribeToTable<SimpleTableData>(
       "customer-commission",
       (data) => {
-        const activeRows =
-          data?.cards?.find((c) => c.isActive)?.rows ?? data?.rows ?? [];
-        if (activeRows.length && !costSheetIdParam) {
-          const row = activeRows[0];
-          const val = row?.values?.commissionPercent;
-          if (val && val.trim() !== "" && val.trim() !== "-") {
-            const parsed = parseFloat(val);
-            setCommissionInput(!isNaN(parsed) && parsed > 0 ? parsed.toString() : "0");
-          } else {
-            setCommissionInput("0");
-          }
-        }
+        setCustomerCommissionTable(data);
       },
     );
 
     const unsubCostOfSales = subscribeToTable<SimpleTableData>(
       "cost-as-percent-of-sales",
       (data) => {
-        const activeRows =
-          data?.cards?.find((c) => c.isActive)?.rows ?? data?.rows ?? [];
-        if (activeRows.length) {
-          const getVal = (desc: string) => {
-            const row = activeRows.find(
-              (r) =>
-                r.values.description?.toLowerCase().trim() ===
-                desc.toLowerCase().trim(),
-            );
-            const val = row?.values?.percentOfSales;
-            if (!val || val.trim() === "" || val.trim() === "-") return null;
-            const parsed = parseFloat(val);
-            return isNaN(parsed) ? null : parsed;
-          };
-
-          const combinedTaxEds = getVal("Tax & EDS") ?? getVal("Taxes & EDS") ?? getVal("Tax and EDS");
-          const eds = getVal("EDS");
-          const taxes = getVal("Taxes") ?? getVal("Tax");
-          const rebate = getVal("Rebate");
-          const exchangeRate = getVal("Exchange Rate");
-          const inlandFreight = getVal("Inland Freight");
-          const localBankCharges = getVal("Local Bank Charges");
-          const discountRateVal = getVal("Discount Rate");
-
-          if (!costSheetIdParam) {
-            const totalTaxEds = combinedTaxEds !== null ? combinedTaxEds : ((taxes || 0) + (eds || 0));
-            setTaxEdsInput(totalTaxEds > 0 ? totalTaxEds.toString() : "0");
-
-            if (exchangeRate !== null && exchangeRate > 0) {
-              setParitySale(exchangeRate);
-              setParityProcurement(exchangeRate);
-            }
-            setRebateInput(rebate !== null && rebate > 0 ? rebate.toString() : "0");
-            setInlandFreightInput(inlandFreight !== null && inlandFreight > 0 ? inlandFreight.toString() : "0");
-            setLocalBankChargesInput(localBankCharges !== null && localBankCharges > 0 ? localBankCharges.toString() : "0");
-            setDiscountRateInput(discountRateVal !== null && discountRateVal > 0 ? discountRateVal.toString() : "0");
-          }
-        }
+        setCostOfSalesTable(data);
       },
     );
 
@@ -629,6 +725,13 @@ function CostSheetContent() {
       unsubCostOfSales();
     };
   }, [styleIdParam, costSheetIdParam]);
+
+  // Re-apply customer-specific parameter cards whenever customer changes or tables load
+  useEffect(() => {
+    if (costSheetIdParam) return;
+    if (!costOfSalesTable && !customerCommissionTable) return;
+    applyCustomerParameters(customerName, costOfSalesTable, customerCommissionTable);
+  }, [customerName, costOfSalesTable, customerCommissionTable, costSheetIdParam]);
 
   // Load saved snapshot if costSheetId exists
   useEffect(() => {
@@ -1751,21 +1854,59 @@ function CostSheetContent() {
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">
-                  Customer Name:
-                </span>
-                <input
-                  type="text"
-                  disabled={isDbSelected}
-                  className={`w-32 h-7 px-2 text-xs font-semibold rounded text-left transition-all outline-none ${
-                    isDbSelected
-                      ? "bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed select-none shadow-none"
-                      : "bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25"
-                  }`}
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                />
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-muted-foreground">
+                    Customer Name:
+                  </span>
+                  {!isDbSelected && (
+                    <button
+                      type="button"
+                      onClick={() => setIsManualCustomer((prev) => !prev)}
+                      className="text-[10px] text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-semibold px-1 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 transition-colors"
+                      title={isManualCustomer ? "Switch to customer select list" : "Switch to manual custom customer name input"}
+                    >
+                      {isManualCustomer ? "List" : "Custom"}
+                    </button>
+                  )}
+                </div>
+                {isManualCustomer ? (
+                  <input
+                    type="text"
+                    disabled={isDbSelected}
+                    placeholder="Enter manual name…"
+                    className="w-32 h-6 px-1.5 text-xs rounded text-left transition-all outline-none bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 shadow-2xs hover:border-blue-500 focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 font-medium"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                  />
+                ) : (
+                  <SearchableSelect
+                    className="w-32"
+                    disabled={isDbSelected}
+                    allowCustom={true}
+                    placeholder="Select customer…"
+                    value={customerName}
+                    onChange={(val) => {
+                      if (val === "__manual__") {
+                        setIsManualCustomer(true);
+                      } else {
+                        setCustomerName(val);
+                      }
+                    }}
+                    options={[
+                      { value: "", label: "" },
+                      { value: "__manual__", label: "✏️ Enter Manual Name…" },
+                      ...Array.from(
+                        new Set([
+                          ...customersList,
+                          ...indusStyleRows.map((r) => r.customer?.trim()).filter(Boolean),
+                          ...(customerName ? [customerName] : []),
+                        ] as string[])
+                      ).map((c) => ({ value: c, label: c })),
+                    ]}
+                  />
+                )}
               </div>
+
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
@@ -2295,16 +2436,13 @@ function CostSheetContent() {
                 </span>
                 <div className="flex items-center gap-1">
                   <input
-                    type="number"
-                    step="0.01"
-                    className="w-24 h-7 px-2 text-xs border border-amber-300 dark:border-amber-700/80 bg-amber-50/80 dark:bg-amber-950/30 hover:bg-amber-50 text-amber-950 dark:text-amber-200 font-bold rounded text-right shadow-2xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    type="text"
+                    disabled
+                    readOnly
+                    className="w-24 h-7 px-2 text-xs font-bold rounded text-right transition-all outline-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed select-none shadow-none"
                     value={taxEdsInput}
-                    onChange={(e) => {
-                      markDirty();
-                      setTaxEdsInput(e.target.value);
-                    }}
                   />
-                  <span className="text-amber-800 dark:text-amber-400 font-bold">%</span>
+                  <span className="text-slate-400 dark:text-slate-500 font-bold">%</span>
                 </div>
               </div>
 
@@ -2329,16 +2467,13 @@ function CostSheetContent() {
                 </span>
                 <div className="flex items-center gap-1">
                   <input
-                    type="number"
-                    step="0.01"
-                    className="w-24 h-7 px-2 text-xs border border-amber-300 dark:border-amber-700/80 bg-amber-50/80 dark:bg-amber-950/30 hover:bg-amber-50 text-amber-950 dark:text-amber-200 font-bold rounded text-right shadow-2xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    type="text"
+                    disabled
+                    readOnly
+                    className="w-24 h-7 px-2 text-xs font-bold rounded text-right transition-all outline-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed select-none shadow-none"
                     value={inlandFreightInput}
-                    onChange={(e) => {
-                      markDirty();
-                      setInlandFreightInput(e.target.value);
-                    }}
                   />
-                  <span className="text-amber-800 dark:text-amber-400 font-bold">%</span>
+                  <span className="text-slate-400 dark:text-slate-500 font-bold">%</span>
                 </div>
               </div>
 
@@ -2360,36 +2495,30 @@ function CostSheetContent() {
                 </span>
                 <div className="flex items-center gap-1">
                   <input
-                    type="number"
-                    step="0.01"
-                    className="w-24 h-7 px-2 text-xs border border-amber-300 dark:border-amber-700/80 bg-amber-50/80 dark:bg-amber-950/30 hover:bg-amber-50 text-amber-950 dark:text-amber-200 font-bold rounded text-right shadow-2xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    type="text"
+                    disabled
+                    readOnly
+                    className="w-24 h-7 px-2 text-xs font-bold rounded text-right transition-all outline-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed select-none shadow-none"
                     value={localBankChargesInput}
-                    onChange={(e) => {
-                      markDirty();
-                      setLocalBankChargesInput(e.target.value);
-                    }}
                   />
-                  <span className="text-amber-800 dark:text-amber-400 font-bold">%</span>
+                  <span className="text-slate-400 dark:text-slate-500 font-bold">%</span>
                 </div>
               </div>
 
               <div />
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground font-bold text-amber-950 dark:text-amber-300">
+                <span className="font-semibold text-muted-foreground font-bold text-slate-600 dark:text-slate-400">
                   Discount Rate
                 </span>
                 <div className="flex items-center gap-1">
                   <input
-                    type="number"
-                    step="0.01"
-                    className="w-24 h-7 px-2 text-xs border border-amber-300 dark:border-amber-700/80 bg-amber-50/80 dark:bg-amber-950/30 hover:bg-amber-50 text-amber-950 dark:text-amber-200 font-bold rounded text-right shadow-2xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                    type="text"
+                    disabled
+                    readOnly
+                    className="w-24 h-7 px-2 text-xs font-bold rounded text-right transition-all outline-none bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed select-none shadow-none"
                     value={discountRateInput}
-                    onChange={(e) => {
-                      markDirty();
-                      setDiscountRateInput(e.target.value);
-                    }}
                   />
-                  <span className="text-amber-800 dark:text-amber-400 font-bold">%</span>
+                  <span className="text-slate-400 dark:text-slate-500 font-bold">%</span>
                 </div>
               </div>
             </div>

@@ -77,14 +77,16 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
 
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='styles_values')
      CREATE TABLE styles_values (
-       card_id     NVARCHAR(128) NOT NULL DEFAULT 'card-1',
-       card_name   NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
-       is_active   BIT           NOT NULL DEFAULT 1,
-       card_serial INT           NOT NULL DEFAULT 1,
-       row_id      NVARCHAR(128) NOT NULL,
-       col_key     NVARCHAR(128) NOT NULL,
-       col_value   NVARCHAR(MAX) NOT NULL DEFAULT '',
-       row_order   INT           NOT NULL DEFAULT 0
+       card_id       NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       card_name     NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       card_customer NVARCHAR(256) NULL DEFAULT '',
+       is_default    BIT           NOT NULL DEFAULT 0,
+       is_active     BIT           NOT NULL DEFAULT 1,
+       card_serial   INT           NOT NULL DEFAULT 1,
+       row_id        NVARCHAR(128) NOT NULL,
+       col_key       NVARCHAR(128) NOT NULL,
+       col_value     NVARCHAR(MAX) NOT NULL DEFAULT '',
+       row_order     INT           NOT NULL DEFAULT 0
      )
      ELSE
      BEGIN
@@ -96,6 +98,10 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
          ALTER TABLE styles_values ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('styles_values') AND name = 'card_name')
          ALTER TABLE styles_values ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('styles_values') AND name = 'card_customer')
+         ALTER TABLE styles_values ADD card_customer NVARCHAR(256) NULL DEFAULT '';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('styles_values') AND name = 'is_default')
+         ALTER TABLE styles_values ADD is_default BIT NOT NULL DEFAULT 0;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('styles_values') AND name = 'is_active')
          ALTER TABLE styles_values ADD is_active BIT NOT NULL DEFAULT 1;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('styles_values') AND name = 'card_serial')
@@ -108,6 +114,8 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
        id               NVARCHAR(128) NOT NULL,
        card_id          NVARCHAR(128) NOT NULL DEFAULT 'card-1',
        card_name        NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       card_customer    NVARCHAR(256) NULL DEFAULT '',
+       is_default       BIT           NOT NULL DEFAULT 0,
        is_active        BIT           NOT NULL DEFAULT 1,
        card_serial      INT           NOT NULL DEFAULT 1,
        description      NVARCHAR(256) NOT NULL DEFAULT '',
@@ -124,6 +132,10 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
          ALTER TABLE other_expenses ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('other_expenses') AND name = 'card_name')
          ALTER TABLE other_expenses ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('other_expenses') AND name = 'card_customer')
+         ALTER TABLE other_expenses ADD card_customer NVARCHAR(256) NULL DEFAULT '';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('other_expenses') AND name = 'is_default')
+         ALTER TABLE other_expenses ADD is_default BIT NOT NULL DEFAULT 0;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('other_expenses') AND name = 'is_active')
          ALTER TABLE other_expenses ADD is_active BIT NOT NULL DEFAULT 1;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('other_expenses') AND name = 'card_serial')
@@ -133,13 +145,15 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
     // ── order_types ─────────────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='order_types')
      CREATE TABLE order_types (
-       id         NVARCHAR(128) NOT NULL,
-       card_id    NVARCHAR(128) NOT NULL DEFAULT 'card-1',
-       card_name  NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
-       is_active  BIT           NOT NULL DEFAULT 1,
-       card_serial INT          NOT NULL DEFAULT 1,
-       order_type NVARCHAR(128) NOT NULL DEFAULT '',
-       row_order  INT           NOT NULL DEFAULT 0
+       id            NVARCHAR(128) NOT NULL,
+       card_id       NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       card_name     NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       card_customer NVARCHAR(256) NULL DEFAULT '',
+       is_default    BIT           NOT NULL DEFAULT 0,
+       is_active     BIT           NOT NULL DEFAULT 1,
+       card_serial   INT           NOT NULL DEFAULT 1,
+       order_type    NVARCHAR(128) NOT NULL DEFAULT '',
+       row_order     INT           NOT NULL DEFAULT 0
      )
      ELSE
      BEGIN
@@ -151,6 +165,10 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
          ALTER TABLE order_types ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('order_types') AND name = 'card_name')
          ALTER TABLE order_types ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('order_types') AND name = 'card_customer')
+         ALTER TABLE order_types ADD card_customer NVARCHAR(256) NULL DEFAULT '';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('order_types') AND name = 'is_default')
+         ALTER TABLE order_types ADD is_default BIT NOT NULL DEFAULT 0;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('order_types') AND name = 'is_active')
          ALTER TABLE order_types ADD is_active BIT NOT NULL DEFAULT 1;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('order_types') AND name = 'card_serial')
@@ -163,6 +181,8 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
        id                 NVARCHAR(128) NOT NULL,
        card_id            NVARCHAR(128) NOT NULL DEFAULT 'card-1',
        card_name          NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       card_customer      NVARCHAR(256) NULL DEFAULT '',
+       is_default         BIT           NOT NULL DEFAULT 0,
        is_active          BIT           NOT NULL DEFAULT 1,
        card_serial        INT           NOT NULL DEFAULT 1,
        customer           NVARCHAR(256) NOT NULL DEFAULT '',
@@ -179,6 +199,10 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
          ALTER TABLE customer_commissions ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('customer_commissions') AND name = 'card_name')
          ALTER TABLE customer_commissions ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('customer_commissions') AND name = 'card_customer')
+         ALTER TABLE customer_commissions ADD card_customer NVARCHAR(256) NULL DEFAULT '';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('customer_commissions') AND name = 'is_default')
+         ALTER TABLE customer_commissions ADD is_default BIT NOT NULL DEFAULT 0;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('customer_commissions') AND name = 'is_active')
          ALTER TABLE customer_commissions ADD is_active BIT NOT NULL DEFAULT 1;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('customer_commissions') AND name = 'card_serial')
@@ -191,6 +215,8 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
        id               NVARCHAR(128) NOT NULL,
        card_id          NVARCHAR(128) NOT NULL DEFAULT 'card-1',
        card_name        NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       card_customer    NVARCHAR(256) NULL DEFAULT '',
+       is_default       BIT           NOT NULL DEFAULT 0,
        is_active        BIT           NOT NULL DEFAULT 1,
        card_serial      INT           NOT NULL DEFAULT 1,
        description      NVARCHAR(256) NOT NULL DEFAULT '',
@@ -207,6 +233,10 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
          ALTER TABLE cost_as_percent_of_sales ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('cost_as_percent_of_sales') AND name = 'card_name')
          ALTER TABLE cost_as_percent_of_sales ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('cost_as_percent_of_sales') AND name = 'card_customer')
+         ALTER TABLE cost_as_percent_of_sales ADD card_customer NVARCHAR(256) NULL DEFAULT '';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('cost_as_percent_of_sales') AND name = 'is_default')
+         ALTER TABLE cost_as_percent_of_sales ADD is_default BIT NOT NULL DEFAULT 0;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('cost_as_percent_of_sales') AND name = 'is_active')
          ALTER TABLE cost_as_percent_of_sales ADD is_active BIT NOT NULL DEFAULT 1;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('cost_as_percent_of_sales') AND name = 'card_serial')
@@ -216,16 +246,18 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
     // ── direct_labour_foh ───────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='direct_labour_foh')
      CREATE TABLE direct_labour_foh (
-       id           NVARCHAR(128) NOT NULL,
-       card_id      NVARCHAR(128) NOT NULL DEFAULT 'card-1',
-       card_name    NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
-       is_active    BIT           NOT NULL DEFAULT 1,
-       card_serial  INT           NOT NULL DEFAULT 1,
-       description  NVARCHAR(256) NOT NULL DEFAULT '',
-       cost_per_sam NVARCHAR(64)  NOT NULL DEFAULT '',
-       per_piece    NVARCHAR(64)  NOT NULL DEFAULT '',
-       use_type     NVARCHAR(32)  NOT NULL DEFAULT 'sam',
-       row_order    INT           NOT NULL DEFAULT 0
+       id            NVARCHAR(128) NOT NULL,
+       card_id       NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       card_name     NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       card_customer NVARCHAR(256) NULL DEFAULT '',
+       is_default    BIT           NOT NULL DEFAULT 0,
+       is_active     BIT           NOT NULL DEFAULT 1,
+       card_serial   INT           NOT NULL DEFAULT 1,
+       description   NVARCHAR(256) NOT NULL DEFAULT '',
+       cost_per_sam  NVARCHAR(64)  NOT NULL DEFAULT '',
+       per_piece     NVARCHAR(64)  NOT NULL DEFAULT '',
+       use_type      NVARCHAR(32)  NOT NULL DEFAULT 'sam',
+       row_order     INT           NOT NULL DEFAULT 0
      )
      ELSE
      BEGIN
@@ -235,6 +267,10 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
          ALTER TABLE direct_labour_foh ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'card_name')
          ALTER TABLE direct_labour_foh ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'card_customer')
+         ALTER TABLE direct_labour_foh ADD card_customer NVARCHAR(256) NULL DEFAULT '';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'is_default')
+         ALTER TABLE direct_labour_foh ADD is_default BIT NOT NULL DEFAULT 0;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'is_active')
          ALTER TABLE direct_labour_foh ADD is_active BIT NOT NULL DEFAULT 1;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('direct_labour_foh') AND name = 'card_serial')
@@ -246,14 +282,16 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
     // ── admin_selling ───────────────────────────────────────────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='admin_selling')
      CREATE TABLE admin_selling (
-       id           NVARCHAR(128) NOT NULL,
-       card_id      NVARCHAR(128) NOT NULL DEFAULT 'card-1',
-       card_name    NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
-       is_active    BIT           NOT NULL DEFAULT 1,
-       card_serial  INT           NOT NULL DEFAULT 1,
-       description  NVARCHAR(256) NOT NULL DEFAULT '',
-       cost_per_sam NVARCHAR(64)  NOT NULL DEFAULT '',
-       row_order    INT           NOT NULL DEFAULT 0
+       id            NVARCHAR(128) NOT NULL,
+       card_id       NVARCHAR(128) NOT NULL DEFAULT 'card-1',
+       card_name     NVARCHAR(256) NOT NULL DEFAULT 'Card 1',
+       card_customer NVARCHAR(256) NULL DEFAULT '',
+       is_default    BIT           NOT NULL DEFAULT 0,
+       is_active     BIT           NOT NULL DEFAULT 1,
+       card_serial   INT           NOT NULL DEFAULT 1,
+       description   NVARCHAR(256) NOT NULL DEFAULT '',
+       cost_per_sam  NVARCHAR(64)  NOT NULL DEFAULT '',
+       row_order     INT           NOT NULL DEFAULT 0
      )
      ELSE
      BEGIN
@@ -265,6 +303,10 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
          ALTER TABLE admin_selling ADD card_id NVARCHAR(128) NOT NULL DEFAULT 'card-1';
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'card_name')
          ALTER TABLE admin_selling ADD card_name NVARCHAR(256) NOT NULL DEFAULT 'Card 1';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'card_customer')
+         ALTER TABLE admin_selling ADD card_customer NVARCHAR(256) NULL DEFAULT '';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'is_default')
+         ALTER TABLE admin_selling ADD is_default BIT NOT NULL DEFAULT 0;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'is_active')
          ALTER TABLE admin_selling ADD is_active BIT NOT NULL DEFAULT 1;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'card_serial')
@@ -573,8 +615,8 @@ async function getStyles(pool: Awaited<ReturnType<typeof getPool>>): Promise<Sim
     pool.request().query<{ card_id?: string; col_key: string; col_label: string; sort_order: number }>(
       "SELECT card_id, col_key, col_label, sort_order FROM styles_columns ORDER BY card_id, sort_order"
     ),
-    pool.request().query<{ card_id?: string; card_name?: string; is_active?: boolean | number; card_serial?: number; row_id: string; col_key: string; col_value: string; row_order: number }>(
-      "SELECT card_id, card_name, is_active, card_serial, row_id, col_key, col_value, row_order FROM styles_values ORDER BY card_serial, card_id, row_order, row_id"
+    pool.request().query<{ card_id?: string; card_name?: string; card_customer?: string; is_default?: boolean | number; is_active?: boolean | number; card_serial?: number; row_id: string; col_key: string; col_value: string; row_order: number }>(
+      "SELECT card_id, card_name, card_customer, is_default, is_active, card_serial, row_id, col_key, col_value, row_order FROM styles_values ORDER BY card_serial, card_id, row_order, row_id"
     ),
   ]);
 
@@ -599,6 +641,7 @@ async function getStyles(pool: Awaited<ReturnType<typeof getPool>>): Promise<Sim
       id: "card-1",
       serialNo: 1,
       name: "Card 1",
+      isDefault: true,
       isActive: true,
       columns: cols,
       rows: [],
@@ -610,6 +653,8 @@ async function getStyles(pool: Awaited<ReturnType<typeof getPool>>): Promise<Sim
   const cardMap = new Map<string, {
     serial: number;
     name: string;
+    customer?: string;
+    isDefault?: boolean;
     isActive: boolean;
     rowMap: Map<string, { order: number; values: Record<string, string> }>;
   }>();
@@ -620,6 +665,8 @@ async function getStyles(pool: Awaited<ReturnType<typeof getPool>>): Promise<Sim
       cardMap.set(cId, {
         serial: r.card_serial ?? (cardMap.size + 1),
         name: r.card_name || `Card ${cardMap.size + 1}`,
+        customer: r.card_customer || undefined,
+        isDefault: r.is_default === true || r.is_default === 1 || (!r.card_customer && r.is_default !== false),
         isActive: r.is_active === true || r.is_active === 1,
         rowMap: new Map(),
       });
@@ -640,6 +687,8 @@ async function getStyles(pool: Awaited<ReturnType<typeof getPool>>): Promise<Sim
       id: cId,
       serialNo: entry.serial,
       name: entry.name,
+      customer: entry.customer,
+      isDefault: entry.isDefault,
       isActive: entry.isActive,
       columns: cardCols,
       rows: cardRows,
@@ -675,6 +724,7 @@ async function saveStyles(pool: Awaited<ReturnType<typeof getPool>>, data: Simpl
               id: "card-1",
               serialNo: 1,
               name: "Card 1",
+              isDefault: true,
               isActive: true,
               columns: data.columns,
               rows: data.rows,
@@ -706,6 +756,8 @@ async function saveStyles(pool: Awaited<ReturnType<typeof getPool>>, data: Simpl
           await new sql.Request(tx)
             .input("card_id", sql.NVarChar(128), cardId)
             .input("card_name", sql.NVarChar(256), cardName)
+            .input("card_customer", sql.NVarChar(256), card.customer || null)
+            .input("is_default", sql.Bit, card.isDefault ? 1 : 0)
             .input("is_active", sql.Bit, isActive)
             .input("card_serial", sql.Int, cardSerial)
             .input("row_id", sql.NVarChar(128), row.id)
@@ -713,7 +765,7 @@ async function saveStyles(pool: Awaited<ReturnType<typeof getPool>>, data: Simpl
             .input("col_value", sql.NVarChar(sql.MAX), row.values[col.key] ?? "")
             .input("row_order", sql.Int, i)
             .query(
-              "INSERT INTO styles_values (card_id, card_name, is_active, card_serial, row_id, col_key, col_value, row_order) VALUES (@card_id, @card_name, @is_active, @card_serial, @row_id, @col_key, @col_value, @row_order)"
+              "INSERT INTO styles_values (card_id, card_name, card_customer, is_default, is_active, card_serial, row_id, col_key, col_value, row_order) VALUES (@card_id, @card_name, @card_customer, @is_default, @is_active, @card_serial, @row_id, @col_key, @col_value, @row_order)"
             );
         }
       }
@@ -734,12 +786,14 @@ async function getOtherExpenses(pool: Awaited<ReturnType<typeof getPool>>): Prom
     id: string;
     card_id?: string;
     card_name?: string;
+    card_customer?: string;
+    is_default?: boolean | number;
     is_active?: boolean | number;
     card_serial?: number;
     description: string;
     percent_of_sales: string;
     row_order: number;
-  }>("SELECT id, card_id, card_name, is_active, card_serial, description, percent_of_sales, row_order FROM other_expenses ORDER BY card_serial, card_id, row_order, id");
+  }>("SELECT id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, percent_of_sales, row_order FROM other_expenses ORDER BY card_serial, card_id, row_order, id");
 
   const defaultColumns = [
     { key: "description", label: "Description" },
@@ -751,6 +805,7 @@ async function getOtherExpenses(pool: Awaited<ReturnType<typeof getPool>>): Prom
       id: "card-1",
       serialNo: 1,
       name: "Card 1",
+      isDefault: true,
       isActive: true,
       columns: defaultColumns,
       rows: [],
@@ -766,6 +821,8 @@ async function getOtherExpenses(pool: Awaited<ReturnType<typeof getPool>>): Prom
         id: cId,
         serialNo: r.card_serial ?? (cardMap.size + 1),
         name: r.card_name || `Card ${cardMap.size + 1}`,
+        customer: r.card_customer || undefined,
+        isDefault: r.is_default === true || r.is_default === 1 || (!r.card_customer && r.is_default !== false),
         isActive: r.is_active === true || r.is_active === 1,
         columns: defaultColumns,
         rows: [],
@@ -799,7 +856,7 @@ async function saveOtherExpenses(pool: Awaited<ReturnType<typeof getPool>>, data
   try {
     await new sql.Request(tx).query("DELETE FROM other_expenses");
     const cardsToSave = data.cards && data.cards.length > 0 ? data.cards : [{
-      id: "card-1", name: "Card 1", serialNo: 1, isActive: true, columns: data.columns, rows: data.rows
+      id: "card-1", name: "Card 1", serialNo: 1, isDefault: true, isActive: true, columns: data.columns, rows: data.rows
     }];
     for (const card of cardsToSave) {
       for (let i = 0; i < card.rows.length; i++) {
@@ -808,12 +865,14 @@ async function saveOtherExpenses(pool: Awaited<ReturnType<typeof getPool>>, data
           .input("id", sql.NVarChar(128), row.id)
           .input("card_id", sql.NVarChar(128), card.id)
           .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+          .input("card_customer", sql.NVarChar(256), card.customer || null)
+          .input("is_default", sql.Bit, card.isDefault ? 1 : 0)
           .input("is_active", sql.Bit, card.isActive ? 1 : 0)
           .input("card_serial", sql.Int, card.serialNo || 1)
           .input("description", sql.NVarChar(256), row.values.description ?? "")
           .input("percent_of_sales", sql.NVarChar(64), row.values.percentOfSales ?? "")
           .input("row_order", sql.Int, i)
-          .query("INSERT INTO other_expenses (id, card_id, card_name, is_active, card_serial, description, percent_of_sales, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @description, @percent_of_sales, @row_order)");
+          .query("INSERT INTO other_expenses (id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, percent_of_sales, row_order) VALUES (@id, @card_id, @card_name, @card_customer, @is_default, @is_active, @card_serial, @description, @percent_of_sales, @row_order)");
       }
     }
     await tx.commit();
@@ -831,11 +890,13 @@ async function getOrderTypes(pool: Awaited<ReturnType<typeof getPool>>): Promise
     id: string;
     card_id?: string;
     card_name?: string;
+    card_customer?: string;
+    is_default?: boolean | number;
     is_active?: boolean | number;
     card_serial?: number;
     order_type: string;
     row_order: number;
-  }>("SELECT id, card_id, card_name, is_active, card_serial, order_type, row_order FROM order_types ORDER BY card_serial, card_id, row_order, id");
+  }>("SELECT id, card_id, card_name, card_customer, is_default, is_active, card_serial, order_type, row_order FROM order_types ORDER BY card_serial, card_id, row_order, id");
 
   const defaultColumns = [{ key: "orderType", label: "Order Type" }];
 
@@ -844,6 +905,7 @@ async function getOrderTypes(pool: Awaited<ReturnType<typeof getPool>>): Promise
       id: "card-1",
       serialNo: 1,
       name: "Card 1",
+      isDefault: true,
       isActive: true,
       columns: defaultColumns,
       rows: [],
@@ -859,6 +921,8 @@ async function getOrderTypes(pool: Awaited<ReturnType<typeof getPool>>): Promise
         id: cId,
         serialNo: r.card_serial ?? (cardMap.size + 1),
         name: r.card_name || `Card ${cardMap.size + 1}`,
+        customer: r.card_customer || undefined,
+        isDefault: r.is_default === true || r.is_default === 1 || (!r.card_customer && r.is_default !== false),
         isActive: r.is_active === true || r.is_active === 1,
         columns: defaultColumns,
         rows: [],
@@ -892,7 +956,7 @@ async function saveOrderTypes(pool: Awaited<ReturnType<typeof getPool>>, data: S
   try {
     await new sql.Request(tx).query("DELETE FROM order_types");
     const cardsToSave = data.cards && data.cards.length > 0 ? data.cards : [{
-      id: "card-1", name: "Card 1", serialNo: 1, isActive: true, columns: data.columns, rows: data.rows
+      id: "card-1", name: "Card 1", serialNo: 1, isDefault: true, isActive: true, columns: data.columns, rows: data.rows
     }];
     for (const card of cardsToSave) {
       for (let i = 0; i < card.rows.length; i++) {
@@ -901,11 +965,13 @@ async function saveOrderTypes(pool: Awaited<ReturnType<typeof getPool>>, data: S
           .input("id", sql.NVarChar(128), row.id)
           .input("card_id", sql.NVarChar(128), card.id)
           .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+          .input("card_customer", sql.NVarChar(256), card.customer || null)
+          .input("is_default", sql.Bit, card.isDefault ? 1 : 0)
           .input("is_active", sql.Bit, card.isActive ? 1 : 0)
           .input("card_serial", sql.Int, card.serialNo || 1)
           .input("order_type", sql.NVarChar(128), row.values.orderType ?? "")
           .input("row_order", sql.Int, i)
-          .query("INSERT INTO order_types (id, card_id, card_name, is_active, card_serial, order_type, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @order_type, @row_order)");
+          .query("INSERT INTO order_types (id, card_id, card_name, card_customer, is_default, is_active, card_serial, order_type, row_order) VALUES (@id, @card_id, @card_name, @card_customer, @is_default, @is_active, @card_serial, @order_type, @row_order)");
       }
     }
     await tx.commit();
@@ -923,12 +989,14 @@ async function getCustomerCommissions(pool: Awaited<ReturnType<typeof getPool>>)
     id: string;
     card_id?: string;
     card_name?: string;
+    card_customer?: string;
+    is_default?: boolean | number;
     is_active?: boolean | number;
     card_serial?: number;
     customer: string;
     commission_percent: string;
     row_order: number;
-  }>("SELECT id, card_id, card_name, is_active, card_serial, customer, commission_percent, row_order FROM customer_commissions ORDER BY card_serial, card_id, row_order, id");
+  }>("SELECT id, card_id, card_name, card_customer, is_default, is_active, card_serial, customer, commission_percent, row_order FROM customer_commissions ORDER BY card_serial, card_id, row_order, id");
 
   const defaultColumns = [
     { key: "customer", label: "Customer" },
@@ -940,6 +1008,7 @@ async function getCustomerCommissions(pool: Awaited<ReturnType<typeof getPool>>)
       id: "card-1",
       serialNo: 1,
       name: "Card 1",
+      isDefault: true,
       isActive: true,
       columns: defaultColumns,
       rows: [],
@@ -955,6 +1024,8 @@ async function getCustomerCommissions(pool: Awaited<ReturnType<typeof getPool>>)
         id: cId,
         serialNo: r.card_serial ?? (cardMap.size + 1),
         name: r.card_name || `Card ${cardMap.size + 1}`,
+        customer: r.card_customer || undefined,
+        isDefault: r.is_default === true || r.is_default === 1 || (!r.card_customer && r.is_default !== false),
         isActive: r.is_active === true || r.is_active === 1,
         columns: defaultColumns,
         rows: [],
@@ -988,7 +1059,7 @@ async function saveCustomerCommissions(pool: Awaited<ReturnType<typeof getPool>>
   try {
     await new sql.Request(tx).query("DELETE FROM customer_commissions");
     const cardsToSave = data.cards && data.cards.length > 0 ? data.cards : [{
-      id: "card-1", name: "Card 1", serialNo: 1, isActive: true, columns: data.columns, rows: data.rows
+      id: "card-1", name: "Card 1", serialNo: 1, isDefault: true, isActive: true, columns: data.columns, rows: data.rows
     }];
     for (const card of cardsToSave) {
       for (let i = 0; i < card.rows.length; i++) {
@@ -997,12 +1068,14 @@ async function saveCustomerCommissions(pool: Awaited<ReturnType<typeof getPool>>
           .input("id", sql.NVarChar(128), row.id)
           .input("card_id", sql.NVarChar(128), card.id)
           .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+          .input("card_customer", sql.NVarChar(256), card.customer || null)
+          .input("is_default", sql.Bit, card.isDefault ? 1 : 0)
           .input("is_active", sql.Bit, card.isActive ? 1 : 0)
           .input("card_serial", sql.Int, card.serialNo || 1)
           .input("customer", sql.NVarChar(256), row.values.customer ?? "")
           .input("commission_percent", sql.NVarChar(64), row.values.commissionPercent ?? "")
           .input("row_order", sql.Int, i)
-          .query("INSERT INTO customer_commissions (id, card_id, card_name, is_active, card_serial, customer, commission_percent, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @customer, @commission_percent, @row_order)");
+          .query("INSERT INTO customer_commissions (id, card_id, card_name, card_customer, is_default, is_active, card_serial, customer, commission_percent, row_order) VALUES (@id, @card_id, @card_name, @card_customer, @is_default, @is_active, @card_serial, @customer, @commission_percent, @row_order)");
       }
     }
     await tx.commit();
@@ -1020,12 +1093,14 @@ async function getCostAsPercentOfSales(pool: Awaited<ReturnType<typeof getPool>>
     id: string;
     card_id?: string;
     card_name?: string;
+    card_customer?: string;
+    is_default?: boolean | number;
     is_active?: boolean | number;
     card_serial?: number;
     description: string;
     percent_of_sales: string;
     row_order: number;
-  }>("SELECT id, card_id, card_name, is_active, card_serial, description, percent_of_sales, row_order FROM cost_as_percent_of_sales ORDER BY card_serial, card_id, row_order, id");
+  }>("SELECT id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, percent_of_sales, row_order FROM cost_as_percent_of_sales ORDER BY card_serial, card_id, row_order, id");
 
   const defaultColumns = [
     { key: "description", label: "Description" },
@@ -1037,6 +1112,7 @@ async function getCostAsPercentOfSales(pool: Awaited<ReturnType<typeof getPool>>
       id: "card-1",
       serialNo: 1,
       name: "Card 1",
+      isDefault: true,
       isActive: true,
       columns: defaultColumns,
       rows: [],
@@ -1052,6 +1128,8 @@ async function getCostAsPercentOfSales(pool: Awaited<ReturnType<typeof getPool>>
         id: cId,
         serialNo: r.card_serial ?? (cardMap.size + 1),
         name: r.card_name || `Card ${cardMap.size + 1}`,
+        customer: r.card_customer || undefined,
+        isDefault: r.is_default === true || r.is_default === 1 || (!r.card_customer && r.is_default !== false),
         isActive: r.is_active === true || r.is_active === 1,
         columns: defaultColumns,
         rows: [],
@@ -1085,7 +1163,7 @@ async function saveCostAsPercentOfSales(pool: Awaited<ReturnType<typeof getPool>
   try {
     await new sql.Request(tx).query("DELETE FROM cost_as_percent_of_sales");
     const cardsToSave = data.cards && data.cards.length > 0 ? data.cards : [{
-      id: "card-1", name: "Card 1", serialNo: 1, isActive: true, columns: data.columns, rows: data.rows
+      id: "card-1", name: "Card 1", serialNo: 1, isDefault: true, isActive: true, columns: data.columns, rows: data.rows
     }];
     for (const card of cardsToSave) {
       for (let i = 0; i < card.rows.length; i++) {
@@ -1094,12 +1172,14 @@ async function saveCostAsPercentOfSales(pool: Awaited<ReturnType<typeof getPool>
           .input("id", sql.NVarChar(128), row.id)
           .input("card_id", sql.NVarChar(128), card.id)
           .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+          .input("card_customer", sql.NVarChar(256), card.customer || null)
+          .input("is_default", sql.Bit, card.isDefault ? 1 : 0)
           .input("is_active", sql.Bit, card.isActive ? 1 : 0)
           .input("card_serial", sql.Int, card.serialNo || 1)
           .input("description", sql.NVarChar(256), row.values.description ?? "")
           .input("percent_of_sales", sql.NVarChar(64), row.values.percentOfSales ?? "")
           .input("row_order", sql.Int, i)
-          .query("INSERT INTO cost_as_percent_of_sales (id, card_id, card_name, is_active, card_serial, description, percent_of_sales, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @description, @percent_of_sales, @row_order)");
+          .query("INSERT INTO cost_as_percent_of_sales (id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, percent_of_sales, row_order) VALUES (@id, @card_id, @card_name, @card_customer, @is_default, @is_active, @card_serial, @description, @percent_of_sales, @row_order)");
       }
     }
     await tx.commit();
@@ -1117,6 +1197,8 @@ async function getDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>): Pr
     id: string;
     card_id?: string;
     card_name?: string;
+    card_customer?: string;
+    is_default?: boolean | number;
     is_active?: boolean | number;
     card_serial?: number;
     description: string;
@@ -1125,7 +1207,7 @@ async function getDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>): Pr
     use_type?: string;
     row_order: number;
   }>(
-    "SELECT id, card_id, card_name, is_active, card_serial, description, cost_per_sam, per_piece, use_type, row_order FROM direct_labour_foh ORDER BY card_serial, card_id, row_order, id"
+    "SELECT id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, cost_per_sam, per_piece, use_type, row_order FROM direct_labour_foh ORDER BY card_serial, card_id, row_order, id"
   );
 
   const defaultColumns = [
@@ -1147,6 +1229,7 @@ async function getDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>): Pr
       id: "card-1",
       serialNo: 1,
       name: "Card 1",
+      isDefault: true,
       isActive: true,
       columns: defaultColumns,
       rows: defaultRows,
@@ -1168,6 +1251,8 @@ async function getDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>): Pr
         id: cId,
         serialNo: r.card_serial ?? (cardMap.size + 1),
         name: r.card_name || `Card ${cardMap.size + 1}`,
+        customer: r.card_customer || undefined,
+        isDefault: r.is_default === true || r.is_default === 1 || (!r.card_customer && r.is_default !== false),
         isActive: r.is_active === true || r.is_active === 1,
         columns: defaultColumns,
         rows: [],
@@ -1186,7 +1271,7 @@ async function getDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>): Pr
   }
 
   const cards = Array.from(cardMap.values());
-  // Ensure exactly one active card
+  // Ensure at least one active card
   let activeCard = cards.find((c) => c.isActive);
   if (!activeCard) {
     cards[0].isActive = true;
@@ -1224,6 +1309,8 @@ async function saveDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>, da
             .input("id", sql.NVarChar(128), row.id)
             .input("card_id", sql.NVarChar(128), card.id)
             .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+            .input("card_customer", sql.NVarChar(256), card.customer || null)
+            .input("is_default", sql.Bit, card.isDefault ? 1 : 0)
             .input("is_active", sql.Bit, card.isActive ? 1 : 0)
             .input("card_serial", sql.Int, card.serialNo || 1)
             .input("description", sql.NVarChar(256), row.values.description ?? "")
@@ -1236,7 +1323,7 @@ async function saveDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>, da
             .input("use_type", sql.NVarChar(32), useTypeVal)
             .input("row_order", sql.Int, i)
             .query(
-              "INSERT INTO direct_labour_foh (id, card_id, card_name, is_active, card_serial, description, cost_per_sam, per_piece, use_type, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @description, @cost_per_sam, @per_piece, @use_type, @row_order)"
+              "INSERT INTO direct_labour_foh (id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, cost_per_sam, per_piece, use_type, row_order) VALUES (@id, @card_id, @card_name, @card_customer, @is_default, @is_active, @card_serial, @description, @cost_per_sam, @per_piece, @use_type, @row_order)"
             );
         }
       }
@@ -1256,6 +1343,8 @@ async function saveDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>, da
           .input("id", sql.NVarChar(128), row.id)
           .input("card_id", sql.NVarChar(128), "card-1")
           .input("card_name", sql.NVarChar(256), "Card 1")
+          .input("card_customer", sql.NVarChar(256), null)
+          .input("is_default", sql.Bit, 1)
           .input("is_active", sql.Bit, 1)
           .input("card_serial", sql.Int, 1)
           .input("description", sql.NVarChar(256), row.values.description ?? "")
@@ -1268,7 +1357,7 @@ async function saveDirectLabourFoh(pool: Awaited<ReturnType<typeof getPool>>, da
           .input("use_type", sql.NVarChar(32), useTypeVal)
           .input("row_order", sql.Int, i)
           .query(
-            "INSERT INTO direct_labour_foh (id, card_id, card_name, is_active, card_serial, description, cost_per_sam, per_piece, use_type, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @description, @cost_per_sam, @per_piece, @use_type, @row_order)"
+            "INSERT INTO direct_labour_foh (id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, cost_per_sam, per_piece, use_type, row_order) VALUES (@id, @card_id, @card_name, @card_customer, @is_default, @is_active, @card_serial, @description, @cost_per_sam, @per_piece, @use_type, @row_order)"
           );
       }
     }
@@ -1287,12 +1376,14 @@ async function getAdminSelling(pool: Awaited<ReturnType<typeof getPool>>): Promi
     id: string;
     card_id?: string;
     card_name?: string;
+    card_customer?: string;
+    is_default?: boolean | number;
     is_active?: boolean | number;
     card_serial?: number;
     description: string;
     cost_per_sam: string;
     row_order: number;
-  }>("SELECT id, card_id, card_name, is_active, card_serial, description, cost_per_sam, row_order FROM admin_selling ORDER BY card_serial, card_id, row_order, id");
+  }>("SELECT id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, cost_per_sam, row_order FROM admin_selling ORDER BY card_serial, card_id, row_order, id");
 
   const defaultColumns = [
     { key: "description", label: "Description" },
@@ -1304,6 +1395,7 @@ async function getAdminSelling(pool: Awaited<ReturnType<typeof getPool>>): Promi
       id: "card-1",
       serialNo: 1,
       name: "Card 1",
+      isDefault: true,
       isActive: true,
       columns: defaultColumns,
       rows: [],
@@ -1319,6 +1411,8 @@ async function getAdminSelling(pool: Awaited<ReturnType<typeof getPool>>): Promi
         id: cId,
         serialNo: r.card_serial ?? (cardMap.size + 1),
         name: r.card_name || `Card ${cardMap.size + 1}`,
+        customer: r.card_customer || undefined,
+        isDefault: r.is_default === true || r.is_default === 1 || (!r.card_customer && r.is_default !== false),
         isActive: r.is_active === true || r.is_active === 1,
         columns: defaultColumns,
         rows: [],
@@ -1352,7 +1446,7 @@ async function saveAdminSelling(pool: Awaited<ReturnType<typeof getPool>>, data:
   try {
     await new sql.Request(tx).query("DELETE FROM admin_selling");
     const cardsToSave = data.cards && data.cards.length > 0 ? data.cards : [{
-      id: "card-1", name: "Card 1", serialNo: 1, isActive: true, columns: data.columns, rows: data.rows
+      id: "card-1", name: "Card 1", serialNo: 1, isDefault: true, isActive: true, columns: data.columns, rows: data.rows
     }];
     for (const card of cardsToSave) {
       for (let i = 0; i < card.rows.length; i++) {
@@ -1361,12 +1455,14 @@ async function saveAdminSelling(pool: Awaited<ReturnType<typeof getPool>>, data:
           .input("id", sql.NVarChar(128), row.id)
           .input("card_id", sql.NVarChar(128), card.id)
           .input("card_name", sql.NVarChar(256), card.name || `Card ${card.serialNo}`)
+          .input("card_customer", sql.NVarChar(256), card.customer || null)
+          .input("is_default", sql.Bit, card.isDefault ? 1 : 0)
           .input("is_active", sql.Bit, card.isActive ? 1 : 0)
           .input("card_serial", sql.Int, card.serialNo || 1)
           .input("description", sql.NVarChar(256), row.values.description ?? "")
           .input("cost_per_sam", sql.NVarChar(64), row.values.costPerSam ?? "")
           .input("row_order", sql.Int, i)
-          .query("INSERT INTO admin_selling (id, card_id, card_name, is_active, card_serial, description, cost_per_sam, row_order) VALUES (@id, @card_id, @card_name, @is_active, @card_serial, @description, @cost_per_sam, @row_order)");
+          .query("INSERT INTO admin_selling (id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, cost_per_sam, row_order) VALUES (@id, @card_id, @card_name, @card_customer, @is_default, @is_active, @card_serial, @description, @cost_per_sam, @row_order)");
       }
     }
     await tx.commit();
