@@ -1,9 +1,39 @@
 import type { StyleMasterItem } from "@/features/style-master/types";
 import type { SimpleTableData, MatrixTableData, ProcessMatrixTableData } from "@/features/parameters/types";
 
-function findRate(tableData: SimpleTableData | undefined, description: string): number {
-  if (!tableData?.rows) return 0;
-  const row = tableData.rows.find(
+function getActiveRows(tableData: SimpleTableData | undefined, customerName?: string) {
+  if (!tableData) return [];
+  if (tableData.cards && tableData.cards.length > 0) {
+    if (customerName && customerName.trim()) {
+      const normCust = customerName.trim().toLowerCase();
+      const customerCards = tableData.cards.filter(
+        (c) =>
+          (c.customer && c.customer.trim().toLowerCase() === normCust) ||
+          (!c.customer && c.name && c.name.trim().toLowerCase() === normCust)
+      );
+      if (customerCards.length > 0) {
+        const activeCustCard = customerCards.find((c) => c.isActive) || customerCards[0];
+        if (activeCustCard?.rows && activeCustCard.rows.length > 0) return activeCustCard.rows;
+      }
+    }
+    const defaultCards = tableData.cards.filter(
+      (c) => c.isDefault || (!c.customer || c.customer.trim() === "")
+    );
+    const defaultCard =
+      defaultCards.find((c) => c.isActive) ??
+      defaultCards.find((c) => c.isDefault) ??
+      defaultCards[0] ??
+      tableData.cards.find((c) => c.isActive) ??
+      tableData.cards[0];
+    if (defaultCard?.rows && defaultCard.rows.length > 0) return defaultCard.rows;
+  }
+  return tableData.rows || [];
+}
+
+function findRate(tableData: SimpleTableData | undefined, description: string, customerName?: string): number {
+  const rows = getActiveRows(tableData, customerName);
+  if (!rows || rows.length === 0) return 0;
+  const row = rows.find(
     (r) => r.values.description?.toLowerCase().replace(/\s+/g, "") === description.toLowerCase().replace(/\s+/g, "")
   );
   if (!row) return 0;
@@ -14,10 +44,12 @@ function findLaborOrFohCost(
   tableData: SimpleTableData | undefined,
   description: string,
   smv: number,
-  efficiency: number
+  efficiency: number,
+  customerName?: string
 ): number {
-  if (!tableData?.rows) return 0;
-  const row = tableData.rows.find(
+  const rows = getActiveRows(tableData, customerName);
+  if (!rows || rows.length === 0) return 0;
+  const row = rows.find(
     (r) =>
       r.values.description?.toLowerCase().replace(/\s+/g, "") ===
       description.toLowerCase().replace(/\s+/g, "")
@@ -585,11 +617,13 @@ export function runFormulaEngine(
   const specialChargesCostUSD = specialChargesCostPKR / paritySale;
   const specialChargesCostPct = specialChargesCostUSD / netPriceUSD;
 
-  const directLaborCostPKR = findLaborOrFohCost(params.directLabourFoh, "Direct Labour", smv, efficiency);
+  const custName = (style.customerName || (style as any).customer || "").trim();
+
+  const directLaborCostPKR = findLaborOrFohCost(params.directLabourFoh, "Direct Labour", smv, efficiency, custName);
   const directLaborCostUSD = directLaborCostPKR / paritySale;
   const directLaborCostPct = directLaborCostUSD / netPriceUSD;
 
-  const utilitiesCostPKR = findLaborOrFohCost(params.directLabourFoh, "Utilities Cost", smv, efficiency);
+  const utilitiesCostPKR = findLaborOrFohCost(params.directLabourFoh, "Utilities Cost", smv, efficiency, custName);
   const utilitiesCostUSD = utilitiesCostPKR / paritySale;
   const utilitiesCostPct = utilitiesCostUSD / netPriceUSD;
 
@@ -610,15 +644,15 @@ export function runFormulaEngine(
   const cmMinutePKR = smv > 0 ? (cmPKR * efficiency) / smv : 0;
   const cmMinuteUSD = smv > 0 ? (cmUSD * efficiency / smv) * 100 : 0;
 
-  const salariesCostPKR = findLaborOrFohCost(params.directLabourFoh, "Fixed Salaries", smv, efficiency);
+  const salariesCostPKR = findLaborOrFohCost(params.directLabourFoh, "Fixed Salaries", smv, efficiency, custName);
   const salariesCostUSD = salariesCostPKR / paritySale;
   const salariesCostPct = salariesCostUSD / netPriceUSD;
 
-  const fohAdminCostPKR = findLaborOrFohCost(params.directLabourFoh, "Manufacturing FOH", smv, efficiency);
+  const fohAdminCostPKR = findLaborOrFohCost(params.directLabourFoh, "Manufacturing FOH", smv, efficiency, custName);
   const fohAdminCostUSD = fohAdminCostPKR / paritySale;
   const fohAdminCostPct = fohAdminCostUSD / netPriceUSD;
 
-  const repairMtcCostPKR = findLaborOrFohCost(params.directLabourFoh, "Repair and Maintenance", smv, efficiency);
+  const repairMtcCostPKR = findLaborOrFohCost(params.directLabourFoh, "Repair and Maintenance", smv, efficiency, custName);
   const repairMtcCostUSD = repairMtcCostPKR / paritySale;
   const repairMtcCostPct = repairMtcCostUSD / netPriceUSD;
 
@@ -633,7 +667,7 @@ export function runFormulaEngine(
   const ebitdaUSD = ebitdaPKR / paritySale;
   const ebitdaPct = ebitdaUSD / netPriceUSD;
 
-  const depreciationCostPKR = findLaborOrFohCost(params.directLabourFoh, "Depreciation", smv, efficiency);
+  const depreciationCostPKR = findLaborOrFohCost(params.directLabourFoh, "Depreciation", smv, efficiency, custName);
   const depreciationCostUSD = depreciationCostPKR / paritySale;
   const depreciationCostPct = depreciationCostUSD / netPriceUSD;
 

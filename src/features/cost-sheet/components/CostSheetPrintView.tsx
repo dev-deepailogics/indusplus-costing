@@ -150,6 +150,12 @@ export function CostSheetPrintView({
                   <td className="p-2 text-right">${results.netPriceUSD.toFixed(2)}</td>
                   <td className="p-2 text-right">100.0%</td>
                 </tr>
+                <tr className="bg-slate-100 dark:bg-slate-800 font-bold border-y">
+                  <td className="p-2 font-bold text-foreground">Material Cost</td>
+                  <td className="p-2 text-right" />
+                  <td className="p-2 text-right" />
+                  <td className="p-2 text-right" />
+                </tr>
                 <tr>
                   <td className="p-2 pl-4">Fabric Materials</td>
                   <td className="p-2 text-right">Rs. {results.fabricCostPKR.toFixed(1)}</td>

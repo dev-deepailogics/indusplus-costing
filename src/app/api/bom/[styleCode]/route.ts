@@ -174,6 +174,11 @@ export async function GET(
       }
     }
 
+    accessories.sort((a, b) =>
+      (a.category || "").localeCompare(b.category || "", undefined, { sensitivity: "base" }) ||
+      (a.itemName || "").localeCompare(b.itemName || "", undefined, { sensitivity: "base" })
+    );
+
     const data: IndusBOMData = {
       fabric,
       lining,

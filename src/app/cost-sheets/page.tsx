@@ -9,6 +9,8 @@ import {
   FileDown,
   Trash2,
   ArrowRight,
+  Eye,
+  Pencil,
   Calendar,
   User,
   ShoppingBag,
@@ -259,7 +261,7 @@ export default function SavedCostSheetsPage() {
                       key={sheet.id}
                       className="hover:bg-muted/20 cursor-pointer"
                       onClick={() =>
-                        router.push(`/cost-sheet?costSheetId=${sheet.id}`)
+                        router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=view`)
                       }
                     >
                       <TableCell className="font-mono text-[11px] font-semibold text-primary py-2.5 pl-3">
@@ -318,13 +320,24 @@ export default function SavedCostSheetsPage() {
                           <Button
                             variant="outline"
                             size="icon"
-                            className="size-7 text-blue-600 border-blue-200 bg-blue-50/50 hover:bg-blue-50"
+                            className="size-7 text-sky-600 border-sky-200 bg-sky-50/50 hover:bg-sky-50 hover:text-sky-700"
                             onClick={() =>
-                              router.push(`/cost-sheet?costSheetId=${sheet.id}`)
+                              router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=view`)
                             }
-                            title="Load in Calculator"
+                            title="View Cost Sheet (Read-Only)"
                           >
-                            <ArrowRight className="size-3.5" />
+                            <Eye className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="size-7 text-emerald-600 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 hover:text-emerald-700"
+                            onClick={() =>
+                              router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=edit`)
+                            }
+                            title="Edit Cost Sheet"
+                          >
+                            <Pencil className="size-3.5" />
                           </Button>
                           <Button
                             variant="outline"

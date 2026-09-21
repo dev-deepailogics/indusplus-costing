@@ -12,6 +12,8 @@ export type SimpleTableCard = {
   id: string;
   serialNo: number;
   name: string;
+  customer?: string;
+  isDefault?: boolean;
   isActive: boolean;
   columns: SimpleColumn[];
   rows: SimpleRow[];

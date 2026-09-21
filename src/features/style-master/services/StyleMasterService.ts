@@ -17,7 +17,12 @@ export class StyleMasterService {
   }
 
   public static mergeAccessories(existing: BOMAccessoriesItem[] | undefined): BOMAccessoriesItem[] {
-    return existing ? [...existing] : [];
+    return existing
+      ? [...existing].sort((a, b) =>
+          (a.category || "").localeCompare(b.category || "", undefined, { sensitivity: "base" }) ||
+          (a.itemName || "").localeCompare(b.itemName || "", undefined, { sensitivity: "base" })
+        )
+      : [];
   }
 
   public static mergeChemicals(existing: BOMChemicalsItem[] | undefined): BOMChemicalsItem[] {

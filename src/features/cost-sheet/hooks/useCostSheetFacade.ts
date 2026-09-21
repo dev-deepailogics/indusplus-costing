@@ -17,9 +17,9 @@ export const CUSTOM_STYLE: StyleMasterItem = {
   id: "custom",
   styleName: "",
   customerName: "",
-  styleCategory: "Top Ware",
-  orderType: "Denim",
-  washType: "Rinse",
+  styleCategory: "",
+  orderType: "",
+  washType: "",
   orderQuantity: 0,
   sizeBracket: "<=500",
   smvSewing: 0,
@@ -166,12 +166,22 @@ export function useCostSheetFacade() {
 
     const unsubDropdowns = ParametersService.subscribeToTable<DropdownListsData>("dropdown-lists", (data) => {
       if (data?.lists) {
-        const pTerms = data.lists.find((l) => l.key === "paymentTerms")?.items;
-        const dTerms = data.lists.find((l) => l.key === "deliveryTerms")?.items;
-        const countrs = data.lists.find((l) => l.key === "country")?.items;
-        const cats = data.lists.find((l) => l.key === "category")?.items;
-        const washes = data.lists.find((l) => l.key === "washType")?.items;
-        const oTypes = data.lists.find((l) => l.key === "orderType" || l.key === "Order Type")?.items;
+        const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const findList = (...targets: string[]) => {
+          const targetNorms = targets.map(norm);
+          return data.lists.find((l) => {
+            const kNorm = norm(l.key);
+            const lNorm = norm(l.label);
+            return targetNorms.includes(kNorm) || targetNorms.includes(lNorm);
+          })?.items;
+        };
+
+        const pTerms = findList("paymentterms", "paymentterm", "payment_terms", "payment-terms", "payment terms");
+        const dTerms = findList("deliveryterms", "deliveryterm", "delivery_terms", "delivery-terms", "delivery terms");
+        const countrs = findList("countries", "country");
+        const cats = findList("stylecategory", "stylecategories", "category", "categories", "style_category", "style-category", "style category");
+        const washes = findList("washtype", "washtypes", "wash", "washes", "wash_type", "wash-type", "wash type");
+        const oTypes = findList("ordertype", "ordertypes", "order_type", "order-type", "order type");
 
         if (pTerms) setPaymentTermsList(pTerms);
         if (dTerms) setDeliveryTermsList(dTerms);
@@ -237,18 +247,25 @@ export function useCostSheetFacade() {
         if (sheet) {
           setLoadedCostSheet(sheet);
 
+          const savedRejection =
+            sheet.rejectionPct !== null && sheet.rejectionPct !== undefined
+              ? sheet.rejectionPct
+              : sheet.rejectionOverride !== null && sheet.rejectionOverride !== undefined
+              ? sheet.rejectionOverride
+              : sheet.calculations?.rejectionPct ?? 0.0415;
+
           const styleFromSheet: StyleMasterItem = {
             id: sheet.styleId,
             styleName: sheet.styleName,
             customerName: sheet.customerName,
-            styleCategory: sheet.styleCategory,
+            styleCategory: sheet.styleCategory || "",
             orderQuantity: sheet.orderQuantity,
             smvSewing: sheet.smvSewing,
-            orderType: (sheet.orderType as "Denim" | "Non Denim") || "Denim",
-            washType: sheet.washType,
+            orderType: (sheet.orderType as "Denim" | "Non Denim") || "",
+            washType: sheet.washType || "",
             sizeBracket: sheet.calculations.sizeBracket,
             targetEfficiency: sheet.calculations.efficiency,
-            rejectionPct: sheet.calculations.rejectionPct,
+            rejectionPct: savedRejection,
             baseSellingPrice: sheet.orderFOB,
             bomFabric: sheet.bomFabric || [],
             bomLining: sheet.bomLining || [],
@@ -274,7 +291,11 @@ export function useCostSheetFacade() {
             sheet.efficiencyOverride !== null ? (sheet.efficiencyOverride * 100).toString() : ""
           );
           setRejectionOverride(
-            sheet.rejectionOverride !== null ? (sheet.rejectionOverride * 100).toString() : ""
+            sheet.rejectionOverride !== null
+              ? (sheet.rejectionOverride * 100).toString()
+              : sheet.rejectionPct !== null && sheet.rejectionPct !== undefined
+              ? (sheet.rejectionPct * 100).toString()
+              : (savedRejection * 100).toString()
           );
           setLineTargetOverride(
             sheet.lineTargetOverride !== null ? sheet.lineTargetOverride.toString() : ""
@@ -312,6 +333,7 @@ export function useCostSheetFacade() {
     const effOverrideVal = efficiencyOverride ? parseFloat(efficiencyOverride) / 100 : null;
     const rejOverrideVal = rejectionOverride ? parseFloat(rejectionOverride) / 100 : null;
     const targetOverrideVal = lineTargetOverride ? parseFloat(lineTargetOverride) : null;
+    const effectiveDLF = loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh;
 
     return runFormulaEngine(
       activeStyle,
@@ -337,7 +359,7 @@ export function useCostSheetFacade() {
         rebatePct: rebatePct / 100,
       },
       {
-        directLabourFoh,
+        directLabourFoh: effectiveDLF,
         cutToShipGrid,
         rejectionGrid,
         stylesCategoryGrid: stylesGrid,
@@ -367,6 +389,7 @@ export function useCostSheetFacade() {
     cutToShipGrid,
     rejectionGrid,
     stylesGrid,
+    loadedCostSheet,
   ]);
 
   // Handle Style Selection
@@ -417,22 +440,27 @@ export function useCostSheetFacade() {
               };
             });
 
-            const bomAccessories: BOMAccessoriesItem[] = (data.accessories || []).map((a) => ({
-              category: a.category,
-              itemName: a.itemName,
-              consPerPc: a.consumption || 0,
-              ratePKR: a.ratePKR || 0,
-              rateUSD: parityProcurement > 0 ? (a.ratePKR || 0) / parityProcurement : 0,
-              totalCostPKR: (a.consumption || 0) * (a.ratePKR || 0),
-            }));
+            const bomAccessories: BOMAccessoriesItem[] = (data.accessories || [])
+              .map((a) => ({
+                category: a.category,
+                itemName: a.itemName,
+                consPerPc: a.consumption || 0,
+                ratePKR: a.ratePKR || 0,
+                rateUSD: parityProcurement > 0 ? (a.ratePKR || 0) / parityProcurement : 0,
+                totalCostPKR: (a.consumption || 0) * (a.ratePKR || 0),
+              }))
+              .sort((a, b) =>
+                (a.category || "").localeCompare(b.category || "", undefined, { sensitivity: "base" }) ||
+                (a.itemName || "").localeCompare(b.itemName || "", undefined, { sensitivity: "base" })
+              );
 
             const loadedStyle: StyleMasterItem = {
               id: indusItem.styleCode,
               styleName: indusItem.styleName,
               customerName: indusItem.customer || "Duer",
-              styleCategory: data.category || "Top Ware",
-              orderType: "Denim",
-              washType: data.wash || "Rinse",
+              styleCategory: data.category || "",
+              orderType: "",
+              washType: data.wash || "",
               orderQuantity: indusItem.poQty || 1000,
               sizeBracket: calculateSizeBracket(indusItem.poQty || 1000),
               smvSewing: data.smvSewing || 15,
@@ -489,6 +517,7 @@ export function useCostSheetFacade() {
       const effOverrideVal = efficiencyOverride ? parseFloat(efficiencyOverride) / 100 : null;
       const rejOverrideVal = rejectionOverride ? parseFloat(rejectionOverride) / 100 : null;
       const lineTargetOverrideVal = lineTargetOverride ? parseFloat(lineTargetOverride) : null;
+      const effectiveRejection = rejOverrideVal !== null ? rejOverrideVal : results.rejectionPct;
 
       const costSheetItem: SavedCostSheetItem = {
         id: sheetId,
@@ -513,7 +542,8 @@ export function useCostSheetFacade() {
 
         manpower,
         efficiencyOverride: effOverrideVal,
-        rejectionOverride: rejOverrideVal,
+        rejectionOverride: effectiveRejection,
+        rejectionPct: effectiveRejection,
         lineTargetOverride: lineTargetOverrideVal,
 
         discountRate,
@@ -541,6 +571,8 @@ export function useCostSheetFacade() {
         bomAccessories: activeStyle.bomAccessories,
         bomChemicals: activeStyle.bomChemicals,
         bomSpecialCharges: activeStyle.bomSpecialCharges,
+
+        directLabourFohSnapshot: loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh ?? null,
 
         calculations: {
           targetFobUSD: results.targetFobUSD,

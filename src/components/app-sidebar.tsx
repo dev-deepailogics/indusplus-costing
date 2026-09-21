@@ -213,53 +213,16 @@ export function AppSidebar() {
                     </DropdownMenu>
                   </SidebarMenuItem>
 
-                  {/* Type Item and Dropdown */}
+                  {/* Dropdown Lists */}
                   <SidebarMenuItem>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger className="w-full text-left outline-none">
-                        <SidebarMenuButton
-                          tooltip="Type Parameters"
-                          isActive={
-                            pathname.startsWith("/parameters/order-type") ||
-                            pathname.startsWith("/parameters/dropdown-lists")
-                          }
-                          className="w-full justify-between"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Layers className="size-4 shrink-0" />
-                            <span>Type</span>
-                          </div>
-                          <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
-                        </SidebarMenuButton>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        className="w-52 animate-none"
-                        side="right"
-                        align="start"
-                      >
-                        {["order-type", "dropdown-lists"].map((slug) => {
-                          const table = PARAMETER_TABLES.find(
-                            (t) => t.slug === slug,
-                          );
-                          if (!table) return null;
-                          const href = `/parameters/${table.slug}`;
-                          return (
-                            <DropdownMenuItem key={table.slug} className="p-0">
-                              <Link
-                                href={href}
-                                className={cn(
-                                  "w-full cursor-pointer px-2 py-1.5 text-xs rounded block",
-                                  pathname === href &&
-                                    "bg-accent font-semibold text-accent-foreground",
-                                )}
-                              >
-                                {table.title}
-                              </Link>
-                            </DropdownMenuItem>
-                          );
-                        })}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <SidebarMenuButton
+                      tooltip="Dropdown Lists"
+                      isActive={pathname.startsWith("/parameters/dropdown-lists")}
+                      render={<Link href="/parameters/dropdown-lists" />}
+                    >
+                      <Layers className="size-4 shrink-0" />
+                      <span>Dropdown Lists</span>
+                    </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>

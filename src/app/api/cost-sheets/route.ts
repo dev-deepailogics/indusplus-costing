@@ -70,6 +70,10 @@ async function ensureTable(pool: Awaited<ReturnType<typeof getPool>>) {
       ALTER TABLE pre_order_cost_sheets ADD inland_freight_pct FLOAT NULL;
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'local_bank_charges_pct')
       ALTER TABLE pre_order_cost_sheets ADD local_bank_charges_pct FLOAT NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'rejection_pct')
+      ALTER TABLE pre_order_cost_sheets ADD rejection_pct FLOAT NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'direct_labour_foh_snapshot')
+      ALTER TABLE pre_order_cost_sheets ADD direct_labour_foh_snapshot NVARCHAR(MAX) NULL;
   `);
   isTableEnsured = true;
 }
@@ -79,6 +83,14 @@ async function ensureTable(pool: Awaited<ReturnType<typeof getPool>>) {
 // ---------------------------------------------------------------------------
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToItem(row: Record<string, any>): SavedCostSheetItem {
+  const calcs = JSON.parse(row.calculations || "{}");
+  const effectiveRejection =
+    row.rejection_pct !== null && row.rejection_pct !== undefined
+      ? row.rejection_pct
+      : row.rejection_override !== null && row.rejection_override !== undefined
+      ? row.rejection_override
+      : calcs.rejectionPct ?? null;
+
   return {
     id: row.id,
     referenceName: row.reference_name,
@@ -90,6 +102,9 @@ function rowToItem(row: Record<string, any>): SavedCostSheetItem {
     smvSewing: row.smv_sewing,
     orderType: row.order_type,
     washType: row.wash_type,
+    directLabourFohSnapshot: row.direct_labour_foh_snapshot
+      ? JSON.parse(row.direct_labour_foh_snapshot)
+      : undefined,
     costingDate: row.costing_date,
     costingStage: row.costing_stage,
     country: row.country,
@@ -100,7 +115,8 @@ function rowToItem(row: Record<string, any>): SavedCostSheetItem {
     parityProcurement: row.parity_procurement,
     manpower: row.manpower,
     efficiencyOverride: row.efficiency_override ?? null,
-    rejectionOverride: row.rejection_override ?? null,
+    rejectionOverride: row.rejection_override ?? effectiveRejection,
+    rejectionPct: effectiveRejection,
     lineTargetOverride: row.line_target_override ?? null,
     discountRate: row.discount_rate,
     paymentTermsDays: row.payment_terms_days,
@@ -126,7 +142,7 @@ function rowToItem(row: Record<string, any>): SavedCostSheetItem {
     bomAccessories: JSON.parse(row.bom_accessories || "[]"),
     bomChemicals: JSON.parse(row.bom_chemicals || "[]"),
     bomSpecialCharges: JSON.parse(row.bom_special_charges || "[]"),
-    calculations: JSON.parse(row.calculations || "{}"),
+    calculations: calcs,
     savedAt: row.saved_at,
   };
 }
@@ -198,6 +214,11 @@ export async function POST(request: NextRequest) {
     const pool = await getPool();
     await ensureTable(pool);
 
+    const effectiveRejection =
+      item.rejectionPct ??
+      item.rejectionOverride ??
+      (item.calculations?.rejectionPct ?? null);
+
     await pool
       .request()
       .input("id", item.id)
@@ -220,7 +241,8 @@ export async function POST(request: NextRequest) {
       .input("parity_procurement", item.parityProcurement)
       .input("manpower", item.manpower)
       .input("efficiency_override", item.efficiencyOverride ?? null)
-      .input("rejection_override", item.rejectionOverride ?? null)
+      .input("rejection_override", item.rejectionOverride ?? effectiveRejection)
+      .input("rejection_pct", effectiveRejection)
       .input("line_target_override", item.lineTargetOverride ?? null)
       .input("discount_rate", item.discountRate)
       .input("payment_terms_days", item.paymentTermsDays)
@@ -246,6 +268,7 @@ export async function POST(request: NextRequest) {
       .input("bom_accessories", JSON.stringify(item.bomAccessories || []))
       .input("bom_chemicals", JSON.stringify(item.bomChemicals || []))
       .input("bom_special_charges", JSON.stringify(item.bomSpecialCharges || []))
+      .input("direct_labour_foh_snapshot", item.directLabourFohSnapshot ? JSON.stringify(item.directLabourFohSnapshot) : null)
       .input("calculations", JSON.stringify(item.calculations || {}))
       .input("saved_at", item.savedAt)
       .query(`
@@ -254,27 +277,27 @@ export async function POST(request: NextRequest) {
           style_category, order_quantity, smv_sewing, order_type, wash_type,
           costing_date, costing_stage, country, payment_terms, shipment_mode,
           delivery_terms, parity_sale, parity_procurement, manpower,
-          efficiency_override, rejection_override, line_target_override,
+          efficiency_override, rejection_override, rejection_pct, line_target_override,
           discount_rate, payment_terms_days, factoring_days, commission_pct,
           foreign_bank_charges, tax_eds_pct, inland_freight_pct, local_bank_charges_pct,
           order_fob, quoted_price, intl_freight,
           intl_insurance, no_of_colors, merch_group, work_order_number,
           delivery_destination, ex_factory_date, inhouse_or_subcontract,
           rebate_pct, bom_fabric, bom_lining, bom_accessories, bom_chemicals,
-          bom_special_charges, calculations, saved_at
+          bom_special_charges, direct_labour_foh_snapshot, calculations, saved_at
         ) VALUES (
           @id, @reference_name, @style_id, @style_name, @customer_name,
           @style_category, @order_quantity, @smv_sewing, @order_type, @wash_type,
           @costing_date, @costing_stage, @country, @payment_terms, @shipment_mode,
           @delivery_terms, @parity_sale, @parity_procurement, @manpower,
-          @efficiency_override, @rejection_override, @line_target_override,
+          @efficiency_override, @rejection_override, @rejection_pct, @line_target_override,
           @discount_rate, @payment_terms_days, @factoring_days, @commission_pct,
           @foreign_bank_charges, @tax_eds_pct, @inland_freight_pct, @local_bank_charges_pct,
           @order_fob, @quoted_price, @intl_freight,
           @intl_insurance, @no_of_colors, @merch_group, @work_order_number,
           @delivery_destination, @ex_factory_date, @inhouse_or_subcontract,
           @rebate_pct, @bom_fabric, @bom_lining, @bom_accessories, @bom_chemicals,
-          @bom_special_charges, @calculations, @saved_at
+          @bom_special_charges, @direct_labour_foh_snapshot, @calculations, @saved_at
         )
       `);
 
