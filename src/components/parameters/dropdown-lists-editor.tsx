@@ -38,9 +38,15 @@ const COST_SHEET_FIELDS = [
 export function DropdownListsEditor({
   data,
   onSave,
+  canCreate = true,
+  canEdit = true,
+  canDelete = true,
 }: {
   data: DropdownListsData;
   onSave: (data: DropdownListsData) => Promise<void>;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const [lists, setLists] = useState<DropdownListsData["lists"]>(data.lists || []);
   const [hasChanges, setHasChanges] = useState(false);
@@ -172,34 +178,38 @@ export function DropdownListsEditor({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setAddingList(true)}
-            className="gap-1.5"
-          >
-            <Plus className="size-4" /> Add new list
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleManualSave}
-            disabled={isSaving || !hasChanges}
-            className={
-              hasChanges
-                ? "bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-xs"
-                : "gap-1.5"
-            }
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="size-4 animate-spin" /> Saving...
-              </>
-            ) : (
-              <>
-                {hasChanges ? <Check className="size-4" /> : <Save className="size-4" />} Save Changes
-              </>
-            )}
-          </Button>
+          {canCreate && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAddingList(true)}
+              className="gap-1.5"
+            >
+              <Plus className="size-4" /> Add new list
+            </Button>
+          )}
+          {canEdit && (
+            <Button
+              size="sm"
+              onClick={handleManualSave}
+              disabled={isSaving || !hasChanges}
+              className={
+                hasChanges
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5 shadow-xs"
+                  : "gap-1.5"
+              }
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> Saving...
+                </>
+              ) : (
+                <>
+                  {hasChanges ? <Check className="size-4" /> : <Save className="size-4" />} Save Changes
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -209,68 +219,79 @@ export function DropdownListsEditor({
           <Card key={list.key}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-base font-semibold">{list.label}</CardTitle>
-              <div className="flex gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7 text-muted-foreground hover:text-destructive"
-                  onClick={() => setDeletingListKey(list.key)}
-                  title="Delete list"
-                >
-                  <Trash2 className="size-3.5 text-destructive" />
-                </Button>
-              </div>
+              {canDelete && (
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => setDeletingListKey(list.key)}
+                    title="Delete list"
+                  >
+                    <Trash2 className="size-3.5 text-destructive" />
+                  </Button>
+                </div>
+              )}
             </CardHeader>
             <CardContent className="space-y-2">
               {list.items.map((item, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <Input
-                    className="h-8"
+                    className="h-8 disabled:opacity-75"
                     value={item}
+                    disabled={!canEdit}
                     onChange={(e) => updateItem(list.key, i, e.target.value)}
                   />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7"
-                    onClick={() => setDeleting({ key: list.key, index: i })}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
+                  {canDelete && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      onClick={() => setDeleting({ key: list.key, index: i })}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  )}
                 </div>
               ))}
-              <Button variant="outline" size="sm" onClick={() => setAddingTo(list.key)}>
-                <Plus className="size-3.5 mr-1" /> Add item
-              </Button>
+              {canEdit && (
+                <Button variant="outline" size="sm" onClick={() => setAddingTo(list.key)}>
+                  <Plus className="size-3.5 mr-1" /> Add item
+                </Button>
+              )}
             </CardContent>
           </Card>
         ))}
       </div>
 
       {/* Bottom action bar if changes exist or to add more */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t">
-        <Button variant="outline" size="sm" onClick={() => setAddingList(true)}>
-          <Plus className="mr-1.5 size-4" /> Add new list
-        </Button>
-        {hasChanges && (
-          <Button
-            size="sm"
-            onClick={handleManualSave}
-            disabled={isSaving}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="size-4 animate-spin" /> Saving...
-              </>
-            ) : (
-              <>
-                <Check className="size-4" /> Save Changes
-              </>
-            )}
-          </Button>
-        )}
-      </div>
+      {(canCreate || (canEdit && hasChanges)) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t">
+          {canCreate ? (
+            <Button variant="outline" size="sm" onClick={() => setAddingList(true)}>
+              <Plus className="mr-1.5 size-4" /> Add new list
+            </Button>
+          ) : <div />}
+          {canEdit && hasChanges && (
+            <Button
+              size="sm"
+              onClick={handleManualSave}
+              disabled={isSaving}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold gap-1.5"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> Saving...
+                </>
+              ) : (
+                <>
+                  <Check className="size-4" /> Save Changes
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+      )}
 
       <PromptDialog
         open={addingTo !== null}

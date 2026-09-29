@@ -72,11 +72,13 @@ function RowLabelInput({
   isQty,
   isConflicting,
   onCommit,
+  disabled = false,
 }: {
   initialValue: string;
   isQty: boolean;
   isConflicting: boolean;
   onCommit: (newVal: string) => void;
+  disabled?: boolean;
 }) {
   const [val, setVal] = useState(initialValue);
 
@@ -119,8 +121,11 @@ function RowLabelInput({
 
   return (
     <Input
+      disabled={disabled}
       className={`h-8 w-36 font-semibold transition-colors ${
-        isConflicting
+        disabled
+          ? "bg-muted/50 cursor-not-allowed opacity-90 select-none border-transparent"
+          : isConflicting
           ? "border-2 border-red-500 bg-red-50/80 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-500"
           : "bg-slate-50 dark:bg-slate-900/50 border-slate-200 hover:bg-white focus:bg-white"
       }`}
@@ -140,10 +145,16 @@ export function MatrixTableEditor({
   data,
   onSave,
   rowLabelHeader = "Qty.",
+  canCreate = true,
+  canEdit = true,
+  canDelete = true,
 }: {
   data: MatrixTableData;
   onSave: (data: MatrixTableData) => Promise<void>;
   rowLabelHeader?: string;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const [localData, setLocalData] = useState<MatrixTableData>(() => {
     if (!data) return data;
@@ -399,7 +410,7 @@ export function MatrixTableEditor({
                   <span className="font-semibold text-foreground text-xs">{col}</span>
                 </TableHead>
               ))}
-              <TableHead className="w-10" />
+              {canDelete && <TableHead className="w-10" />}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -410,29 +421,33 @@ export function MatrixTableEditor({
                     initialValue={row}
                     isQty={rowLabelHeader === "Qty."}
                     isConflicting={qtyValidation.conflictingRows.has(row)}
+                    disabled={!canEdit}
                     onCommit={(newLabel) => renameRow(row, newLabel)}
                   />
                 </TableCell>
                 {localData.columnLabels.map((col) => (
                   <TableCell key={col}>
                     <Input
-                      className="h-8 w-28 text-right font-medium"
+                      disabled={!canEdit}
+                      className="h-8 w-28 text-right font-medium disabled:bg-muted/50 disabled:cursor-not-allowed"
                       value={localData.cells[row]?.[col] ?? ""}
                       onChange={(e) => updateCell(row, col, e.target.value)}
                     />
                   </TableCell>
                 ))}
-                <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => setDeleteRow(row)}
-                    title={`Delete row ${row}`}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </TableCell>
+                {canDelete && (
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => setDeleteRow(row)}
+                      title={`Delete row ${row}`}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
@@ -441,13 +456,15 @@ export function MatrixTableEditor({
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setAddRowOpen(true)}>
-            <Plus className="size-3.5 mr-1" /> Add row
-          </Button>
+          {canEdit && (
+            <Button variant="outline" size="sm" onClick={() => setAddRowOpen(true)}>
+              <Plus className="size-3.5 mr-1" /> Add row
+            </Button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
-          {hasChanges && (
+          {canEdit && hasChanges && (
             <Button
               size="sm"
               disabled={!qtyValidation.isValid || isSaving}

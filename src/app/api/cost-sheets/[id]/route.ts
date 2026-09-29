@@ -1,151 +1,10 @@
 import { NextRequest } from "next/server";
-import { getPool, sql } from "@/lib/db";
+import { getPool } from "@/lib/db";
+import { getSession } from "@/lib/auth/session";
+import { checkSessionPermission } from "@/lib/rbac/server";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
-
-// ---------------------------------------------------------------------------
-// Map a DB row → SavedCostSheetItem (same helper as collection route)
-// ---------------------------------------------------------------------------
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToItem(row: Record<string, any>): SavedCostSheetItem {
-  const calcs = JSON.parse(row.calculations || "{}");
-  const effectiveRejection =
-    row.rejection_pct !== null && row.rejection_pct !== undefined
-      ? row.rejection_pct
-      : row.rejection_override !== null && row.rejection_override !== undefined
-      ? row.rejection_override
-      : calcs.rejectionPct ?? null;
-
-  return {
-    id: row.id,
-    referenceName: row.reference_name,
-    styleId: row.style_id,
-    styleName: row.style_name,
-    customerName: row.customer_name,
-    styleCategory: row.style_category,
-    orderQuantity: row.order_quantity,
-    smvSewing: row.smv_sewing,
-    orderType: row.order_type,
-    washType: row.wash_type,
-    directLabourFohSnapshot: row.direct_labour_foh_snapshot
-      ? JSON.parse(row.direct_labour_foh_snapshot)
-      : undefined,
-    costingDate: row.costing_date,
-    costingStage: row.costing_stage,
-    country: row.country,
-    paymentTerms: row.payment_terms,
-    shipmentMode: row.shipment_mode,
-    deliveryTerms: row.delivery_terms,
-    paritySale: row.parity_sale,
-    parityProcurement: row.parity_procurement,
-    manpower: row.manpower,
-    efficiencyOverride: row.efficiency_override ?? null,
-    rejectionOverride: row.rejection_override ?? effectiveRejection,
-    rejectionPct: effectiveRejection,
-    lineTargetOverride: row.line_target_override ?? null,
-    discountRate: row.discount_rate,
-    paymentTermsDays: row.payment_terms_days,
-    factoringDays: row.factoring_days,
-    commissionPct: row.commission_pct,
-    foreignBankCharges: row.foreign_bank_charges,
-    taxEdsPct: row.tax_eds_pct ?? undefined,
-    inlandFreightPct: row.inland_freight_pct ?? undefined,
-    localBankChargesPct: row.local_bank_charges_pct ?? undefined,
-    orderFOB: row.order_fob,
-    quotedPrice: row.quoted_price ?? undefined,
-    intlFreight: row.intl_freight ?? undefined,
-    intlInsurance: row.intl_insurance ?? undefined,
-    noOfColors: row.no_of_colors ?? undefined,
-    merchGroup: row.merch_group ?? undefined,
-    workOrderNumber: row.work_order_number ?? undefined,
-    deliveryDestination: row.delivery_destination ?? undefined,
-    exFactoryDate: row.ex_factory_date ?? undefined,
-    inhouseOrSubcontract: row.inhouse_or_subcontract ?? undefined,
-    rebatePct: row.rebate_pct ?? undefined,
-    bomFabric: JSON.parse(row.bom_fabric || "[]"),
-    bomLining: JSON.parse(row.bom_lining || "[]"),
-    bomAccessories: JSON.parse(row.bom_accessories || "[]"),
-    bomChemicals: JSON.parse(row.bom_chemicals || "[]"),
-    bomSpecialCharges: JSON.parse(row.bom_special_charges || "[]"),
-    calculations: calcs,
-    savedAt: row.saved_at,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Ensure the table exists and columns are up to date
-// ---------------------------------------------------------------------------
-let isTableEnsured = false;
-async function ensureTable(pool: Awaited<ReturnType<typeof getPool>>) {
-  if (isTableEnsured) return;
-  await pool.request().query(`
-    IF NOT EXISTS (
-        SELECT 1 FROM INFORMATION_SCHEMA.TABLES
-        WHERE TABLE_NAME = 'pre_order_cost_sheets'
-    )
-    BEGIN
-        CREATE TABLE pre_order_cost_sheets (
-            id                     NVARCHAR(64)   NOT NULL PRIMARY KEY,
-            reference_name         NVARCHAR(256)  NOT NULL,
-            style_id               NVARCHAR(64)   NOT NULL,
-            style_name             NVARCHAR(256)  NOT NULL,
-            customer_name          NVARCHAR(256)  NOT NULL,
-            style_category         NVARCHAR(128)  NOT NULL,
-            order_quantity         INT            NOT NULL DEFAULT 0,
-            smv_sewing             FLOAT          NOT NULL DEFAULT 0,
-            order_type             NVARCHAR(128)  NOT NULL DEFAULT '',
-            wash_type              NVARCHAR(128)  NOT NULL DEFAULT '',
-            costing_date           NVARCHAR(32)   NOT NULL DEFAULT '',
-            costing_stage          NVARCHAR(64)   NOT NULL DEFAULT '',
-            country                NVARCHAR(128)  NOT NULL DEFAULT '',
-            payment_terms          NVARCHAR(128)  NOT NULL DEFAULT '',
-            shipment_mode          NVARCHAR(128)  NOT NULL DEFAULT '',
-            delivery_terms         NVARCHAR(128)  NOT NULL DEFAULT '',
-            parity_sale            FLOAT          NOT NULL DEFAULT 0,
-            parity_procurement     FLOAT          NOT NULL DEFAULT 0,
-            manpower               INT            NOT NULL DEFAULT 0,
-            efficiency_override    FLOAT          NULL,
-            rejection_override     FLOAT          NULL,
-            line_target_override   FLOAT          NULL,
-            discount_rate          FLOAT          NOT NULL DEFAULT 0,
-            payment_terms_days     INT            NOT NULL DEFAULT 0,
-            factoring_days         INT            NOT NULL DEFAULT 0,
-            commission_pct         FLOAT          NOT NULL DEFAULT 0,
-            foreign_bank_charges   FLOAT          NOT NULL DEFAULT 0,
-            order_fob              FLOAT          NOT NULL DEFAULT 0,
-            quoted_price           FLOAT          NULL,
-            intl_freight           FLOAT          NULL,
-            intl_insurance         FLOAT          NULL,
-            no_of_colors           INT            NULL,
-            merch_group            NVARCHAR(128)  NULL,
-            work_order_number      NVARCHAR(64)   NULL,
-            delivery_destination   NVARCHAR(256)  NULL,
-            ex_factory_date        NVARCHAR(32)   NULL,
-            inhouse_or_subcontract NVARCHAR(64)   NULL,
-            rebate_pct             FLOAT          NULL,
-            bom_fabric             NVARCHAR(MAX)  NOT NULL DEFAULT '[]',
-            bom_lining             NVARCHAR(MAX)  NOT NULL DEFAULT '[]',
-            bom_accessories        NVARCHAR(MAX)  NOT NULL DEFAULT '[]',
-            bom_chemicals          NVARCHAR(MAX)  NOT NULL DEFAULT '[]',
-            bom_special_charges    NVARCHAR(MAX)  NOT NULL DEFAULT '[]',
-            calculations           NVARCHAR(MAX)  NOT NULL DEFAULT '{}',
-            saved_at               NVARCHAR(64)   NOT NULL
-        );
-        CREATE INDEX IX_pcs_style_id ON pre_order_cost_sheets (style_id);
-        CREATE INDEX IX_pcs_saved_at ON pre_order_cost_sheets (saved_at DESC);
-    END
-    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'tax_eds_pct')
-      ALTER TABLE pre_order_cost_sheets ADD tax_eds_pct FLOAT NULL;
-    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'inland_freight_pct')
-      ALTER TABLE pre_order_cost_sheets ADD inland_freight_pct FLOAT NULL;
-    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'local_bank_charges_pct')
-      ALTER TABLE pre_order_cost_sheets ADD local_bank_charges_pct FLOAT NULL;
-    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'rejection_pct')
-      ALTER TABLE pre_order_cost_sheets ADD rejection_pct FLOAT NULL;
-    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'direct_labour_foh_snapshot')
-      ALTER TABLE pre_order_cost_sheets ADD direct_labour_foh_snapshot NVARCHAR(MAX) NULL;
-  `);
-  isTableEnsured = true;
-}
+import { canUserAccessCostSheet, rowToCostSheetItem } from "@/lib/cost-sheet/auth";
+import { ensureCostSheetTable, resolveTeamCustomers } from "@/lib/cost-sheet/db";
 
 // ---------------------------------------------------------------------------
 // GET /api/cost-sheets/[id]  — fetch single cost sheet
@@ -155,9 +14,19 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const hasPerm = await checkSessionPermission(session, "cost_sheets", "view");
+    if (!hasPerm) {
+      return Response.json({ error: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
+
     const { id } = await params;
     const pool = await getPool();
-    await ensureTable(pool);
+    await ensureCostSheetTable(pool);
 
     const result = await pool
       .request()
@@ -168,7 +37,19 @@ export async function GET(
       return Response.json({ error: "Cost sheet not found" }, { status: 404 });
     }
 
-    const item = rowToItem(result.recordset[0]);
+    const item = rowToCostSheetItem(result.recordset[0]);
+
+    // Resolve team customer portfolio for access check
+    const teamCustomers = await resolveTeamCustomers(pool, session);
+    const sessionWithTeams = { ...session, teamCustomers };
+
+    if (!canUserAccessCostSheet(sessionWithTeams, item)) {
+      return Response.json(
+        { error: "Forbidden: You do not have permission to view this cost sheet." },
+        { status: 403 }
+      );
+    }
+
     return Response.json(item);
   } catch (err) {
     console.error("[GET /api/cost-sheets/[id]]", err);
@@ -187,10 +68,68 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const hasPerm = await checkSessionPermission(session, "cost_sheets", "edit");
+    if (!hasPerm) {
+      return Response.json({ error: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
+
     const { id } = await params;
     const item: SavedCostSheetItem = await request.json();
+
+    // Guard: body ID must match the URL param if present
+    if (item.id && item.id !== id) {
+      return Response.json(
+        { error: "Bad request: body ID does not match URL parameter." },
+        { status: 400 }
+      );
+    }
+
     const pool = await getPool();
-    await ensureTable(pool);
+    await ensureCostSheetTable(pool);
+
+    // Fetch only the columns needed for access and lock checks
+    const existingCheck = await pool
+      .request()
+      .input("checkId", id)
+      .query<{
+        id: string;
+        customer_name: string;
+        created_by_id: number | null;
+        created_by_email: string | null;
+        approval_status: string | null;
+        approvals: string | null;
+      }>(`
+        SELECT id, customer_name, created_by_id, created_by_email, approval_status, approvals
+        FROM pre_order_cost_sheets
+        WHERE id = @checkId
+      `);
+
+    if (existingCheck.recordset.length === 0) {
+      return Response.json({ error: "Cost sheet not found" }, { status: 404 });
+    }
+
+    const existingRow = existingCheck.recordset[0];
+
+    // Ownership / access check
+    if (!canUserAccessCostSheet(session, rowToCostSheetItem(existingRow))) {
+      return Response.json(
+        { error: "Forbidden: You do not have permission to modify this cost sheet." },
+        { status: 403 }
+      );
+    }
+
+    // Lock check — use the single parsed value, no redundant raw check
+    if (existingRow.approval_status === "fully_approved") {
+      return Response.json(
+        { error: "This cost sheet has been finalized & approved by the Director and is locked against edits." },
+        { status: 403 }
+      );
+    }
 
     const effectiveRejection =
       item.rejectionPct ??
@@ -207,6 +146,11 @@ export async function PUT(
       .input("style_category", item.styleCategory)
       .input("order_quantity", item.orderQuantity)
       .input("smv_sewing", item.smvSewing)
+      .input("cutting_sam", item.cuttingSAM ?? null)
+      .input("washing_sam", item.washingSAM ?? null)
+      .input("finishing_sam", item.finishingSAM ?? null)
+      .input("approvals", item.approvals ? JSON.stringify(item.approvals) : null)
+      .input("approval_status", item.approvalStatus || item.approvals?.overallStatus || null)
       .input("order_type", item.orderType)
       .input("wash_type", item.washType)
       .input("costing_date", item.costingDate)
@@ -258,6 +202,11 @@ export async function PUT(
           style_category         = @style_category,
           order_quantity         = @order_quantity,
           smv_sewing             = @smv_sewing,
+          cutting_sam            = @cutting_sam,
+          washing_sam            = @washing_sam,
+          finishing_sam          = @finishing_sam,
+          approvals              = COALESCE(@approvals, approvals),
+          approval_status        = COALESCE(@approval_status, approval_status),
           order_type             = @order_type,
           wash_type              = @wash_type,
           costing_date           = @costing_date,
@@ -321,8 +270,46 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const hasPerm = await checkSessionPermission(session, "cost_sheets", "delete");
+    if (!hasPerm) {
+      return Response.json({ error: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
+
     const { id } = await params;
     const pool = await getPool();
+    await ensureCostSheetTable(pool);
+
+    // Fetch only the columns needed for access check — avoid loading large BOM JSON
+    const existingCheck = await pool
+      .request()
+      .input("checkId", id)
+      .query<{
+        id: string;
+        customer_name: string;
+        created_by_id: number | null;
+        created_by_email: string | null;
+        approval_status: string | null;
+      }>(`
+        SELECT id, customer_name, created_by_id, created_by_email, approval_status
+        FROM pre_order_cost_sheets
+        WHERE id = @checkId
+      `);
+
+    if (existingCheck.recordset.length === 0) {
+      return Response.json({ error: "Cost sheet not found" }, { status: 404 });
+    }
+
+    if (!canUserAccessCostSheet(session, rowToCostSheetItem(existingCheck.recordset[0]))) {
+      return Response.json(
+        { error: "Forbidden: You do not have permission to delete this cost sheet." },
+        { status: 403 }
+      );
+    }
 
     await pool
       .request()

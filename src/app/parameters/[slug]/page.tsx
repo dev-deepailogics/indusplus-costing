@@ -15,6 +15,7 @@ import { MatrixTableEditor } from "@/components/parameters/matrix-table-editor";
 import { ProcessMatrixEditor } from "@/components/parameters/process-matrix-editor";
 import { SimpleTableEditor } from "@/components/parameters/simple-table-editor";
 import { DropdownListsEditor } from "@/components/parameters/dropdown-lists-editor";
+import { useAuth } from "@/lib/auth/auth-provider";
 
 export default function ParameterTablePage({
   params,
@@ -36,6 +37,12 @@ function ParameterTable({
   slug: string;
   def: NonNullable<ReturnType<typeof getParameterDef>>;
 }) {
+  const { user, role: userRole, can } = useAuth();
+  const isAdmin = userRole === "admin";
+  const canCreate = isAdmin || can("page_parameters", "create") || can("parameters", "create");
+  const canEdit = isAdmin || can("page_parameters", "edit") || can("parameters", "edit");
+  const canDelete = isAdmin || can("page_parameters", "delete") || can("parameters", "delete");
+
   const [data, setData] = useState<unknown>(null);
 
   useEffect(() => {
@@ -59,24 +66,37 @@ function ParameterTable({
           <MatrixTableEditor
             data={data as MatrixTableData}
             onSave={handleSave}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canDelete={canDelete}
           />
         ) : def.kind === "process-matrix" ? (
           <ProcessMatrixEditor
             data={data as ProcessMatrixTableData}
             onSave={handleSave}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canDelete={canDelete}
           />
         ) : def.kind === "dropdown-lists" ? (
           <DropdownListsEditor
             data={data as DropdownListsData}
             onSave={handleSave}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canDelete={canDelete}
           />
         ) : (
           <SimpleTableEditor
             data={data as SimpleTableData}
             onSave={handleSave}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canDelete={canDelete}
           />
         )}
       </div>
     </div>
   );
 }
+

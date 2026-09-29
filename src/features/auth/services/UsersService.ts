@@ -1,44 +1,119 @@
-import { collection, doc, getDoc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import type { UserProfile, Role } from "../types";
 
-const COLLECTION = "users";
-
 export class UsersService {
-  public static async ensureUserProfile(user: {
-    uid: string;
-    email: string | null;
-    displayName: string | null;
-  }): Promise<Role> {
-    const ref = doc(db, COLLECTION, user.uid);
-    const snap = await getDoc(ref);
-    if (snap.exists()) {
-      return (snap.data() as UserProfile).role;
+  /**
+   * Fetch all users (admin only).
+   */
+  public static async fetchAllUsers(): Promise<UserProfile[]> {
+    const res = await fetch("/api/users");
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to fetch users.");
     }
-    const profile: UserProfile = {
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-      role: "merchant",
-    };
-    await setDoc(ref, profile);
-    return profile.role;
+    const data = await res.json();
+    return data.users as UserProfile[];
   }
 
-  public static subscribeToUserRole(uid: string, onRole: (role: Role) => void): () => void {
-    const ref = doc(db, COLLECTION, uid);
-    return onSnapshot(ref, (snap) => {
-      if (snap.exists()) onRole((snap.data() as UserProfile).role);
+  /**
+   * Create a new user (admin only).
+   */
+  public static async createUser(payload: {
+    email: string;
+    displayName: string;
+    password: string;
+    role: Role;
+    assignedCustomer?: string | null;
+  }): Promise<UserProfile> {
+    const res = await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to create user.");
+    }
+
+    return data.user as UserProfile;
   }
 
-  public static subscribeToAllUsers(onUsers: (users: UserProfile[]) => void): () => void {
-    return onSnapshot(collection(db, COLLECTION), (snap) => {
-      onUsers(snap.docs.map((d) => d.data() as UserProfile));
+  /**
+   * Update a user's role (admin only).
+   */
+  public static async setUserRole(id: number, role: Role): Promise<void> {
+    const res = await fetch(`/api/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
     });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to update role.");
+    }
   }
 
-  public static async setUserRole(uid: string, role: Role): Promise<void> {
-    await updateDoc(doc(db, COLLECTION, uid), { role });
+  /**
+   * Update a user's assigned customer (admin only).
+   */
+  public static async setUserCustomer(id: number, assignedCustomer: string | null): Promise<void> {
+    const res = await fetch(`/api/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assignedCustomer }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to update customer assignment.");
+    }
+  }
+
+  /**
+   * Toggle a user's active status (admin only).
+   */
+  public static async toggleActive(id: number, isActive: boolean): Promise<void> {
+    const res = await fetch(`/api/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to update user status.");
+    }
+  }
+
+  /**
+   * Admin resets another user's password (admin only).
+   */
+  public static async adminResetPassword(id: number, newPassword: string): Promise<void> {
+    const res = await fetch(`/api/users/${id}/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPassword }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to reset password.");
+    }
+  }
+
+  /**
+   * Delete a user (admin only).
+   */
+  public static async deleteUser(id: number): Promise<void> {
+    const res = await fetch(`/api/users/${id}`, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Failed to delete user.");
+    }
   }
 }

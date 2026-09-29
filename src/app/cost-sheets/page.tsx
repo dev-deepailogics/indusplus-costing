@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -14,6 +14,9 @@ import {
   Calendar,
   User,
   ShoppingBag,
+  CheckCircle2,
+  XCircle,
+  Clock,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,11 +37,17 @@ import {
   deleteCostSheet,
 } from "@/lib/cost-sheet/api";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
+import { useAuth } from "@/lib/auth/auth-provider";
 
 export default function SavedCostSheetsPage() {
   const router = useRouter();
+  const { user, can } = useAuth();
   const [costSheets, setCostSheets] = useState<SavedCostSheetItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const canCreate = can("page_cost_sheets", "create");
+  const canEdit = can("page_cost_sheets", "edit");
+  const canDelete = can("page_cost_sheets", "delete");
 
   // Filter State
   const [search, setSearch] = useState("");
@@ -68,10 +77,16 @@ export default function SavedCostSheetsPage() {
   }, []);
 
   useEffect(() => {
-    const unsub = subscribeToCostSheets((data) => {
-      setCostSheets(data);
-      setLoading(false);
-    });
+    const unsub = subscribeToCostSheets(
+      (data) => {
+        setCostSheets(data);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Error subscribing to cost sheets:", err);
+        setLoading(false);
+      }
+    );
     return () => unsub();
   }, []);
 
@@ -95,6 +110,62 @@ export default function SavedCostSheetsPage() {
     }
   }
 
+  // Approval badge helper
+  function getApprovalBadge(sheet: SavedCostSheetItem) {
+    const status = sheet.approvalStatus || (sheet.approvals?.director?.status === "approved" ? "approved" : "draft");
+    const approvals = sheet.approvals;
+
+    if (status === "approved" || approvals?.director?.status === "approved") {
+      return (
+        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
+          <CheckCircle2 className="size-3" /> Director Approved
+        </Badge>
+      );
+    }
+    if (status === "rejected") {
+      return (
+        <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
+          <XCircle className="size-3" /> Rejected
+        </Badge>
+      );
+    }
+    if (approvals?.costingHead?.status === "approved") {
+      return (
+        <Badge className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
+          <Clock className="size-3" /> Costing Approved
+        </Badge>
+      );
+    }
+    if (approvals?.marketing?.status === "approved") {
+      return (
+        <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
+          <Clock className="size-3" /> Marketing Approved
+        </Badge>
+      );
+    }
+
+    const deptApprovedCount = [
+      approvals?.fabric?.status === "approved",
+      approvals?.mmc?.status === "approved",
+      approvals?.ie?.status === "approved",
+      approvals?.washing?.status === "approved",
+    ].filter(Boolean).length;
+
+    if (deptApprovedCount > 0) {
+      return (
+        <Badge className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
+          <Clock className="size-3" /> {deptApprovedCount}/4 Depts
+        </Badge>
+      );
+    }
+
+    return (
+      <Badge variant="outline" className="text-slate-500 dark:text-slate-400 font-medium text-[10px] px-2 py-0.5">
+        Draft
+      </Badge>
+    );
+  }
+
   // Excel Export
   function handleExport() {
     const dataToExport = filteredSheets.map((s) => ({
@@ -107,6 +178,10 @@ export default function SavedCostSheetsPage() {
       "Quantity (Pcs)": s.orderQuantity,
       "Costing Date": s.costingDate,
       "Costing Stage": s.costingStage,
+      "Approval Status":
+        s.approvals?.director?.status === "approved"
+          ? "Director Approved"
+          : s.approvalStatus || "Draft",
       Country: s.country,
       "Payment Terms": s.paymentTerms,
       "Order FOB ($)": s.orderFOB,
@@ -123,19 +198,22 @@ export default function SavedCostSheetsPage() {
     toast.success("Costing grid exported to Excel");
   }
 
-  // Filter & Search Logic
-  const filteredSheets = costSheets.filter((s) => {
-    const q = search.toLowerCase();
-    return (
-      s.referenceName?.toLowerCase().includes(q) ||
-      s.styleId?.toLowerCase().includes(q) ||
-      s.styleName?.toLowerCase().includes(q) ||
-      s.id?.toLowerCase().includes(q) ||
-      s.customerName?.toLowerCase().includes(q) ||
-      s.costingStage?.toLowerCase().includes(q) ||
-      s.workOrderNumber?.toLowerCase().includes(q)
-    );
-  });
+  // Filter & Search Logic (Server already handles team & customer scope)
+  const filteredSheets = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return costSheets;
+    return costSheets.filter((s) => {
+      return (
+        s.referenceName?.toLowerCase().includes(q) ||
+        s.styleId?.toLowerCase().includes(q) ||
+        s.styleName?.toLowerCase().includes(q) ||
+        s.id?.toLowerCase().includes(q) ||
+        s.customerName?.toLowerCase().includes(q) ||
+        s.costingStage?.toLowerCase().includes(q) ||
+        s.workOrderNumber?.toLowerCase().includes(q)
+      );
+    });
+  }, [costSheets, search]);
 
   return (
     <div className="space-y-6 w-full">
@@ -159,12 +237,14 @@ export default function SavedCostSheetsPage() {
           >
             <FileDown className="mr-1.5 size-4" /> Export History
           </Button>
-          <Button
-            onClick={() => router.push("/cost-sheet")}
-            className="h-9 bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-1.5"
-          >
-            New Cost Sheet
-          </Button>
+          {canCreate && (
+            <Button
+              onClick={() => router.push("/cost-sheet")}
+              className="h-9 bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-1.5"
+            >
+              New Cost Sheet
+            </Button>
+          )}
         </div>
       </div>
 
@@ -222,6 +302,9 @@ export default function SavedCostSheetsPage() {
                   </TableHead>
                   <TableHead className="font-semibold text-foreground py-2.5 px-1.5 text-center">
                     Stage
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-center">
+                    Approval
                   </TableHead>
                   <TableHead className="font-semibold text-foreground py-2.5 px-2 text-right">
                     EBITDA / Min
@@ -299,6 +382,9 @@ export default function SavedCostSheetsPage() {
                           {sheet.costingStage}
                         </Badge>
                       </TableCell>
+                      <TableCell className="text-center py-2.5 px-2">
+                        {getApprovalBadge(sheet)}
+                      </TableCell>
                       <TableCell className="text-right text-xs font-semibold py-2.5 px-2">
                         {formattedEbitda}
                       </TableCell>
@@ -328,26 +414,35 @@ export default function SavedCostSheetsPage() {
                           >
                             <Eye className="size-3.5" />
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="size-7 text-emerald-600 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 hover:text-emerald-700"
-                            onClick={() =>
-                              router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=edit`)
-                            }
-                            title="Edit Cost Sheet"
-                          >
-                            <Pencil className="size-3.5" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="size-7 text-destructive border-destructive/20 hover:bg-destructive/5"
-                            onClick={(e) => handleDelete(sheet.id, e)}
-                            title="Delete"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
+                          {canEdit && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              disabled={sheet.approvals?.director?.status === "approved"}
+                              className={`size-7 ${
+                                sheet.approvals?.director?.status === "approved"
+                                  ? "opacity-40 cursor-not-allowed text-slate-400 border-slate-200"
+                                  : "text-emerald-600 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 hover:text-emerald-700"
+                              }`}
+                              onClick={() =>
+                                router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=edit`)
+                              }
+                              title={sheet.approvals?.director?.status === "approved" ? "Locked (Director Approved)" : "Edit Cost Sheet"}
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="size-7 text-destructive border-destructive/20 hover:bg-destructive/5"
+                              onClick={(e) => handleDelete(sheet.id, e)}
+                              title="Delete"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -358,7 +453,7 @@ export default function SavedCostSheetsPage() {
           )}
         </CardContent>
       </Card>
-      {contextMenu && (
+      {contextMenu && canCreate && (
         <div
           className="fixed bg-popover text-popover-foreground border border-slate-200 dark:border-slate-800 rounded-lg shadow-md py-1 z-50 min-w-44 text-xs font-semibold"
           style={{ top: contextMenu.y, left: contextMenu.x }}

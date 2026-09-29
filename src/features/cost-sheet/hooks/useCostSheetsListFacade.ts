@@ -4,9 +4,19 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { CostSheetService } from "../services/CostSheetService";
+import { useAuth } from "@/features/auth/context/AuthProvider";
 import type { SavedCostSheetItem } from "../types";
 
 export function useCostSheetsListFacade() {
+  const { user } = useAuth();
+  const assignedCustomers = useMemo(() => {
+    if (user?.role === "admin" || !user?.assignedCustomer) return [];
+    return user.assignedCustomer
+      .split(",")
+      .map((c) => c.trim().toLowerCase())
+      .filter(Boolean);
+  }, [user?.role, user?.assignedCustomer]);
+
   const [costSheets, setCostSheets] = useState<SavedCostSheetItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -30,20 +40,56 @@ export function useCostSheetsListFacade() {
     return () => unsub();
   }, []);
 
+  const scopedCostSheets = useMemo(() => {
+    if (user?.role === "admin") return costSheets;
+
+    return costSheets.filter((sheet) => {
+      const isCustom =
+        sheet.styleId?.trim().toLowerCase() === "custom" ||
+        sheet.id?.toLowerCase().startsWith("pcs-custom-") ||
+        sheet.styleName?.trim().toLowerCase() === "custom";
+
+      const sheetCust = sheet.customerName?.trim().toLowerCase();
+      const hasMatchingCustomer =
+        sheetCust &&
+        assignedCustomers.length > 0 &&
+        assignedCustomers.includes(sheetCust);
+
+      const isAuthor =
+        (user?.id !== undefined && sheet.createdById === user.id) ||
+        (user?.email &&
+          sheet.createdByEmail &&
+          sheet.createdByEmail.trim().toLowerCase() === user.email.trim().toLowerCase());
+
+      if (isCustom) {
+        if (isAuthor) return true;
+        if (hasMatchingCustomer) return true;
+        if (assignedCustomers.length === 0) return true;
+        return false;
+      } else {
+        if (assignedCustomers.length === 0) return true;
+        if (hasMatchingCustomer) return true;
+        if (isAuthor) return true;
+        return false;
+      }
+    });
+  }, [costSheets, user, assignedCustomers]);
+
   const uniqueCustomers = useMemo(() => {
+    if (assignedCustomers.length > 0) return assignedCustomers;
     const set = new Set<string>();
     costSheets.forEach((s) => s.customerName && set.add(s.customerName));
     return Array.from(set).sort();
-  }, [costSheets]);
+  }, [costSheets, assignedCustomers]);
 
   const uniqueStages = useMemo(() => {
     const set = new Set<string>();
-    costSheets.forEach((s) => s.costingStage && set.add(s.costingStage));
+    scopedCostSheets.forEach((s) => s.costingStage && set.add(s.costingStage));
     return Array.from(set).sort();
-  }, [costSheets]);
+  }, [scopedCostSheets]);
 
   const filteredSheets = useMemo(() => {
-    return costSheets.filter((sheet) => {
+    return scopedCostSheets.filter((sheet) => {
       const q = search.trim().toLowerCase();
       const matchesSearch =
         !q ||
@@ -54,14 +100,16 @@ export function useCostSheetsListFacade() {
         sheet.customerName.toLowerCase().includes(q);
 
       const matchesCustomer =
-        customerFilter === "all" || sheet.customerName === customerFilter;
+        assignedCustomers.length > 0 ||
+        customerFilter === "all" ||
+        sheet.customerName === customerFilter;
 
       const matchesStage =
         stageFilter === "all" || sheet.costingStage === stageFilter;
 
       return matchesSearch && matchesCustomer && matchesStage;
     });
-  }, [costSheets, search, customerFilter, stageFilter]);
+  }, [scopedCostSheets, search, customerFilter, stageFilter, assignedCustomers]);
 
   const handleDelete = useCallback(
     async (id: string, e?: React.MouseEvent) => {

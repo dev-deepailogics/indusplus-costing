@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 import { getPool, sql } from "@/lib/db";
+import { getSession } from "@/lib/auth/session";
+import { checkSessionPermission } from "@/lib/rbac/server";
 import type {
   DropdownListsData,
   MatrixTableData,
@@ -1523,6 +1525,23 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const canViewCostSheets =
+      (await checkSessionPermission(session, "page_cost_sheets", "view")) ||
+      (await checkSessionPermission(session, "cost_sheets", "view"));
+    const canViewParameters =
+      (await checkSessionPermission(session, "parameters", "view")) ||
+      (await checkSessionPermission(session, "page_parameters", "view"));
+
+    const hasPerm = session.role === "admin" || canViewParameters || canViewCostSheets;
+    if (!hasPerm) {
+      return Response.json({ error: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
+
     const { slug } = await params;
     const pool = await getPool();
     await ensureTables(pool);
@@ -1577,6 +1596,17 @@ export async function PUT(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const hasPerm = (await checkSessionPermission(session, "parameters", "edit")) ||
+      (await checkSessionPermission(session, "parameters", "create"));
+    if (!hasPerm) {
+      return Response.json({ error: "Forbidden: Insufficient permissions" }, { status: 403 });
+    }
+
     const { slug } = await params;
     const body = await request.json();
     const pool = await getPool();

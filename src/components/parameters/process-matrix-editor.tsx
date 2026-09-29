@@ -5,8 +5,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MatrixTableEditor } from "./matrix-table-editor";
 import type { MatrixTableData, ProcessMatrixTableData } from "@/lib/parameters/types";
 
-import { subscribeToStyles } from "@/lib/style-master/firestore";
-
 import type { StyleMasterItem } from "@/lib/style-master/types";
 import { calculateSizeBracket, mapSMVToCategory, getWashingRejection } from "@/lib/cost-sheet/formula-engine";
 
@@ -39,9 +37,15 @@ import { toast } from "sonner";
 export function ProcessMatrixEditor({
   data,
   onSave,
+  canCreate = true,
+  canEdit = true,
+  canDelete = true,
 }: {
   data: ProcessMatrixTableData;
   onSave: (data: ProcessMatrixTableData) => Promise<void>;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const [active, setActive] = useState(data.processes[0] || "Fabric");
   const [styles, setStyles] = useState<StyleMasterItem[]>([]);
@@ -105,11 +109,6 @@ export function ProcessMatrixEditor({
       setIsSavingDefaultRej(false);
     }
   }
-
-  // Subscribe to style master records to resolve active order quantity band sums
-  useEffect(() => {
-    return subscribeToStyles(setStyles);
-  }, []);
 
   // Fetch customer list from indus-plus DB
   useEffect(() => {
@@ -316,8 +315,11 @@ export function ProcessMatrixEditor({
             <div className="inline-flex rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 p-1 shadow-2xs">
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={() => handleToggleMode(true)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                  !canEdit ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+                } ${
                   isGridModeActive
                     ? "bg-emerald-600 text-white shadow-xs"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -328,8 +330,11 @@ export function ProcessMatrixEditor({
               </button>
               <button
                 type="button"
+                disabled={!canEdit}
                 onClick={() => handleToggleMode(false)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                  !canEdit ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+                } ${
                   !isGridModeActive
                     ? "bg-amber-600 text-white shadow-xs"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -366,48 +371,52 @@ export function ProcessMatrixEditor({
                   min="0"
                   max="100"
                   placeholder="4.00"
-                  className="w-full h-7 pl-2 pr-6 text-xs font-bold border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded text-right focus:bg-white focus:outline-none"
+                  className="w-full h-7 pl-2 pr-6 text-xs font-bold border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded text-right focus:bg-white focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                   value={defaultRejectionInput}
                   onChange={(e) => setDefaultRejectionInput(e.target.value)}
-                  onBlur={() => handleSaveDefaultRejection()}
+                  onBlur={() => canEdit && handleSaveDefaultRejection()}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSaveDefaultRejection();
+                    if (e.key === "Enter" && canEdit) handleSaveDefaultRejection();
                   }}
-                  disabled={isSavingDefaultRej}
+                  disabled={!canEdit || isSavingDefaultRej}
                 />
                 <span className="absolute right-2 text-xs font-bold text-slate-400 pointer-events-none">
                   %
                 </span>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-xs font-bold text-primary hover:bg-primary/10"
-                onClick={() => handleSaveDefaultRejection()}
-                disabled={isSavingDefaultRej}
-                title="Save default rejection rate"
-              >
-                <Check className="size-3.5" />
-              </Button>
+              {canEdit && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs font-bold text-primary hover:bg-primary/10"
+                  onClick={() => handleSaveDefaultRejection()}
+                  disabled={isSavingDefaultRej}
+                  title="Save default rejection rate"
+                >
+                  <Check className="size-3.5" />
+                </Button>
+              )}
             </div>
 
             {/* Customer Rejection Search & Select */}
-            <div className="flex items-center gap-2 bg-white dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-2xs">
-              <Building2 className="size-4 text-primary shrink-0" />
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">
-                Customer:
-              </span>
-              <div className="w-52 sm:w-60">
-                <SearchableSelect
-                  options={customerSelectOptions}
-                  value={selectedCustomer}
-                  onChange={handleSelectCustomer}
-                  placeholder="Search or Select Customer..."
-                  className="bg-transparent text-xs h-7 font-semibold"
-                />
+            {(canCreate || canEdit) && (
+              <div className="flex items-center gap-2 bg-white dark:bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-2xs">
+                <Building2 className="size-4 text-primary shrink-0" />
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">
+                  Customer:
+                </span>
+                <div className="w-52 sm:w-60">
+                  <SearchableSelect
+                    options={customerSelectOptions}
+                    value={selectedCustomer}
+                    onChange={handleSelectCustomer}
+                    placeholder="Search or Select Customer..."
+                    className="bg-transparent text-xs h-7 font-semibold"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -426,31 +435,37 @@ export function ProcessMatrixEditor({
               variant="outline"
               className="text-xs py-1 px-2.5 bg-white dark:bg-slate-900 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 font-semibold flex items-center gap-2 shadow-2xs"
             >
-              <button
-                type="button"
-                className="hover:underline cursor-pointer flex items-center gap-1.5 focus:outline-none"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  handleSelectCustomer(cust);
-                }}
-                title={`Edit custom rate for ${cust}`}
-              >
+              {canEdit ? (
+                <button
+                  type="button"
+                  className="hover:underline cursor-pointer flex items-center gap-1.5 focus:outline-none"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    handleSelectCustomer(cust);
+                  }}
+                  title={`Edit custom rate for ${cust}`}
+                >
+                  <span>{cust}: <strong>{rate}</strong></span>
+                  <Edit3 className="size-3 text-amber-700 dark:text-amber-400 hover:text-amber-900" />
+                </button>
+              ) : (
                 <span>{cust}: <strong>{rate}</strong></span>
-                <Edit3 className="size-3 text-amber-700 dark:text-amber-400 hover:text-amber-900" />
-              </button>
-              <button
-                type="button"
-                className="hover:text-destructive text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/50 p-0.5 rounded transition-colors cursor-pointer focus:outline-none"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  handleRemoveCustomerRate(cust);
-                }}
-                title={`Remove custom rate for ${cust}`}
-              >
-                <X className="size-3.5" />
-              </button>
+              )}
+              {canDelete && (
+                <button
+                  type="button"
+                  className="hover:text-destructive text-muted-foreground hover:bg-red-50 dark:hover:bg-red-950/50 p-0.5 rounded transition-colors cursor-pointer focus:outline-none"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    handleRemoveCustomerRate(cust);
+                  }}
+                  title={`Remove custom rate for ${cust}`}
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
             </Badge>
           ))}
         </div>
@@ -506,12 +521,13 @@ export function ProcessMatrixEditor({
                   type="number"
                   step="0.01"
                   placeholder="e.g. 4.15"
-                  className="h-10 text-base font-bold pr-8 text-right"
+                  className="h-10 text-base font-bold pr-8 text-right disabled:opacity-60 disabled:cursor-not-allowed"
                   value={customerRateInput}
                   onChange={(e) => setCustomerRateInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSaveCustomerRate();
+                    if (e.key === "Enter" && canEdit) handleSaveCustomerRate();
                   }}
+                  disabled={!canEdit || isSavingRate}
                   autoFocus
                 />
                 <span className="absolute right-3 top-2.5 text-sm font-bold text-muted-foreground pointer-events-none">
@@ -537,7 +553,7 @@ export function ProcessMatrixEditor({
           </div>
 
           <DialogFooter className="flex flex-row items-center justify-between gap-2 sm:justify-between">
-            {existingModalRate ? (
+            {existingModalRate && canDelete ? (
               <Button
                 type="button"
                 variant="outline"
@@ -563,16 +579,18 @@ export function ProcessMatrixEditor({
               >
                 Cancel
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="text-xs font-bold"
-                onClick={handleSaveCustomerRate}
-                disabled={isSavingRate}
-              >
-                <Check className="size-3.5 mr-1" />
-                {isSavingRate ? "Saving..." : "Save Rate"}
-              </Button>
+              {canEdit && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="text-xs font-bold"
+                  onClick={handleSaveCustomerRate}
+                  disabled={isSavingRate}
+                >
+                  <Check className="size-3.5 mr-1" />
+                  {isSavingRate ? "Saving..." : "Save Rate"}
+                </Button>
+              )}
             </div>
           </DialogFooter>
         </DialogContent>
@@ -586,6 +604,9 @@ export function ProcessMatrixEditor({
               data={data.tables[p]}
               onSave={(table) => saveProcessTable(p, table)}
               rowLabelHeader="Qty. Band"
+              canCreate={canCreate}
+              canEdit={canEdit}
+              canDelete={canDelete}
             />
           </TabsContent>
         ))}

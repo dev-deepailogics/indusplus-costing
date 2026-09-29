@@ -7,9 +7,9 @@ import { toast } from "sonner";
 import { CostSheetService } from "../services/CostSheetService";
 import { runFormulaEngine, calculateSizeBracket, mapSMVToCategory, type CalculationResult } from "../services/CostSheetFormulaEngine";
 import type { SavedCostSheetItem } from "../types";
-import { ItemCatalogService, FABRIC_COLLECTION, LINING_COLLECTION, type CatalogItem } from "@/features/item-catalog";
+import type { CatalogItem } from "@/features/item-catalog";
 import { ParametersService, type SimpleTableData, type MatrixTableData, type ProcessMatrixTableData, type DropdownListsData } from "@/features/parameters";
-import { StyleMasterService, type StyleMasterItem, type BOMFabricItem, type BOMLiningItem, type BOMAccessoriesItem, type BOMChemicalsItem, type BOMSpecialChargesItem } from "@/features/style-master";
+import type { StyleMasterItem, BOMFabricItem, BOMLiningItem, BOMAccessoriesItem, BOMChemicalsItem, BOMSpecialChargesItem } from "@/features/style-master";
 import type { StyleWorkOrderRow } from "@/app/api/styles-and-workorders/route";
 import type { IndusBOMData } from "@/app/api/bom/[styleCode]/route";
 
@@ -36,9 +36,9 @@ export const CUSTOM_STYLE: StyleMasterItem = {
 export function ensureStyleBOMDefaults(style: StyleMasterItem): StyleMasterItem {
   return {
     ...style,
-    bomAccessories: StyleMasterService.mergeAccessories(style.bomAccessories),
-    bomChemicals: StyleMasterService.mergeChemicals(style.bomChemicals),
-    bomSpecialCharges: StyleMasterService.mergeSpecialCharges(style.bomSpecialCharges),
+    bomAccessories: style.bomAccessories ? [...style.bomAccessories] : [],
+    bomChemicals: style.bomChemicals ? [...style.bomChemicals] : [],
+    bomSpecialCharges: style.bomSpecialCharges ? [...style.bomSpecialCharges] : [],
   };
 }
 
@@ -121,7 +121,7 @@ export function useCostSheetFacade() {
   const [printModalOpen, setPrintModalOpen] = useState(false);
 
   // Loading States
-  const [loadingStyles, setLoadingStyles] = useState(true);
+  const [loadingStyles, setLoadingStyles] = useState(false);
   const [loadingBOM, setLoadingBOM] = useState(false);
 
   // Fetch Indus styles and workorders list
@@ -136,29 +136,8 @@ export function useCostSheetFacade() {
       .catch((err) => console.error("Failed to load styles-and-workorders:", err));
   }, []);
 
-  // Fetch Style Master & Parameter Subscriptions
+  // Fetch Parameter Subscriptions
   useEffect(() => {
-    const unsubStyles = StyleMasterService.subscribe((data) => {
-      setStylesList(data);
-      setLoadingStyles(false);
-
-      if (styleIdParam && !costSheetIdParam) {
-        const found = data.find((s) => s.id === styleIdParam);
-        if (found) {
-          setActiveStyle(ensureStyleBOMDefaults(found));
-          setNewFabricRows(new Set());
-          setNewLiningRows(new Set());
-        }
-      }
-    });
-
-    return () => unsubStyles();
-  }, [styleIdParam, costSheetIdParam]);
-
-  useEffect(() => {
-    const unsubFabric = ItemCatalogService.subscribe(FABRIC_COLLECTION, setFabricCatalog);
-    const unsubLining = ItemCatalogService.subscribe(LINING_COLLECTION, setLiningCatalog);
-
     const unsubDLF = ParametersService.subscribeToTable<SimpleTableData>("direct-labour-foh", setDirectLabourFoh);
     const unsubCTS = ParametersService.subscribeToTable<MatrixTableData>("cut-to-ship-grid", setCutToShipGrid);
     const unsubRej = ParametersService.subscribeToTable<ProcessMatrixTableData>("rejection-grid", setRejectionGrid);
@@ -228,8 +207,6 @@ export function useCostSheetFacade() {
     });
 
     return () => {
-      unsubFabric();
-      unsubLining();
       unsubDLF();
       unsubCTS();
       unsubRej();
@@ -397,15 +374,6 @@ export function useCostSheetFacade() {
     (styleId: string) => {
       if (styleId === "custom") {
         setActiveStyle({ ...CUSTOM_STYLE });
-        setNewFabricRows(new Set());
-        setNewLiningRows(new Set());
-        return;
-      }
-
-      // Check if it exists in Firebase Style Master
-      const found = stylesList.find((s) => s.id === styleId);
-      if (found) {
-        setActiveStyle(ensureStyleBOMDefaults(found));
         setNewFabricRows(new Set());
         setNewLiningRows(new Set());
         return;

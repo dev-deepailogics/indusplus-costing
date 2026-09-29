@@ -6,5 +6,5 @@ export * from "./hooks/useLoginFacade";
 export * from "./hooks/useUsersFacade";
 export * from "./components/LoginForm";
 export * from "./components/UsersTable";
-export * from "./components/AuthGate";
 export * from "./components/UserMenu";
+export * from "./components/CustomerMultiSelect";

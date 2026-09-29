@@ -80,7 +80,7 @@ export class CostSheetService {
       const res = await fetch(`${BASE}/${encodeURIComponent(id)}`, {
         cache: "no-store",
       });
-      if (res.status === 404) return null;
+      if (res.status === 404 || res.status === 403 || res.status === 401) return null;
       if (!res.ok) throw new Error("Fetch failed");
       return (await res.json()) as SavedCostSheetItem;
     } catch (err) {
@@ -122,5 +122,28 @@ export class CostSheetService {
     }
 
     notifyAllSubscribers();
+  }
+
+  public static async approve(
+    id: string,
+    payload: {
+      stage: string;
+      action: "approve" | "reject" | "revoke";
+      comments?: string;
+    }
+  ): Promise<{ ok: boolean; approvals: any; approvalStatus: string }> {
+    const res = await fetch(`${BASE}/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to process approval action");
+    }
+
+    notifyAllSubscribers();
+    return data;
   }
 }

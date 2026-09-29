@@ -16,9 +16,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "../context/AuthProvider";
-import { AuthService } from "../services/AuthService";
 
-function initialsFor(user: { displayName: string | null; email: string | null }) {
+function initialsFor(user: { displayName: string; email: string }) {
   if (user.displayName) {
     return user.displayName
       .split(" ")
@@ -27,18 +26,18 @@ function initialsFor(user: { displayName: string | null; email: string | null })
       .join("")
       .toUpperCase();
   }
-  return user.email?.[0]?.toUpperCase() ?? "?";
+  return user.email[0]?.toUpperCase() ?? "?";
 }
 
 export function UserMenu() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
 
   if (!user) return null;
 
   async function handleSignOut() {
     try {
-      await AuthService.signOut();
+      await logout();
       router.replace("/login");
       toast.success("Signed out");
     } catch (err) {
@@ -60,7 +59,7 @@ export function UserMenu() {
                   </span>
                   <span className="flex flex-col overflow-hidden text-left">
                     <span className="truncate text-sm font-medium">
-                      {user.displayName ?? user.email}
+                      {user.displayName || user.email}
                     </span>
                     {user.displayName && (
                       <span className="truncate text-xs text-muted-foreground">

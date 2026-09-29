@@ -15,31 +15,74 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { signInWithEmail, signUpWithEmail } from "@/lib/auth/actions";
-import { authErrorMessage } from "@/lib/auth/error-message";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useAuth } from "@/lib/auth/auth-provider";
+import { AuthService } from "@/features/auth";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
-  const [displayName, setDisplayName] = useState("");
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Password reset state
+  const [resetOpen, setResetOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      if (mode === "sign-in") {
-        await signInWithEmail(email, password);
+      const user = await login(email, password);
+      if (user.mustResetPassword) {
+        setCurrentPassword(password);
+        setResetOpen(true);
+        toast.info("You must reset your password before continuing.");
       } else {
-        await signUpWithEmail(email, password, displayName);
+        router.replace(user.role === "admin" ? "/parameters" : "/cost-sheet");
       }
-      router.replace("/parameters");
     } catch (error) {
-      toast.error(authErrorMessage(error));
+      toast.error(AuthService.getErrorMessage(error));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast.error("New password must be at least 6 characters.");
+      return;
+    }
+
+    setResetting(true);
+    try {
+      await AuthService.resetPassword(currentPassword, newPassword);
+      toast.success("Password updated successfully.");
+      setResetOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      router.replace("/parameters");
+    } catch (error) {
+      toast.error(AuthService.getErrorMessage(error));
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -48,26 +91,11 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm rounded-2xl shadow-sm">
         <CardHeader className="items-center text-center">
           <Image src="/logo-icon.png" alt="Indus Plus" width={48} height={48} priority />
-          <CardTitle className="text-xl">
-            {mode === "sign-in" ? "Sign in" : "Create an account"}
-          </CardTitle>
+          <CardTitle className="text-xl">Sign in</CardTitle>
           <CardDescription>Indus Plus Costing</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <form className="space-y-3" onSubmit={handleSubmit}>
-            {mode === "sign-up" && (
-              <div className="space-y-1.5">
-                <Label htmlFor="displayName">Display name</Label>
-                <Input
-                  id="displayName"
-                  type="text"
-                  required
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  autoComplete="name"
-                />
-              </div>
-            )}
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -88,26 +116,77 @@ export default function LoginPage() {
                 minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+                autoComplete="current-password"
               />
             </div>
             <Button type="submit" className="w-full" disabled={submitting}>
-              {mode === "sign-in" ? "Sign in" : "Sign up"}
+              {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>
 
-          <p className="text-center text-sm text-muted-foreground">
-            {mode === "sign-in" ? "Don't have an account?" : "Already have an account?"}{" "}
+          <div className="text-center">
             <button
               type="button"
-              className="font-medium text-primary underline-offset-4 hover:underline"
-              onClick={() => setMode(mode === "sign-in" ? "sign-up" : "sign-in")}
+              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+              onClick={() => setResetOpen(true)}
             >
-              {mode === "sign-in" ? "Sign up" : "Sign in"}
+              Reset Password
             </button>
-          </p>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Password Reset Dialog */}
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Enter your current password and choose a new one.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-3" onSubmit={handleResetPassword}>
+            <div className="space-y-1.5">
+              <Label htmlFor="resetCurrentPassword">Current Password</Label>
+              <Input
+                id="resetCurrentPassword"
+                type="password"
+                required
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="resetNewPassword">New Password</Label>
+              <Input
+                id="resetNewPassword"
+                type="password"
+                required
+                minLength={6}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="resetConfirmPassword">Confirm New Password</Label>
+              <Input
+                id="resetConfirmPassword"
+                type="password"
+                required
+                minLength={6}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={resetting}>
+              {resetting ? "Updating…" : "Update Password"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

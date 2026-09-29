@@ -51,6 +51,41 @@ export interface CostSheetCalculations {
   grossCmUSD?: number;
 }
 
+export type ApprovalStage =
+  | "fabric"
+  | "mmc"
+  | "ie"
+  | "washing"
+  | "marketing"
+  | "costingHead"
+  | "director";
+
+export interface ApprovalStep {
+  status: "pending" | "approved" | "rejected";
+  approvedBy?: string;
+  approvedByEmail?: string;
+  approvedById?: number;
+  approvedAt?: string;
+  comments?: string;
+}
+
+export interface CostSheetApprovals {
+  fabric?: ApprovalStep;
+  mmc?: ApprovalStep;
+  ie?: ApprovalStep;
+  washing?: ApprovalStep;
+  marketing?: ApprovalStep;
+  costingHead?: ApprovalStep;
+  director?: ApprovalStep;
+  overallStatus?:
+    | "draft"
+    | "in_review"
+    | "marketing_approved"
+    | "costing_approved"
+    | "fully_approved"
+    | "rejected";
+}
+
 export interface SavedCostSheetItem {
   id: string; // Unique snapshot ID (e.g. PCS-STY-001-XXXX)
   referenceName: string; // e.g. "Scenario A - Base Quote"
@@ -60,6 +95,9 @@ export interface SavedCostSheetItem {
   styleCategory: string;
   orderQuantity: number;
   smvSewing: number;
+  cuttingSAM?: number;
+  washingSAM?: number;
+  finishingSAM?: number;
   orderType: string;
   washType: string;
   directLabourFohSnapshot?: SimpleTableData | null;
@@ -111,6 +149,15 @@ export interface SavedCostSheetItem {
 
   // Saved calculation results
   calculations: CostSheetCalculations;
+
+  // Approvals & Workflow
+  approvals?: CostSheetApprovals;
+  approvalStatus?: string;
+
+  // Author / Creator
+  createdById?: number;
+  createdByEmail?: string;
+  createdByName?: string;
 
   savedAt: string; // ISO Date string
 }

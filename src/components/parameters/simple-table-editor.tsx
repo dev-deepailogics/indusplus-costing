@@ -201,9 +201,15 @@ function slugifyKey(label: string): string {
 export function SimpleTableEditor({
   data,
   onSave,
+  canCreate = true,
+  canEdit = true,
+  canDelete = true,
 }: {
   data: SimpleTableData;
   onSave: (data: SimpleTableData) => Promise<void>;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   // Local state for cards
   const [cards, setCards] = useState<SimpleTableCard[]>(
@@ -708,14 +714,16 @@ export function SimpleTableEditor({
               {cards.length} {cards.length === 1 ? "Card" : "Cards"} Total
             </Badge>
           </div>
-          <Button
-            size="sm"
-            onClick={() => setNewCardOpen(true)}
-            className="gap-1.5 shadow-sm font-medium"
-          >
-            <Plus className="size-4" />
-            <span>New Card</span>
-          </Button>
+          {canCreate && (
+            <Button
+              size="sm"
+              onClick={() => setNewCardOpen(true)}
+              className="gap-1.5 shadow-sm font-medium"
+            >
+              <Plus className="size-4" />
+              <span>New Card</span>
+            </Button>
+          )}
         </div>
 
         {/* Card Grid */}
@@ -818,15 +826,17 @@ export function SimpleTableEditor({
                     <Sparkles className="size-3" /> Default Card
                   </Badge>
                 )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7 text-muted-foreground hover:text-foreground"
-                  onClick={() => setRenameCardOpen(true)}
-                  title="Rename card"
-                >
-                  <Edit2 className="size-3.5" />
-                </Button>
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => setRenameCardOpen(true)}
+                    title="Rename card"
+                  >
+                    <Edit2 className="size-3.5" />
+                  </Button>
+                )}
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Viewing and editing parameters for {currentCard.name}. {hasChanges && <span className="text-amber-600 font-medium">You have unsaved changes.</span>}
@@ -842,7 +852,7 @@ export function SimpleTableEditor({
                 <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>ACTIVE for {currentCard.customer ? `Customer "${currentCard.customer}"` : "Default"}</span>
               </div>
-            ) : (
+            ) : canEdit ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -852,22 +862,24 @@ export function SimpleTableEditor({
                 <Power className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span>Set as Active for {currentCard.customer ? `Customer "${currentCard.customer}"` : "Default"}</span>
               </Button>
-            )}
+            ) : null}
 
             {/* Duplicate Card */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 text-xs gap-1.5"
-              onClick={() => handleDuplicateCard(currentCard)}
-              title="Duplicate this card"
-            >
-              <Copy className="size-3.5" />
-              <span>Duplicate</span>
-            </Button>
+            {canCreate && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 text-xs gap-1.5"
+                onClick={() => handleDuplicateCard(currentCard)}
+                title="Duplicate this card"
+              >
+                <Copy className="size-3.5" />
+                <span>Duplicate</span>
+              </Button>
+            )}
 
             {/* Delete Card */}
-            {cards.length > 1 && (
+            {canDelete && cards.length > 1 && (
               <Button
                 variant="outline"
                 size="sm"
@@ -920,7 +932,7 @@ export function SimpleTableEditor({
                     </span>
                   </TableHead>
                 )}
-                <TableHead className="w-10" />
+                {canDelete && <TableHead className="w-10" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -944,7 +956,7 @@ export function SimpleTableEditor({
                         <TableCell key={col.key}>
                           <Input
                             className={`h-8 text-sm ${
-                              isDescription
+                              !canEdit || isDescription
                                 ? isConflicting
                                   ? "bg-rose-50/60 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200 font-semibold cursor-not-allowed opacity-95 select-none"
                                   : "bg-muted/50 text-foreground font-semibold cursor-not-allowed opacity-90 select-none"
@@ -954,7 +966,7 @@ export function SimpleTableEditor({
                             }`}
                             value={cellValue}
                             placeholder="-"
-                            disabled={isDescription}
+                            disabled={!canEdit || isDescription}
                             onChange={(e) => updateCell(row.id, col.key, e.target.value)}
                           />
                         </TableCell>
@@ -967,12 +979,13 @@ export function SimpleTableEditor({
                         <div className="inline-flex items-center p-0.5 rounded-lg bg-muted/80 border border-border/60 text-xs shadow-2xs">
                           <button
                             type="button"
-                            onClick={() => setRowUseType(row.id, "sam")}
-                            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all font-medium cursor-pointer ${
+                            disabled={!canEdit}
+                            onClick={() => canEdit && setRowUseType(row.id, "sam")}
+                            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all font-medium ${
                               isSam
                                 ? "bg-background text-foreground shadow-xs font-semibold"
                                 : "text-muted-foreground hover:text-foreground"
-                            }`}
+                            } ${!canEdit ? "cursor-default opacity-80" : "cursor-pointer"}`}
                           >
                             <span
                               className={`size-1.5 rounded-full transition-all ${
@@ -983,12 +996,13 @@ export function SimpleTableEditor({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setRowUseType(row.id, "piece")}
-                            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all font-medium cursor-pointer ${
+                            disabled={!canEdit}
+                            onClick={() => canEdit && setRowUseType(row.id, "piece")}
+                            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all font-medium ${
                               isPiece
                                 ? "bg-background text-foreground shadow-xs font-semibold"
                                 : "text-muted-foreground hover:text-foreground"
-                            }`}
+                            } ${!canEdit ? "cursor-default opacity-80" : "cursor-pointer"}`}
                           >
                             <span
                               className={`size-1.5 rounded-full transition-all ${
@@ -1002,17 +1016,19 @@ export function SimpleTableEditor({
                     )}
 
                     {/* Delete Row Button */}
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteRowId(row.id)}
-                        title="Delete row"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </TableCell>
+                    {canDelete && (
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteRowId(row.id)}
+                          title="Delete row"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
@@ -1022,17 +1038,19 @@ export function SimpleTableEditor({
 
         {/* Table Action Buttons */}
         <div className="flex flex-wrap gap-2 items-center justify-between pt-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setAddRowOpen(true)}
-            className="gap-1.5"
-          >
-            <Plus className="size-3.5" /> Add row
-          </Button>
+          {canEdit ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAddRowOpen(true)}
+              className="gap-1.5"
+            >
+              <Plus className="size-3.5" /> Add row
+            </Button>
+          ) : <div />}
 
           <div className="flex items-center gap-2">
-            {hasChanges && (
+            {canEdit && hasChanges && (
               <Button 
                 size="sm" 
                 disabled={!samValidation.isValid || isSaving}

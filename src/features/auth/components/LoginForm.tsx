@@ -11,20 +11,33 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useLoginFacade } from "../hooks/useLoginFacade";
 
 export function LoginForm() {
   const {
-    mode,
-    displayName,
-    setDisplayName,
     email,
     setEmail,
     password,
     setPassword,
     submitting,
     handleSubmit,
-    toggleMode,
+    resetOpen,
+    setResetOpen,
+    currentPassword,
+    setCurrentPassword,
+    newPassword,
+    setNewPassword,
+    confirmPassword,
+    setConfirmPassword,
+    resetting,
+    handleResetPassword,
   } = useLoginFacade();
 
   return (
@@ -32,26 +45,11 @@ export function LoginForm() {
       <Card className="w-full max-w-sm rounded-2xl shadow-sm">
         <CardHeader className="items-center text-center">
           <Image src="/logo-icon.png" alt="Indus Plus" width={48} height={48} priority />
-          <CardTitle className="text-xl">
-            {mode === "sign-in" ? "Sign in" : "Create an account"}
-          </CardTitle>
+          <CardTitle className="text-xl">Sign in</CardTitle>
           <CardDescription>Indus Plus Costing</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <form className="space-y-3" onSubmit={handleSubmit}>
-            {mode === "sign-up" && (
-              <div className="space-y-1.5">
-                <Label htmlFor="displayName">Display name</Label>
-                <Input
-                  id="displayName"
-                  type="text"
-                  required
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  autoComplete="name"
-                />
-              </div>
-            )}
             <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -72,26 +70,77 @@ export function LoginForm() {
                 minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
+                autoComplete="current-password"
               />
             </div>
             <Button type="submit" className="w-full" disabled={submitting}>
-              {mode === "sign-in" ? "Sign in" : "Sign up"}
+              {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>
 
-          <p className="text-center text-sm text-muted-foreground">
-            {mode === "sign-in" ? "Don't have an account?" : "Already have an account?"}{" "}
+          <div className="text-center">
             <button
               type="button"
-              className="font-medium text-primary underline-offset-4 hover:underline"
-              onClick={toggleMode}
+              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+              onClick={() => setResetOpen(true)}
             >
-              {mode === "sign-in" ? "Sign up" : "Sign in"}
+              Reset Password
             </button>
-          </p>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Password Reset Dialog */}
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Enter your current password and choose a new one.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-3" onSubmit={handleResetPassword}>
+            <div className="space-y-1.5">
+              <Label htmlFor="currentPassword">Current Password</Label>
+              <Input
+                id="currentPassword"
+                type="password"
+                required
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="newPassword">New Password</Label>
+              <Input
+                id="newPassword"
+                type="password"
+                required
+                minLength={6}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="confirmPassword">Confirm New Password</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                required
+                minLength={6}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={resetting}>
+              {resetting ? "Updating…" : "Update Password"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

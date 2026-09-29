@@ -11,6 +11,9 @@ import {
   DollarSign,
   Layers,
   Users,
+  UserCog,
+  UsersRound,
+  Shield,
 } from "lucide-react";
 
 import {
@@ -24,30 +27,26 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { PARAMETER_TABLES } from "@/lib/parameters/registry";
 import { UserMenu } from "@/components/auth/user-menu";
 import { useAuth } from "@/lib/auth/auth-provider";
 import {
   DropdownMenu,
-  DropdownMenuPortal,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { role } = useAuth();
-  const isAdmin = role === "admin";
+  const { can } = useAuth();
+
+  const canViewParams = can("parameters", "view");
+  const canViewUsers = can("users", "view");
+  const canViewRoles = can("roles", "view");
+  const canViewTeams = can("teams", "view");
+  const canViewCostSheets = can("cost_sheets", "view");
 
   return (
     <Sidebar collapsible="icon">
@@ -70,132 +69,75 @@ export function AppSidebar() {
         </Link>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Pre-Order Costing</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip="Cost Sheets"
-                  isActive={pathname === "/cost-sheets"}
-                  render={<Link href="/cost-sheets" />}
-                >
-                  <FileSpreadsheet className="size-4 shrink-0" />
-                  <span>Cost Sheets</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        {isAdmin && (
-          <>
-            <SidebarGroup>
-              <SidebarGroupLabel className="flex items-center gap-2">
-                <ListTree className="size-4 shrink-0" />
-                <span>POC Parameters</span>
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {/* Grid Item and Dropdown */}
-                  <SidebarMenuItem>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger className="w-full text-left outline-none">
-                        <SidebarMenuButton
-                          tooltip="Grid Parameters"
-                          isActive={
-                            pathname.startsWith("/parameters/styles") ||
-                            pathname.startsWith(
-                              "/parameters/cut-to-ship-grid",
-                            ) ||
-                            pathname.startsWith("/parameters/rejection-grid")
-                          }
-                          className="w-full justify-between"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Grid3X3 className="size-4 shrink-0" />
-                            <span>Grid</span>
-                          </div>
-                          <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
-                        </SidebarMenuButton>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        className="w-52 animate-none"
-                        side="right"
-                        align="start"
-                      >
-                        {["styles", "cut-to-ship-grid", "rejection-grid"].map(
-                          (slug) => {
-                            const table = PARAMETER_TABLES.find(
-                              (t) => t.slug === slug,
-                            );
-                            if (!table) return null;
-                            const href = `/parameters/${table.slug}`;
-                            return (
-                              <DropdownMenuItem
-                                key={table.slug}
-                                className="p-0"
-                              >
-                                <Link
-                                  href={href}
-                                  className={cn(
-                                    "w-full cursor-pointer px-2 py-1.5 text-xs rounded block",
-                                    pathname === href &&
-                                      "bg-accent font-semibold text-accent-foreground",
-                                  )}
-                                >
-                                  {table.title}
-                                </Link>
-                              </DropdownMenuItem>
-                            );
-                          },
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </SidebarMenuItem>
+        {/* Cost Sheets — visible to anyone who can view them */}
+        {canViewCostSheets && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Pre-Order Costing</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="Cost Sheets"
+                    isActive={pathname === "/cost-sheets"}
+                    render={<Link href="/cost-sheets" />}
+                  >
+                    <FileSpreadsheet className="size-4 shrink-0" />
+                    <span>Cost Sheets</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
-                  {/* Value Item and Dropdown */}
-                  <SidebarMenuItem>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger className="w-full text-left outline-none">
-                        <SidebarMenuButton
-                          tooltip="Value Parameters"
-                          isActive={[
-                            "customer-commission",
-                            "cost-as-percent-of-sales",
-                            "direct-labour-foh",
-                            "admin-selling",
-                            "other-expenses",
-                          ].some((slug) =>
-                            pathname.startsWith(`/parameters/${slug}`),
-                          )}
-                          className="w-full justify-between"
-                        >
-                          <div className="flex items-center gap-2">
-                            <DollarSign className="size-4 shrink-0" />
-                            <span>Value</span>
-                          </div>
-                          <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
-                        </SidebarMenuButton>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        className="w-52 animate-none"
-                        side="right"
-                        align="start"
+        {/* Parameters — visible to users with parameters:view */}
+        {canViewParams && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center gap-2">
+              <ListTree className="size-4 shrink-0" />
+              <span>POC Parameters</span>
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {/* Grid Item and Dropdown */}
+                <SidebarMenuItem>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="w-full text-left outline-none">
+                      <SidebarMenuButton
+                        tooltip="Grid Parameters"
+                        isActive={
+                          pathname.startsWith("/parameters/styles") ||
+                          pathname.startsWith(
+                            "/parameters/cut-to-ship-grid",
+                          ) ||
+                          pathname.startsWith("/parameters/rejection-grid")
+                        }
+                        className="w-full justify-between"
                       >
-                        {[
-                          "customer-commission",
-                          "cost-as-percent-of-sales",
-                          "direct-labour-foh",
-                          "admin-selling",
-                          "other-expenses",
-                        ].map((slug) => {
+                        <div className="flex items-center gap-2">
+                          <Grid3X3 className="size-4 shrink-0" />
+                          <span>Grid</span>
+                        </div>
+                        <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+                      </SidebarMenuButton>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      className="w-52 animate-none"
+                      side="right"
+                      align="start"
+                    >
+                      {["styles", "cut-to-ship-grid", "rejection-grid"].map(
+                        (slug) => {
                           const table = PARAMETER_TABLES.find(
                             (t) => t.slug === slug,
                           );
                           if (!table) return null;
                           const href = `/parameters/${table.slug}`;
                           return (
-                            <DropdownMenuItem key={table.slug} className="p-0">
+                            <DropdownMenuItem
+                              key={table.slug}
+                              className="p-0"
+                            >
                               <Link
                                 href={href}
                                 className={cn(
@@ -208,36 +150,133 @@ export function AppSidebar() {
                               </Link>
                             </DropdownMenuItem>
                           );
-                        })}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </SidebarMenuItem>
+                        },
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </SidebarMenuItem>
 
-                  {/* Dropdown Lists */}
+                {/* Value Item and Dropdown */}
+                <SidebarMenuItem>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger className="w-full text-left outline-none">
+                      <SidebarMenuButton
+                        tooltip="Value Parameters"
+                        isActive={[
+                          "customer-commission",
+                          "cost-as-percent-of-sales",
+                          "direct-labour-foh",
+                          "admin-selling",
+                          "other-expenses",
+                        ].some((slug) =>
+                          pathname.startsWith(`/parameters/${slug}`),
+                        )}
+                        className="w-full justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          <DollarSign className="size-4 shrink-0" />
+                          <span>Value</span>
+                        </div>
+                        <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+                      </SidebarMenuButton>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      className="w-52 animate-none"
+                      side="right"
+                      align="start"
+                    >
+                      {[
+                        "customer-commission",
+                        "cost-as-percent-of-sales",
+                        "direct-labour-foh",
+                        "admin-selling",
+                        "other-expenses",
+                      ].map((slug) => {
+                        const table = PARAMETER_TABLES.find(
+                          (t) => t.slug === slug,
+                        );
+                        if (!table) return null;
+                        const href = `/parameters/${table.slug}`;
+                        return (
+                          <DropdownMenuItem key={table.slug} className="p-0">
+                            <Link
+                              href={href}
+                              className={cn(
+                                "w-full cursor-pointer px-2 py-1.5 text-xs rounded block",
+                                pathname === href &&
+                                  "bg-accent font-semibold text-accent-foreground",
+                              )}
+                            >
+                              {table.title}
+                            </Link>
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </SidebarMenuItem>
+
+                {/* Dropdown Lists */}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="Dropdown Lists"
+                    isActive={pathname.startsWith("/parameters/dropdown-lists")}
+                    render={<Link href="/parameters/dropdown-lists" />}
+                  >
+                    <Layers className="size-4 shrink-0" />
+                    <span>Dropdown Lists</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {/* Management section — Users, Roles, and Teams */}
+        {(canViewUsers || canViewRoles || canViewTeams) && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Management</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {canViewUsers && (
                   <SidebarMenuItem>
                     <SidebarMenuButton
-                      tooltip="Dropdown Lists"
-                      isActive={pathname.startsWith("/parameters/dropdown-lists")}
-                      render={<Link href="/parameters/dropdown-lists" />}
+                      tooltip="Manage Users"
+                      isActive={pathname === "/users"}
+                      render={<Link href="/users" />}
                     >
-                      <Layers className="size-4 shrink-0" />
-                      <span>Dropdown Lists</span>
+                      <UserCog className="size-4 shrink-0" />
+                      <span>Manage Users</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-            <SidebarMenuItem className="mx-2">
-              <SidebarMenuButton
-                tooltip="Manage Users"
-                isActive={pathname === "/users"}
-                render={<Link href="/users" />}
-              >
-                <Users className="size-4 shrink-0" />
-                <span>Manage Users</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </>
+                )}
+                {canViewRoles && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      tooltip="Manage Roles"
+                      isActive={pathname === "/roles"}
+                      render={<Link href="/roles" />}
+                    >
+                      <Shield className="size-4 shrink-0" />
+                      <span>Manage Roles</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+                {canViewTeams && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      tooltip="Manage Teams"
+                      isActive={pathname === "/teams"}
+                      render={<Link href="/teams" />}
+                    >
+                      <UsersRound className="size-4 shrink-0" />
+                      <span>Manage Teams</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         )}
       </SidebarContent>
       <UserMenu />

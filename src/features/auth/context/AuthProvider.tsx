@@ -1,40 +1,78 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { UsersService } from "../services/UsersService";
-import type { Role, AuthContextValue } from "../types";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { AuthService } from "../services/AuthService";
+import type { SessionUser, Role, AuthContextValue } from "../types";
+import type { SectionPermission } from "@/lib/rbac/permissions";
+import { can as checkPermission } from "@/lib/rbac/permissions";
 
-const AuthContext = createContext<AuthContextValue>({ user: null, role: null, loading: true });
+const AuthContext = createContext<AuthContextValue>({
+  user: null,
+  role: null,
+  loading: true,
+  permissions: [],
+  can: () => false,
+  login: () => Promise.reject(new Error("AuthProvider not mounted")),
+  logout: () => Promise.reject(new Error("AuthProvider not mounted")),
+  refreshUser: () => Promise.reject(new Error("AuthProvider not mounted")),
+});
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<SessionUser | null>(null);
   const [role, setRole] = useState<Role | null>(null);
+  const [permissions, setPermissions] = useState<SectionPermission[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Check session on mount
   useEffect(() => {
-    return onAuthStateChanged(auth, (nextUser) => {
-      setUser(nextUser);
-      setRole(null);
-      setLoading(!nextUser ? false : true);
+    let cancelled = false;
+    AuthService.getMe().then((u) => {
+      if (cancelled) return;
+      setUser(u);
+      setRole(u?.role ?? null);
+      setPermissions(u?.permissions ?? []);
+      setLoading(false);
     });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-    let unsubRole = () => {};
-    UsersService.ensureUserProfile(user).finally(() => {
-      unsubRole = UsersService.subscribeToUserRole(user.uid, (nextRole) => {
-        setRole(nextRole);
-        setLoading(false);
-      });
-    });
-    return () => unsubRole();
-  }, [user]);
+  const login = useCallback(async (email: string, password: string): Promise<SessionUser> => {
+    const u = await AuthService.signIn(email, password);
+    setUser(u);
+    setRole(u.role);
+    setPermissions(u.permissions ?? []);
+    return u;
+  }, []);
+
+  const logout = useCallback(async () => {
+    await AuthService.signOut();
+    setUser(null);
+    setRole(null);
+    setPermissions([]);
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    const u = await AuthService.getMe();
+    setUser(u);
+    setRole(u?.role ?? null);
+    setPermissions(u?.permissions ?? []);
+  }, []);
+
+  const can = useCallback(
+    (section: string, action: "view" | "create" | "edit" | "delete" | "approve"): boolean => {
+      // Admin always has full access (safety net)
+      if (role === "admin") return true;
+      return checkPermission(permissions, section, action);
+    },
+    [role, permissions],
+  );
 
   return (
-    <AuthContext.Provider value={{ user, role, loading }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, role, loading, permissions, can, login, logout, refreshUser }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 
