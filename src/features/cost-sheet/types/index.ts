@@ -122,6 +122,8 @@ export interface SavedCostSheetItem {
   // Financial Parameters
   discountRate: number;
   paymentTermsDays: number;
+  arTermId?: string | null;  // Selected AR payment term ID
+  apTermId?: string | null;  // Selected AP payment term ID
   factoringDays: number;
   commissionPct: number;
   foreignBankCharges: number;

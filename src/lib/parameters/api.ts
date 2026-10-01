@@ -16,4 +16,5 @@ export type {
   MatrixTableData,
   ProcessMatrixTableData,
   SimpleTableData,
+  PaymentTermsData,
 } from "@/features/parameters/types";

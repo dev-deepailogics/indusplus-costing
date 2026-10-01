@@ -400,7 +400,7 @@ export function MatrixTableEditor({
         </div>
       )}
 
-      <div className="rounded-lg border bg-white dark:bg-slate-950 shadow-sm overflow-hidden">
+      <div className="rounded-lg border bg-white dark:bg-slate-950 shadow-sm overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>

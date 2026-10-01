@@ -59,6 +59,23 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
        default_rejection  NVARCHAR(32) NOT NULL DEFAULT '4.00%'
      )`,
 
+    // ── customer_testing_costs ────────────────────────────────────────────────
+    `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='customer_testing_costs')
+     CREATE TABLE customer_testing_costs (
+       customer_name NVARCHAR(128) NOT NULL PRIMARY KEY,
+       rate_per_sam  FLOAT         NOT NULL DEFAULT 0,
+       row_order     INT           NOT NULL DEFAULT 0,
+       updated_at    DATETIME2     NOT NULL DEFAULT GETUTCDATE()
+     )`,
+
+    // ── testing_cost_settings ─────────────────────────────────────────────────
+    `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='testing_cost_settings')
+     CREATE TABLE testing_cost_settings (
+       id                   INT       NOT NULL PRIMARY KEY DEFAULT 1,
+       default_rate_per_sam FLOAT     NOT NULL DEFAULT 0,
+       updated_at           DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+     )`,
+
     // ── styles (dedicated 2-table schema for dynamic fields with multi-card support) ────────────────
     `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='styles_columns')
      CREATE TABLE styles_columns (
@@ -323,6 +340,24 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
        items_json NVARCHAR(MAX) NOT NULL DEFAULT '[]',
        sort_order INT           NOT NULL DEFAULT 0
      )`,
+
+    // ── ar_payment_terms ─────────────────────────────────────────────────────
+    `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='ar_payment_terms')
+     CREATE TABLE ar_payment_terms (
+       id         NVARCHAR(128) NOT NULL PRIMARY KEY,
+       label      NVARCHAR(256) NOT NULL DEFAULT '',
+       days       INT           NOT NULL DEFAULT 0,
+       row_order  INT           NOT NULL DEFAULT 0
+     )`,
+
+    // ── ap_payment_terms ─────────────────────────────────────────────────────
+    `IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='ap_payment_terms')
+     CREATE TABLE ap_payment_terms (
+       id         NVARCHAR(128) NOT NULL PRIMARY KEY,
+       label      NVARCHAR(256) NOT NULL DEFAULT '',
+       days       INT           NOT NULL DEFAULT 0,
+       row_order  INT           NOT NULL DEFAULT 0
+     )`,
   ];
 
   for (const ddl of ddlStatements) {
@@ -517,96 +552,241 @@ async function getRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>): Prom
 }
 
 async function saveRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>, data: ProcessMatrixTableData): Promise<void> {
-  const req = pool.request();
-  const sqlStatements: string[] = ["BEGIN TRANSACTION;"];
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    if (data.tables && Object.keys(data.tables).length > 0) {
+      await new sql.Request(tx).query("DELETE FROM rejection_grid;");
 
-  const rows: {
-    process: string;
-    qty: string;
-    cat: string;
-    val: string;
-    pi: number;
-    ri: number;
-    ci: number;
-  }[] = [];
+      const rows: {
+        process: string;
+        qty: string;
+        cat: string;
+        val: string;
+        pi: number;
+        ri: number;
+        ci: number;
+      }[] = [];
 
-  if (data.tables && Object.keys(data.tables).length > 0) {
-    for (let pi = 0; pi < data.processes.length; pi++) {
-      const process = data.processes[pi];
-      const matrix = data.tables[process];
-      if (!matrix || !matrix.rowLabels || !matrix.columnLabels) continue;
+      for (let pi = 0; pi < data.processes.length; pi++) {
+        const process = data.processes[pi];
+        const matrix = data.tables[process];
+        if (!matrix || !matrix.rowLabels || !matrix.columnLabels) continue;
 
-      for (let ri = 0; ri < matrix.rowLabels.length; ri++) {
-        const qty = matrix.rowLabels[ri];
-        for (let ci = 0; ci < matrix.columnLabels.length; ci++) {
-          const cat = matrix.columnLabels[ci];
-          rows.push({
-            process,
-            qty,
-            cat,
-            val: matrix.cells[qty]?.[cat] ?? "",
-            pi,
-            ri,
-            ci,
+        for (let ri = 0; ri < matrix.rowLabels.length; ri++) {
+          const qty = matrix.rowLabels[ri];
+          for (let ci = 0; ci < matrix.columnLabels.length; ci++) {
+            const cat = matrix.columnLabels[ci];
+            rows.push({
+              process,
+              qty,
+              cat,
+              val: matrix.cells[qty]?.[cat] ?? "",
+              pi,
+              ri,
+              ci,
+            });
+          }
+        }
+      }
+
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+        const batch = rows.slice(i, i + BATCH_SIZE);
+        const req = new sql.Request(tx);
+        const valuesSql = batch.map((r, idx) => {
+          req.input(`p_${idx}`, sql.NVarChar(64), r.process);
+          req.input(`q_${idx}`, sql.NVarChar(64), r.qty);
+          req.input(`c_${idx}`, sql.NVarChar(64), r.cat);
+          req.input(`v_${idx}`, sql.NVarChar(32), r.val);
+          req.input(`po_${idx}`, sql.Int, r.pi);
+          req.input(`ro_${idx}`, sql.Int, r.ri);
+          req.input(`co_${idx}`, sql.Int, r.ci);
+          return `(@p_${idx}, @q_${idx}, @c_${idx}, @v_${idx}, @po_${idx}, @ro_${idx}, @co_${idx})`;
+        });
+
+        await req.query(
+          `INSERT INTO rejection_grid (process, qty_band, style_category, value, process_order, row_order, col_order) VALUES ${valuesSql.join(", ")};`
+        );
+      }
+    }
+
+    // Save customer single rejection values in bulk
+    if (data.customerRejections !== undefined) {
+      await new sql.Request(tx).query("DELETE FROM customer_rejections;");
+      const custEntries = Object.entries(data.customerRejections).filter(
+        ([cust, rej]) => cust.trim() && rej && rej.trim()
+      );
+      if (custEntries.length > 0) {
+        const BATCH_SIZE = 200;
+        for (let i = 0; i < custEntries.length; i += BATCH_SIZE) {
+          const batch = custEntries.slice(i, i + BATCH_SIZE);
+          const req = new sql.Request(tx);
+          const valuesSql = batch.map(([custName, rejVal], idx) => {
+            req.input(`cn_${idx}`, sql.NVarChar(128), custName.trim());
+            req.input(`rp_${idx}`, sql.NVarChar(32), rejVal.trim());
+            req.input(`cro_${idx}`, sql.Int, i + idx);
+            return `(@cn_${idx}, @rp_${idx}, @cro_${idx})`;
           });
+          await req.query(
+            `INSERT INTO customer_rejections (customer_name, rejection_pct, row_order) VALUES ${valuesSql.join(", ")};`
+          );
         }
       }
     }
-  }
 
-  // IMPORTANT: Only touch rejection_grid if full table data was provided!
-  if (rows.length > 0) {
-    sqlStatements.push("DELETE FROM rejection_grid;");
-    const valuesSql = rows.map((r, idx) => {
-      req.input(`p_${idx}`, r.process);
-      req.input(`q_${idx}`, r.qty);
-      req.input(`c_${idx}`, r.cat);
-      req.input(`v_${idx}`, r.val);
-      req.input(`po_${idx}`, r.pi);
-      req.input(`ro_${idx}`, r.ri);
-      req.input(`co_${idx}`, r.ci);
-      return `(@p_${idx}, @q_${idx}, @c_${idx}, @v_${idx}, @po_${idx}, @ro_${idx}, @co_${idx})`;
-    });
-    sqlStatements.push(
-      `INSERT INTO rejection_grid (process, qty_band, style_category, value, process_order, row_order, col_order) VALUES ${valuesSql.join(", ")};`
-    );
-  }
-
-  // Save customer single rejection values in bulk
-  if (data.customerRejections !== undefined) {
-    sqlStatements.push("DELETE FROM customer_rejections;");
-    const custEntries = Object.entries(data.customerRejections).filter(
-      ([cust, rej]) => cust.trim() && rej && rej.trim()
-    );
-    if (custEntries.length > 0) {
-      const valuesSql = custEntries.map(([custName, rejVal], idx) => {
-        req.input(`cn_${idx}`, custName.trim());
-        req.input(`rp_${idx}`, rejVal.trim());
-        req.input(`cro_${idx}`, idx);
-        return `(@cn_${idx}, @rp_${idx}, @cro_${idx})`;
-      });
-      sqlStatements.push(
-        `INSERT INTO customer_rejections (customer_name, rejection_pct, row_order) VALUES ${valuesSql.join(", ")};`
-      );
+    // Save rejection mode settings (active/inactive toggle and default rejection rate)
+    if (data.useGridRejection !== undefined || data.defaultRejection !== undefined) {
+      const useGrid = data.useGridRejection !== false ? 1 : 0;
+      const defRej = data.defaultRejection || "4.00%";
+      const req = new sql.Request(tx);
+      req.input("set_use_grid", sql.Bit, useGrid);
+      req.input("set_def_rej", sql.NVarChar(32), defRej);
+      await req.query(`
+        IF EXISTS (SELECT 1 FROM rejection_settings WHERE id = 1)
+          UPDATE rejection_settings SET use_grid_rejection = @set_use_grid, default_rejection = @set_def_rej WHERE id = 1;
+        ELSE
+          INSERT INTO rejection_settings (id, use_grid_rejection, default_rejection) VALUES (1, @set_use_grid, @set_def_rej);
+      `);
     }
+
+    await tx.commit();
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2b. CUSTOMER WISE TESTING COST
+// ---------------------------------------------------------------------------
+export type CustomerTestingCostData = {
+  customerRates: Record<string, number>;
+  defaultRate: number;
+};
+
+async function getCustomerTestingCosts(pool: Awaited<ReturnType<typeof getPool>>): Promise<CustomerTestingCostData> {
+  const customerRates: Record<string, number> = {};
+  try {
+    const res = await pool.request().query<{
+      customer_name: string;
+      rate_per_sam: number;
+    }>("SELECT customer_name, rate_per_sam FROM customer_testing_costs ORDER BY row_order, customer_name");
+    for (const row of res.recordset) {
+      if (row.customer_name) {
+        customerRates[row.customer_name] = row.rate_per_sam ?? 0;
+      }
+    }
+  } catch (err) {
+    console.error("[getCustomerTestingCosts]", err);
   }
 
-  // Save rejection mode settings (active/inactive toggle and default rejection rate)
-  if (data.useGridRejection !== undefined || data.defaultRejection !== undefined) {
-    const useGrid = data.useGridRejection !== false ? 1 : 0;
-    const defRej = data.defaultRejection || "4.00%";
-    req.input("set_use_grid", useGrid);
-    req.input("set_def_rej", defRej);
-    sqlStatements.push(`
-      IF EXISTS (SELECT 1 FROM rejection_settings WHERE id = 1)
-        UPDATE rejection_settings SET use_grid_rejection = @set_use_grid, default_rejection = @set_def_rej WHERE id = 1;
-      ELSE
-        INSERT INTO rejection_settings (id, use_grid_rejection, default_rejection) VALUES (1, @set_use_grid, @set_def_rej);
-    `);
+  let defaultRate = 0;
+  try {
+    const settingsRes = await pool.request().query<{
+      default_rate_per_sam: number;
+    }>("SELECT default_rate_per_sam FROM testing_cost_settings WHERE id = 1");
+    if (settingsRes.recordset.length > 0) {
+      defaultRate = settingsRes.recordset[0].default_rate_per_sam ?? 0;
+    }
+  } catch (err) {
+    console.error("[getTestingCostSettings]", err);
   }
 
-  sqlStatements.push("COMMIT TRANSACTION;");
-  await req.query(sqlStatements.join("\n"));
+  return { customerRates, defaultRate };
+}
+
+async function saveCustomerTestingCosts(
+  pool: Awaited<ReturnType<typeof getPool>>,
+  data: CustomerTestingCostData
+): Promise<void> {
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    await new sql.Request(tx).query("DELETE FROM customer_testing_costs;");
+
+    if (data.customerRates) {
+      const entries = Object.entries(data.customerRates).filter(
+        ([cust]) => cust && cust.trim() !== ""
+      );
+      for (let i = 0; i < entries.length; i++) {
+        const [cust, rate] = entries[i];
+        await new sql.Request(tx)
+          .input("customer_name", sql.NVarChar(128), cust.trim())
+          .input("rate_per_sam", sql.Float, Number(rate) || 0)
+          .input("row_order", sql.Int, i)
+          .query(`
+            INSERT INTO customer_testing_costs (customer_name, rate_per_sam, row_order)
+            VALUES (@customer_name, @rate_per_sam, @row_order)
+          `);
+      }
+    }
+
+    const defRate = Number(data.defaultRate) || 0;
+    await new sql.Request(tx)
+      .input("default_rate", sql.Float, defRate)
+      .query(`
+        IF EXISTS (SELECT 1 FROM testing_cost_settings WHERE id = 1)
+          UPDATE testing_cost_settings SET default_rate_per_sam = @default_rate, updated_at = GETUTCDATE() WHERE id = 1;
+        ELSE
+          INSERT INTO testing_cost_settings (id, default_rate_per_sam, updated_at) VALUES (1, @default_rate, GETUTCDATE());
+      `);
+
+    await tx.commit();
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2c. AR / AP PAYMENT TERMS
+// ---------------------------------------------------------------------------
+export type PaymentTermsData = {
+  terms: { id: string; label: string; days: number }[];
+};
+
+async function getPaymentTerms(
+  pool: Awaited<ReturnType<typeof getPool>>,
+  table: "ar_payment_terms" | "ap_payment_terms"
+): Promise<PaymentTermsData> {
+  try {
+    const res = await pool
+      .request()
+      .query<{ id: string; label: string; days: number }>(
+        `SELECT id, label, days FROM ${table} ORDER BY row_order, id`
+      );
+    return { terms: res.recordset.map((r) => ({ id: r.id, label: r.label, days: r.days ?? 0 })) };
+  } catch (err) {
+    console.error(`[getPaymentTerms:${table}]`, err);
+    return { terms: [] };
+  }
+}
+
+async function savePaymentTerms(
+  pool: Awaited<ReturnType<typeof getPool>>,
+  table: "ar_payment_terms" | "ap_payment_terms",
+  data: PaymentTermsData
+): Promise<void> {
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    await new sql.Request(tx).query(`DELETE FROM ${table};`);
+    const terms = (data.terms ?? []).filter((t) => t.id && t.label?.trim());
+    for (let i = 0; i < terms.length; i++) {
+      const t = terms[i];
+      await new sql.Request(tx)
+        .input("id", sql.NVarChar(128), t.id)
+        .input("label", sql.NVarChar(256), t.label.trim())
+        .input("days", sql.Int, Math.round(t.days) || 0)
+        .input("row_order", sql.Int, i)
+        .query(`INSERT INTO ${table} (id, label, days, row_order) VALUES (@id, @label, @days, @row_order)`);
+    }
+    await tx.commit();
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1576,6 +1756,15 @@ export async function GET(
       case "admin-selling":
         data = await getAdminSelling(pool);
         break;
+      case "customer-testing-cost":
+        data = await getCustomerTestingCosts(pool);
+        break;
+      case "ar-payment-terms":
+        data = await getPaymentTerms(pool, "ar_payment_terms");
+        break;
+      case "ap-payment-terms":
+        data = await getPaymentTerms(pool, "ap_payment_terms");
+        break;
       case "dropdown-lists":
         data = await getDropdownLists(pool);
         break;
@@ -1618,6 +1807,15 @@ export async function PUT(
         break;
       case "rejection-grid":
         await saveRejectionGrid(pool, body as ProcessMatrixTableData);
+        break;
+      case "customer-testing-cost":
+        await saveCustomerTestingCosts(pool, body as CustomerTestingCostData);
+        break;
+      case "ar-payment-terms":
+        await savePaymentTerms(pool, "ar_payment_terms", body as PaymentTermsData);
+        break;
+      case "ap-payment-terms":
+        await savePaymentTerms(pool, "ap_payment_terms", body as PaymentTermsData);
         break;
       case "styles":
         await saveStyles(pool, body as SimpleTableData);

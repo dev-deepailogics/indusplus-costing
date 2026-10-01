@@ -9,7 +9,7 @@ export default function RolesLayout({ children }: { children: React.ReactNode })
         <header className="flex items-center gap-2 px-4 py-2 border-b">
           <SidebarTrigger className="rounded-md" />
         </header>
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main className="flex-1 overflow-auto bg-muted/20 p-3 sm:p-4 md:p-6 lg:p-8">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );

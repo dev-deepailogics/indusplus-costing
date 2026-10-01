@@ -62,7 +62,22 @@ export type DropdownListsData = {
   lists: { key: string; label: string; items: string[] }[];
 };
 
-export type ParameterKind = "simple" | "matrix" | "process-matrix" | "dropdown-lists";
+export type CustomerTestingCostData = {
+  customerRates: Record<string, number>;
+  defaultRate: number;
+};
+
+export type PaymentTermEntry = {
+  id: string;
+  label: string; // e.g. "LC-60 days (110)"
+  days: number;  // e.g. 110  (negative for AP terms means advance payment)
+};
+
+export type PaymentTermsData = {
+  terms: PaymentTermEntry[];
+};
+
+export type ParameterKind = "simple" | "matrix" | "process-matrix" | "dropdown-lists" | "customer-testing" | "payment-terms";
 
 export type ParameterDef = {
   slug: string;

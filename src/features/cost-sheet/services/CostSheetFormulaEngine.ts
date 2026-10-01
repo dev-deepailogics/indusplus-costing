@@ -391,6 +391,8 @@ export function runFormulaEngine(
     paymentTerms: string;
     discountRate: number;
     paymentTermsDays: number;
+    arDays?: number;
+    apDays?: number;
     factoringDays: number;
     commissionPct: number;
     foreignBankCharges: number;
@@ -534,9 +536,15 @@ export function runFormulaEngine(
   const freightUSD = freightPKR / paritySale;
   const freightPct = freightUSD / sellingPriceUSD;
 
-  const markupDiscountPKR = (sellingPricePKR / 365) * discountRate * paymentTermsDays;
-  const markupDiscountUSD = markupDiscountPKR / paritySale;
-  const markupDiscountPct = markupDiscountUSD / sellingPriceUSD;
+  // ── Markup & Discounting ──
+  // Original Formula: (AR Days - AP Days) * (Sales Price * Markup Rate%) / 365
+  const netDays = (inputs.arDays !== undefined && inputs.apDays !== undefined)
+    ? (inputs.arDays - inputs.apDays)
+    : paymentTermsDays;
+
+  const markupDiscountPKR = netDays * ((sellingPricePKR * discountRate) / 365);
+  const markupDiscountUSD = netDays * ((sellingPriceUSD * discountRate) / 365);
+  const markupDiscountPct = sellingPriceUSD > 0 ? markupDiscountUSD / sellingPriceUSD : 0;
 
   const bankChargesPKR = sellingPricePKR * localBankChargesPct;
   const bankChargesUSD = bankChargesPKR / paritySale;

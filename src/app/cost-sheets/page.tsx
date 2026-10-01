@@ -266,7 +266,7 @@ export default function SavedCostSheetsPage() {
 
       {/* cost sheets records table */}
       <Card className="shadow-md border-muted/60">
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           {loading ? (
             <div className="p-8 text-center text-sm text-muted-foreground font-medium">
               Loading saved runs...

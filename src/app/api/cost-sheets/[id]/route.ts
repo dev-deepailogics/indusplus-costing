@@ -114,9 +114,11 @@ export async function PUT(
     }
 
     const existingRow = existingCheck.recordset[0];
+    const teamCustomers = await resolveTeamCustomers(pool, session);
+    const sessionWithTeams = { ...session, teamCustomers };
 
     // Ownership / access check
-    if (!canUserAccessCostSheet(session, rowToCostSheetItem(existingRow))) {
+    if (!canUserAccessCostSheet(sessionWithTeams, rowToCostSheetItem(existingRow))) {
       return Response.json(
         { error: "Forbidden: You do not have permission to modify this cost sheet." },
         { status: 403 }
@@ -304,7 +306,10 @@ export async function DELETE(
       return Response.json({ error: "Cost sheet not found" }, { status: 404 });
     }
 
-    if (!canUserAccessCostSheet(session, rowToCostSheetItem(existingCheck.recordset[0]))) {
+    const teamCustomers = await resolveTeamCustomers(pool, session);
+    const sessionWithTeams = { ...session, teamCustomers };
+
+    if (!canUserAccessCostSheet(sessionWithTeams, rowToCostSheetItem(existingCheck.recordset[0]))) {
       return Response.json(
         { error: "Forbidden: You do not have permission to delete this cost sheet." },
         { status: 403 }

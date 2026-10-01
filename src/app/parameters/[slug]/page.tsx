@@ -10,11 +10,15 @@ import type {
   MatrixTableData,
   ProcessMatrixTableData,
   SimpleTableData,
+  CustomerTestingCostData,
+  PaymentTermsData,
 } from "@/lib/parameters/types";
 import { MatrixTableEditor } from "@/components/parameters/matrix-table-editor";
 import { ProcessMatrixEditor } from "@/components/parameters/process-matrix-editor";
 import { SimpleTableEditor } from "@/components/parameters/simple-table-editor";
 import { DropdownListsEditor } from "@/components/parameters/dropdown-lists-editor";
+import { CustomerTestingCostEditor } from "@/components/parameters/customer-testing-cost-editor";
+import { PaymentTermsEditor } from "@/components/parameters/payment-terms-editor";
 import { useAuth } from "@/lib/auth/auth-provider";
 
 export default function ParameterTablePage({
@@ -73,6 +77,22 @@ function ParameterTable({
         ) : def.kind === "process-matrix" ? (
           <ProcessMatrixEditor
             data={data as ProcessMatrixTableData}
+            onSave={handleSave}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canDelete={canDelete}
+          />
+        ) : def.kind === "customer-testing" ? (
+          <CustomerTestingCostEditor
+            data={data as CustomerTestingCostData}
+            onSave={handleSave}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canDelete={canDelete}
+          />
+        ) : def.kind === "payment-terms" ? (
+          <PaymentTermsEditor
+            data={data as PaymentTermsData}
             onSave={handleSave}
             canCreate={canCreate}
             canEdit={canEdit}

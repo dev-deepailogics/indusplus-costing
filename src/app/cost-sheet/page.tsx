@@ -25,7 +25,6 @@ import {
   CostSheetApprovalWorkflow,
   type CostSheetApprovals,
 } from "@/features/cost-sheet";
-import { canUserAccessCostSheet } from "@/lib/cost-sheet/auth";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -74,6 +73,8 @@ import type {
   MatrixTableData,
   ProcessMatrixTableData,
   DropdownListsData,
+  CustomerTestingCostData,
+  PaymentTermsData,
 } from "@/lib/parameters/types";
 import { runFormulaEngine } from "@/lib/cost-sheet/formula-engine";
 
@@ -349,6 +350,10 @@ function CostSheetContent() {
   const [stylesCategoryGrid, setStylesCategoryGrid] = useState<
     SimpleTableData | undefined
   >(undefined);
+  const [arPaymentTermsData, setArPaymentTermsData] = useState<PaymentTermsData | undefined>(undefined);
+  const [apPaymentTermsData, setApPaymentTermsData] = useState<PaymentTermsData | undefined>(undefined);
+  const [selectedArTermId, setSelectedArTermId] = useState<string>("");
+  const [selectedApTermId, setSelectedApTermId] = useState<string>("");
 
   // Loading States
   const [loadingStyles, setLoadingStyles] = useState(true);
@@ -567,6 +572,7 @@ function CostSheetContent() {
   const [inhouseSubcontractList, setInhouseSubcontractList] = useState<string[]>([]);
   const [chemicalsList, setChemicalsList] = useState<string[]>([]);
   const [specialChargesList, setSpecialChargesList] = useState<string[]>([]);
+  const [customerTestingCostData, setCustomerTestingCostData] = useState<CustomerTestingCostData | null>(null);
 
   // indus-plus: Styles & Work Orders from S_StyleAndWorkOrdersView
   const [indusStyleRows, setIndusStyleRows] = useState<StyleWorkOrderRow[]>([]);
@@ -886,6 +892,27 @@ function CostSheetContent() {
       },
     );
 
+    const unsubCustomerTestingCost = subscribeToTable<CustomerTestingCostData>(
+      "customer-testing-cost",
+      (data) => {
+        setCustomerTestingCostData(data);
+      },
+    );
+
+    const unsubArTerms = subscribeToTable<PaymentTermsData>(
+      "ar-payment-terms",
+      (data) => {
+        setArPaymentTermsData(data);
+      },
+    );
+
+    const unsubApTerms = subscribeToTable<PaymentTermsData>(
+      "ap-payment-terms",
+      (data) => {
+        setApPaymentTermsData(data);
+      },
+    );
+
     return () => {
       unsubDLF();
       unsubCTS();
@@ -895,6 +922,9 @@ function CostSheetContent() {
       unsubDropdowns();
       unsubCustomerCommission();
       unsubCostOfSales();
+      unsubCustomerTestingCost();
+      unsubArTerms();
+      unsubApTerms();
     };
   }, [styleIdParam, costSheetIdParam]);
 
@@ -904,6 +934,64 @@ function CostSheetContent() {
     if (!costOfSalesTable && !customerCommissionTable) return;
     applyCustomerParameters(customerName, costOfSalesTable, customerCommissionTable);
   }, [customerName, costOfSalesTable, customerCommissionTable, costSheetIdParam]);
+
+  // Auto-calculate & sync Customer-wise Testing Cost in Special Charges
+  useEffect(() => {
+    if (costSheetIdParam) return;
+    if (!customerTestingCostData || !activeStyle || isSpecialChargesLocked) return;
+
+    const sam = parseFloat(smvSewingInput) || activeStyle.smvSewing || 0;
+    const custNorm = (customerName || "").trim().toLowerCase();
+    const rates = customerTestingCostData.customerRates || {};
+    const matchKey = Object.keys(rates).find(
+      (k) => k.trim().toLowerCase() === custNorm
+    );
+
+    const ratePerSam = matchKey !== undefined ? rates[matchKey] : (customerTestingCostData.defaultRate || 0);
+    const computedTestingPKR = Number((ratePerSam * sam).toFixed(2));
+
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      const existing = prev.bomSpecialCharges || [];
+      const testIdx = existing.findIndex((item) =>
+        (item.itemName || "").toLowerCase().trim() === "testing cost" ||
+        (item.itemName || "").toLowerCase().trim() === "testing charges" ||
+        (item.itemName || "").toLowerCase().trim() === "testing"
+      );
+
+      if (testIdx >= 0) {
+        const current = existing[testIdx];
+        if (current.ratePKR === computedTestingPKR && current.totalCostPKR === computedTestingPKR) {
+          return prev;
+        }
+        const next = [...existing];
+        next[testIdx] = {
+          ...current,
+          itemName: current.itemName || "Testing Cost",
+          consPerPc: 1,
+          rateUSD: parityProcurement && parityProcurement > 0 ? Number((computedTestingPKR / parityProcurement).toFixed(4)) : 0,
+          ratePKR: computedTestingPKR,
+          totalCostPKR: computedTestingPKR,
+        };
+        return { ...prev, bomSpecialCharges: next };
+      } else if (computedTestingPKR > 0) {
+        return {
+          ...prev,
+          bomSpecialCharges: [
+            ...existing,
+            {
+              itemName: "Testing Cost",
+              consPerPc: 1,
+              rateUSD: parityProcurement && parityProcurement > 0 ? Number((computedTestingPKR / parityProcurement).toFixed(4)) : 0,
+              ratePKR: computedTestingPKR,
+              totalCostPKR: computedTestingPKR,
+            },
+          ],
+        };
+      }
+      return prev;
+    });
+  }, [customerName, smvSewingInput, customerTestingCostData, isSpecialChargesLocked, costSheetIdParam, parityProcurement]);
 
   // Load saved snapshot if costSheetId exists
   useEffect(() => {
@@ -917,21 +1005,6 @@ function CostSheetContent() {
           router.replace("/cost-sheets");
           setLoadingStyles(false);
           return;
-        }
-
-        if (user) {
-          const authInfo = {
-            role: user.role,
-            userId: user.id,
-            email: user.email,
-            assignedCustomer: user.assignedCustomer,
-          };
-          if (!canUserAccessCostSheet(authInfo, sheet)) {
-            toast.error("Access Denied: You do not have permission to view this cost sheet.");
-            router.replace("/cost-sheets");
-            setLoadingStyles(false);
-            return;
-          }
         }
 
         setLoadedCostSheet(sheet);
@@ -1006,6 +1079,8 @@ function CostSheetContent() {
             ? sheet.paymentTermsDays.toString()
             : "0",
         );
+        setSelectedArTermId(sheet.arTermId ?? "");
+        setSelectedApTermId(sheet.apTermId ?? "");
         setFactoringDaysInput(
           sheet.factoringDays !== undefined
             ? sheet.factoringDays.toString()
@@ -1138,6 +1213,8 @@ function CostSheetContent() {
 
   // Adjust payment days based on payment terms dropdown
   useEffect(() => {
+    // If either AR or AP term is explicitly selected, let the AR/AP effect below handle it
+    if (selectedArTermId || selectedApTermId) return;
     const match = paymentTerms?.match(/(\d+)\s*days/i);
     Promise.resolve().then(() => {
       if (match) {
@@ -1148,7 +1225,18 @@ function CostSheetContent() {
         setPaymentTermsDaysInput("0");
       }
     });
-  }, [paymentTerms]);
+  }, [paymentTerms, selectedArTermId, selectedApTermId]);
+
+  // Auto-compute paymentTermsDays from AR - AP selection
+  useEffect(() => {
+    if (!selectedArTermId && !selectedApTermId) return;
+    const arEntry = arPaymentTermsData?.terms?.find((t) => t.id === selectedArTermId);
+    const apEntry = apPaymentTermsData?.terms?.find((t) => t.id === selectedApTermId);
+    const arDays = arEntry?.days ?? 0;
+    const apDays = apEntry?.days ?? 0;
+    const netDays = arDays - apDays;
+    setPaymentTermsDaysInput(netDays.toString());
+  }, [selectedArTermId, selectedApTermId, arPaymentTermsData, apPaymentTermsData]);
 
   // Core Style Change Logic
   function executeStyleChange(id: string) {
@@ -1718,6 +1806,8 @@ function CostSheetContent() {
 
       discountRate: (parseFloat(discountRateInput) || 0) / 100,
       paymentTermsDays: parseFloat(paymentTermsDaysInput) || 0,
+      arTermId: selectedArTermId || null,
+      apTermId: selectedApTermId || null,
       factoringDays: parseFloat(factoringDaysInput) || 0,
       commissionPct: (parseFloat(commissionInput) || 0) / 100,
       foreignBankCharges: parseFloat(foreignBankChargesInput) || 0,
@@ -1821,6 +1911,9 @@ function CostSheetContent() {
 
     const effectiveDLF = loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh;
 
+    const arEntry = arPaymentTermsData?.terms?.find((t) => t.id === selectedArTermId);
+    const apEntry = apPaymentTermsData?.terms?.find((t) => t.id === selectedApTermId);
+
     return runFormulaEngine(
       overriddenStyle,
       {
@@ -1835,6 +1928,8 @@ function CostSheetContent() {
         paymentTerms,
         discountRate: (parseFloat(discountRateInput) || 0) / 100,
         paymentTermsDays: parseFloat(paymentTermsDaysInput) || 0,
+        arDays: arEntry?.days,
+        apDays: apEntry?.days,
         factoringDays: parseFloat(factoringDaysInput) || 0,
         commissionPct: (parseFloat(commissionInput) || 0) / 100,
         foreignBankCharges: parseFloat(foreignBankChargesInput) || 0,
@@ -2131,7 +2226,7 @@ function CostSheetContent() {
       )}
 
       {/* MAIN COST SHEET EDITABLE BODY (Disabled when isReadOnly or isDirectorApproved) */}
-      <fieldset disabled={isReadOnly || isDirectorApproved} className="space-y-6 border-0 p-0 m-0 min-w-0">
+      <fieldset disabled={isReadOnly || isDirectorApproved} className="flex flex-col gap-6 border-0 p-0 m-0 min-w-0 w-full">
       {/* ZONE 1: 4-COLUMN PARAMETERS SPREADSHEET LAYOUT */}
       {canViewHeader && (
       <fieldset disabled={isHeaderLocked} className="border-0 p-0 m-0 min-w-0 w-full">
@@ -2488,13 +2583,43 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
-                  Payment Terms
+                  Payable Terms-Fabric
                 </span>
                 <SearchableSelect
-                  className="w-32"
-                  value={paymentTerms}
-                  onChange={(val) => setPaymentTerms(val)}
-                  options={[{ value: "", label: "" }, ...paymentTermsList.map(t => ({ value: t, label: t }))]}
+                  className="w-36"
+                  value={selectedApTermId}
+                  onChange={(val) => {
+                    markDirty();
+                    setSelectedApTermId(val);
+                  }}
+                  options={[
+                    { value: "", label: "— Select —" },
+                    ...(apPaymentTermsData?.terms ?? []).map((t) => ({
+                      value: t.id,
+                      label: `${t.label} (${t.days < 0 ? t.days : `-${t.days}`})`,
+                    })),
+                  ]}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
+                  Receivable Terms
+                </span>
+                <SearchableSelect
+                  className="w-36"
+                  value={selectedArTermId}
+                  onChange={(val) => {
+                    markDirty();
+                    setSelectedArTermId(val);
+                  }}
+                  options={[
+                    { value: "", label: "— Select —" },
+                    ...(arPaymentTermsData?.terms ?? []).map((t) => ({
+                      value: t.id,
+                      label: `${t.label} (${t.days})`,
+                    })),
+                  ]}
                 />
               </div>
 
@@ -2607,7 +2732,7 @@ function CostSheetContent() {
 
             {/* COLUMNS 3+4: FOB/CM Targets & Profitability. A single 2-col grid so each row is
                 shared by both columns and rows (incl. the divider) align by construction. */}
-            <div className="xl:col-span-2 grid grid-cols-2 gap-x-6 gap-y-2.5 items-center xl:border-l xl:border-slate-700 xl:pl-6 dark:xl:border-slate-700">
+            <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 items-center xl:border-l xl:border-slate-700/80 xl:pl-6">
               <div className="font-bold text-blue-900/80 dark:text-blue-300 uppercase tracking-wide border-b border-slate-100 pb-1 mb-1">
                 FOB / CM &amp; Labor Metrics
               </div>
@@ -3092,7 +3217,7 @@ function CostSheetContent() {
               Per Pc Calculations
             </span>
           </div>
-          <CardContent className="p-0 text-xs">
+          <CardContent className="p-0 text-xs overflow-x-auto">
             {(() => {
               const fmtPct = (val: number, decimals: number = 2): string => {
                 if (!isFinite(val) || isNaN(val)) return "0.00%";
@@ -3100,7 +3225,7 @@ function CostSheetContent() {
               };
 
               return (
-                <Table className="table-fixed w-full text-xs">
+                <Table className="w-full text-xs min-w-[460px]">
                   <TableHeader className="bg-muted/30">
                     <TableRow className="h-8">
                       <TableHead className="w-[42%] font-semibold text-foreground px-2 py-1 text-left text-xs">
@@ -3207,27 +3332,14 @@ function CostSheetContent() {
                           Markup & Discounting
                           <span
                             className="cursor-help"
-                            title="Rs Selling Price * (Discount Rate / 365) * Discount Days"
+                            title={`Formula: (Sales Price × Discount Rate%) / 365 × (AR Days − AP Days)\nAR Days: ${arPaymentTermsData?.terms?.find((t) => t.id === selectedArTermId)?.days ?? "—"}\nAP Days: ${apPaymentTermsData?.terms?.find((t) => t.id === selectedApTermId)?.days ?? "—"}\nNet Days: ${paymentTermsDaysInput}`}
                           >
                             <Info className="size-3 text-muted-foreground" />
                           </span>
                         </span>
                       </TableCell>
-                      <TableCell className="px-1.5 py-1 text-right text-xs">
-                        <div className="flex justify-end items-center gap-1">
-                          <span className="text-xs text-muted-foreground">
-                            Days:
-                          </span>
-                          <input
-                            type="number"
-                            className="w-12 h-6 text-xs bg-blue-50/50 border border-blue-200 text-center rounded focus:outline-none"
-                            value={paymentTermsDaysInput}
-                            onChange={(e) => {
-                              markDirty();
-                              setPaymentTermsDaysInput(e.target.value);
-                            }}
-                          />
-                        </div>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.markupDiscountPKR.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
                         ${calcs.markupDiscountUSD.toFixed(2)}
@@ -3624,7 +3736,7 @@ function CostSheetContent() {
 
         {/* RIGHT PANEL: DETAILED INTERACTIVE BOM & EXPENSE TABLES */}
         {canViewAnyBOM && (
-        <div className={`${canViewProfitability ? "lg:col-span-7" : "lg:col-span-12"} space-y-4`}>
+        <div className={`${canViewProfitability ? "lg:col-span-7" : "lg:col-span-12"} flex flex-col gap-4 sm:gap-5`}>
           {/* FABRIC BOM */}
           {canViewFabric && (
           <fieldset disabled={isFabricLocked} className="border-0 p-0 m-0 min-w-0 w-full">
@@ -3639,8 +3751,8 @@ function CostSheetContent() {
                 </span>
               )}
             </div>
-            <CardContent className="p-0 text-xs">
-              <Table className="table-fixed w-full text-xs">
+            <CardContent className="p-0 text-xs overflow-x-auto">
+              <Table className="w-full text-xs min-w-[520px]">
                 <TableHeader className="bg-muted/30">
                   <TableRow className="h-8">
                     <TableHead className="w-[36%] px-2 py-1 text-left text-xs font-semibold text-foreground">Fabric Item Name</TableHead>
@@ -3868,8 +3980,8 @@ function CostSheetContent() {
                 </span>
               )}
             </div>
-            <CardContent className="p-0 text-xs">
-              <Table className="table-fixed w-full text-xs">
+            <CardContent className="p-0 text-xs overflow-x-auto">
+              <Table className="w-full text-xs min-w-[520px]">
                 <TableHeader className="bg-muted/30">
                   <TableRow className="h-8">
                     <TableHead className="w-[36%] px-2 py-1 text-left text-xs font-semibold text-foreground">Lining Item Name</TableHead>
@@ -4101,8 +4213,8 @@ function CostSheetContent() {
                 </span>
               )}
             </div>
-            <CardContent className="p-0 text-xs">
-              <Table className="table-fixed w-full text-xs">
+            <CardContent className="p-0 text-xs overflow-x-auto">
+              <Table className="w-full text-xs min-w-[550px]">
                 <TableHeader className="bg-muted/30">
                   <TableRow className="h-8">
                     <TableHead className="w-[16%] px-2 py-1 text-left text-xs font-semibold text-foreground">Category</TableHead>

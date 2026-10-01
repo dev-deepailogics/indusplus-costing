@@ -204,7 +204,7 @@ export function UsersTable() {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h1 className="text-2xl font-semibold tracking-tight">Manage Users</h1>
         {canCreate && (
           <Button onClick={openCreateDialog} size="sm">
@@ -214,7 +214,7 @@ export function UsersTable() {
         )}
       </div>
 
-      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+      <div className="rounded-xl border bg-card shadow-sm overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>

@@ -36,10 +36,13 @@ function parseConnectionString(cs: string): sql.config {
       trustServerCertificate: !encrypt,
       enableArithAbort: true,
     },
+    connectionTimeout: 15_000,
+    requestTimeout: 30_000,
     pool: {
-      max: 10,
-      min: 0,
-      idleTimeoutMillis: 30_000,
+      max: 15,
+      min: 2,
+      idleTimeoutMillis: 300_000,
+      acquireTimeoutMillis: 15_000,
     },
   };
 }
@@ -49,7 +52,11 @@ declare global {
   // eslint-disable-next-line no-var
   var __mssqlPool: sql.ConnectionPool | undefined;
   // eslint-disable-next-line no-var
+  var __mssqlPoolConnecting: Promise<sql.ConnectionPool> | undefined;
+  // eslint-disable-next-line no-var
   var __mssqlIndusPool: sql.ConnectionPool | undefined;
+  // eslint-disable-next-line no-var
+  var __mssqlIndusPoolConnecting: Promise<sql.ConnectionPool> | undefined;
 }
 
 export async function getPool(): Promise<sql.ConnectionPool> {
@@ -57,15 +64,29 @@ export async function getPool(): Promise<sql.ConnectionPool> {
     return global.__mssqlPool;
   }
 
+  if (global.__mssqlPoolConnecting) {
+    return global.__mssqlPoolConnecting;
+  }
+
   const cs = process.env.MSSQL_CONNECTION_STRING;
   if (!cs) throw new Error("MSSQL_CONNECTION_STRING env var is not set");
 
   const config = parseConnectionString(cs);
   const pool = new sql.ConnectionPool(config);
-  await pool.connect();
 
-  global.__mssqlPool = pool;
-  return pool;
+  global.__mssqlPoolConnecting = pool
+    .connect()
+    .then((connectedPool) => {
+      global.__mssqlPool = connectedPool;
+      global.__mssqlPoolConnecting = undefined;
+      return connectedPool;
+    })
+    .catch((err) => {
+      global.__mssqlPoolConnecting = undefined;
+      throw err;
+    });
+
+  return global.__mssqlPoolConnecting;
 }
 
 /** Pool for the indus-plus database (MSSQL_INDUS_PLUS_CONNECTION_STRING). */
@@ -74,16 +95,30 @@ export async function getIndusPool(): Promise<sql.ConnectionPool> {
     return global.__mssqlIndusPool;
   }
 
+  if (global.__mssqlIndusPoolConnecting) {
+    return global.__mssqlIndusPoolConnecting;
+  }
+
   const cs = process.env.MSSQL_INDUS_PLUS_CONNECTION_STRING;
   if (!cs)
     throw new Error("MSSQL_INDUS_PLUS_CONNECTION_STRING env var is not set");
 
   const config = parseConnectionString(cs);
   const pool = new sql.ConnectionPool(config);
-  await pool.connect();
 
-  global.__mssqlIndusPool = pool;
-  return pool;
+  global.__mssqlIndusPoolConnecting = pool
+    .connect()
+    .then((connectedPool) => {
+      global.__mssqlIndusPool = connectedPool;
+      global.__mssqlIndusPoolConnecting = undefined;
+      return connectedPool;
+    })
+    .catch((err) => {
+      global.__mssqlIndusPoolConnecting = undefined;
+      throw err;
+    });
+
+  return global.__mssqlIndusPoolConnecting;
 }
 
 export { sql };

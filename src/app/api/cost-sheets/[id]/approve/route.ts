@@ -4,7 +4,7 @@ import { getPool } from "@/lib/db";
 import { APPROVAL_STAGE_TO_SECTION } from "@/lib/rbac/permissions";
 import { checkSessionPermission } from "@/lib/rbac/server";
 import { canUserAccessCostSheet, rowToCostSheetItem } from "@/lib/cost-sheet/auth";
-import { ensureCostSheetTable } from "@/lib/cost-sheet/db";
+import { ensureCostSheetTable, resolveTeamCustomers } from "@/lib/cost-sheet/db";
 import type {
   ApprovalStage,
   CostSheetApprovals,
@@ -80,7 +80,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const sheetItem = rowToCostSheetItem(res.recordset[0]);
-    if (!canUserAccessCostSheet(session, sheetItem)) {
+    const teamCustomers = await resolveTeamCustomers(pool, session);
+    const sessionWithTeams = { ...session, teamCustomers };
+
+    if (!canUserAccessCostSheet(sessionWithTeams, sheetItem)) {
       return NextResponse.json(
         { error: "Forbidden: You do not have permission to perform actions on this cost sheet." },
         { status: 403 }

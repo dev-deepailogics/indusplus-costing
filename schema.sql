@@ -241,6 +241,25 @@ BEGIN
     );
 END;
 
+IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'customer_testing_costs')
+BEGIN
+    CREATE TABLE customer_testing_costs (
+        customer_name NVARCHAR(256) PRIMARY KEY,
+        rate_per_sam FLOAT NOT NULL DEFAULT 0,
+        row_order INT NOT NULL DEFAULT 0,
+        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+    );
+END;
+
+IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'testing_cost_settings')
+BEGIN
+    CREATE TABLE testing_cost_settings (
+        id INT PRIMARY KEY DEFAULT 1,
+        default_rate_per_sam FLOAT NOT NULL DEFAULT 0,
+        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+    );
+END;
+
 IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'cost_as_percent_of_sales')
 BEGIN
     CREATE TABLE cost_as_percent_of_sales (

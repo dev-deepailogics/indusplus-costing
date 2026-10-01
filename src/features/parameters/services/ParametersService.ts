@@ -6,10 +6,13 @@ export const PARAMETER_TABLES: ParameterDef[] = [
   { slug: "rejection-grid", title: "Rejection Grid", kind: "process-matrix" },
   { slug: "order-type", title: "Order Type", kind: "simple" },
   { slug: "customer-commission", title: "Customer Wise Commission", kind: "simple" },
+  { slug: "customer-testing-cost", title: "Customer Wise Testing Cost", kind: "customer-testing" },
   { slug: "cost-as-percent-of-sales", title: "Cost as % of Sales", kind: "simple" },
   { slug: "direct-labour-foh", title: "Direct Labour and FOH", kind: "simple" },
   { slug: "admin-selling", title: "Admin and Selling", kind: "simple" },
   { slug: "other-expenses", title: "Other Expenses", kind: "simple" },
+  { slug: "ar-payment-terms", title: "AR Payment Terms (Customer)", kind: "payment-terms" },
+  { slug: "ap-payment-terms", title: "AP Payment Terms (Fabric Supplier)", kind: "payment-terms" },
   { slug: "dropdown-lists", title: "Dropdown Lists", kind: "dropdown-lists" },
 ];
 
