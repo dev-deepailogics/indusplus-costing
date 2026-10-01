@@ -25,6 +25,11 @@ function parseConnectionString(cs: string): sql.config {
       ? parts["encrypt"].toLowerCase() !== "false"
       : true;
 
+  const trustServerCertificate =
+    parts["trustservercertificate"] !== undefined
+      ? parts["trustservercertificate"].toLowerCase() === "true"
+      : !encrypt;
+
   return {
     server: host,
     port,
@@ -33,7 +38,7 @@ function parseConnectionString(cs: string): sql.config {
     password: parts["password"] ?? parts["pwd"],
     options: {
       encrypt,
-      trustServerCertificate: !encrypt,
+      trustServerCertificate,
       enableArithAbort: true,
     },
     connectionTimeout: 15_000,

@@ -102,7 +102,7 @@ export function CostSheetPrintView({
             </div>
             <div>
               <span className="text-[10px] text-slate-400 block">CM / Min</span>
-              <strong className="text-sm">{results.cmMinuteUSD.toFixed(2)}¢</strong>
+              <strong className="text-sm">{results.cmMinuteUSD.toFixed(2)}$</strong>
             </div>
             <div>
               <span className="text-[10px] text-slate-400 block">EBITDA / Pc</span>

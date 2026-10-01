@@ -336,8 +336,8 @@ export default function SavedCostSheetsPage() {
                     : `-$${Math.abs(netProfitUSD).toFixed(2)}`;
 
                   const formattedEbitda = ebitdaMinCents >= 0
-                    ? `${ebitdaMinCents.toFixed(2)}¢`
-                    : `-${Math.abs(ebitdaMinCents).toFixed(2)}¢`;
+                    ? `${ebitdaMinCents.toFixed(2)}$`
+                    : `-${Math.abs(ebitdaMinCents).toFixed(2)}$`;
 
                   return (
                     <TableRow

@@ -70,7 +70,7 @@ export function CostSheetSummaryCard({
               ${results.cmUSD.toFixed(2)}
             </div>
             <span className="text-[10px] text-slate-400">
-              {results.cmMinuteUSD.toFixed(2)}¢ / min
+              {results.cmMinuteUSD.toFixed(2)}$ / min
             </span>
           </div>
 
@@ -81,7 +81,7 @@ export function CostSheetSummaryCard({
               ${results.ebitdaUSD.toFixed(2)}
             </div>
             <span className="text-[10px] text-slate-400">
-              {results.ebitdaMinCents.toFixed(2)}¢ / min
+              {results.ebitdaMinCents.toFixed(2)}$ / min
             </span>
           </div>
 

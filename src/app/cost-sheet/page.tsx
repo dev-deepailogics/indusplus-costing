@@ -3150,7 +3150,7 @@ function CostSheetContent() {
                 ? 0
                 : calcs.orderCmSmvCents
               ).toFixed(2)}
-              ¢
+              $
             </p>
           </CardContent>
         </Card>
@@ -3170,7 +3170,7 @@ function CostSheetContent() {
                 ? 0
                 : calcs.ebitdaMinCents
               ).toFixed(2)}
-              ¢
+              $
             </p>
           </CardContent>
         </Card>
@@ -3674,7 +3674,7 @@ function CostSheetContent() {
                         Rs. {calcs.conversionCostPerMinPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
-                        {calcs.conversionCostPerMinUSD.toFixed(2)}¢
+                        {calcs.conversionCostPerMinUSD.toFixed(2)}$
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
                         -

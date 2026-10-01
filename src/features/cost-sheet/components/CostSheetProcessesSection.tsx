@@ -23,7 +23,7 @@ export function CostSheetProcessesSection({ results }: CostSheetProcessesSection
         <CardHeader className="py-3 px-4 bg-slate-800 dark:bg-slate-900 border-b border-slate-700 flex flex-row items-center justify-between text-white">
           <CardTitle className="text-sm font-bold text-white">4. Variable Costs &amp; CM</CardTitle>
           <span className="text-xs font-semibold text-slate-200">
-            CM: ${results.cmUSD.toFixed(2)} ({results.cmMinuteUSD.toFixed(2)}¢/min)
+            CM: ${results.cmUSD.toFixed(2)} ({results.cmMinuteUSD.toFixed(2)}$/min)
           </span>
         </CardHeader>
         <CardContent className="p-0">
