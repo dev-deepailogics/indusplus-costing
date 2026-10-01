@@ -2625,6 +2625,22 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
+                  Advance (Days)
+                </span>
+                <input
+                  type="number"
+                  placeholder="0"
+                  className="w-32 h-7 px-2 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-semibold text-slate-900 dark:text-slate-100 rounded text-right shadow-2xs hover:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500/25"
+                  value={factoringDaysInput}
+                  onChange={(e) => {
+                    markDirty();
+                    setFactoringDaysInput(e.target.value);
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground">
                   Shipment mode
                 </span>
                 <SearchableSelect
@@ -3354,27 +3370,14 @@ function CostSheetContent() {
                           Factoring Cost
                           <span
                             className="cursor-help"
-                            title="Rs Selling Price * (Discount Rate / 365) * Factoring Days"
+                            title="Rs Selling Price × (Discount Rate / 365) × Advance Days"
                           >
                             <Info className="size-3 text-muted-foreground" />
                           </span>
                         </span>
                       </TableCell>
-                      <TableCell className="px-1.5 py-1 text-right text-xs">
-                        <div className="flex justify-end items-center gap-1">
-                          <span className="text-xs text-muted-foreground">
-                            Days:
-                          </span>
-                          <input
-                            type="number"
-                            className="w-14 h-6 px-1 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-semibold text-center rounded shadow-2xs hover:border-blue-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25"
-                            value={factoringDaysInput}
-                            onChange={(e) => {
-                              markDirty();
-                              setFactoringDaysInput(e.target.value);
-                            }}
-                          />
-                        </div>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.factoringPKR.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
                         ${calcs.factoringUSD.toFixed(2)}
