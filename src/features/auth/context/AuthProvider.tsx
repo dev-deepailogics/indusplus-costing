@@ -26,13 +26,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Check session on mount
   useEffect(() => {
     let cancelled = false;
-    AuthService.getMe().then((u) => {
-      if (cancelled) return;
-      setUser(u);
-      setRole(u?.role ?? null);
-      setPermissions(u?.permissions ?? []);
-      setLoading(false);
-    });
+    AuthService.getMe()
+      .then((u) => {
+        if (cancelled) return;
+        setUser(u);
+        setRole(u?.role ?? null);
+        setPermissions(u?.permissions ?? []);
+        setLoading(false);
+      })
+      .catch(() => {
+        // Ensure we always exit loading state even on unexpected errors
+        if (!cancelled) {
+          setUser(null);
+          setRole(null);
+          setPermissions([]);
+          setLoading(false);
+        }
+      });
     return () => {
       cancelled = true;
     };
