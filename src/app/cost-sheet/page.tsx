@@ -362,8 +362,8 @@ function CostSheetContent() {
   const [costingDate, setCostingDate] = useState(
     () => new Date().toISOString().split("T")[0]
   );
-  const [costingStage, setCostingStage] = useState("Costing 01");
-  const [country, setCountry] = useState("Pakistan");
+  const [costingStage, setCostingStage] = useState("");
+  const [country, setCountry] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("LC at Sight");
   const [shipmentMode, setShipmentMode] = useState("Sea");
   const [deliveryTerms, setDeliveryTerms] = useState("FOB");
