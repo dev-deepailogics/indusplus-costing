@@ -47,7 +47,8 @@ export async function createSession(payload: {
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    // set COOKIE_SECURE=false when serving over plain http (e.g. LAN IP)
+    secure: process.env.NODE_ENV === "production" && process.env.COOKIE_SECURE !== "false",
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_MAX_AGE,
