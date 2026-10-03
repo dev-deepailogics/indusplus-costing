@@ -38,6 +38,8 @@ BEGIN
         -- Financial Parameters
         discount_rate         FLOAT          NOT NULL DEFAULT 0,
         payment_terms_days    INT            NOT NULL DEFAULT 0,
+        ar_term_id            NVARCHAR(64)   NULL,
+        ap_term_id            NVARCHAR(64)   NULL,
         factoring_days        INT            NOT NULL DEFAULT 0,
         commission_pct        FLOAT          NOT NULL DEFAULT 0,
         foreign_bank_charges  FLOAT          NOT NULL DEFAULT 0,
@@ -78,6 +80,10 @@ END
 
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'direct_labour_foh_snapshot')
     ALTER TABLE pre_order_cost_sheets ADD direct_labour_foh_snapshot NVARCHAR(MAX) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'ar_term_id')
+    ALTER TABLE pre_order_cost_sheets ADD ar_term_id NVARCHAR(64) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'ap_term_id')
+    ALTER TABLE pre_order_cost_sheets ADD ap_term_id NVARCHAR(64) NULL;
 
 
 -- ---------------------------------------------------------------------------

@@ -94,6 +94,8 @@ export function useCostSheetFacade() {
   // Financial Parameters
   const [discountRate, setDiscountRate] = useState<number>(0.13);
   const [paymentTermsDays, setPaymentTermsDays] = useState<number>(60);
+  const [selectedArTermId, setSelectedArTermId] = useState<string>("");
+  const [selectedApTermId, setSelectedApTermId] = useState<string>("");
   const [factoringDays, setFactoringDays] = useState<number>(0);
   const [commissionPct, setCommissionPct] = useState<number>(0);
   const [foreignBankCharges, setForeignBankCharges] = useState<number>(0);
@@ -305,6 +307,8 @@ export function useCostSheetFacade() {
           );
 
           setPaymentTermsDays(sheet.paymentTermsDays);
+          setSelectedArTermId(sheet.arTermId ?? "");
+          setSelectedApTermId(sheet.apTermId ?? "");
           setFactoringDays(sheet.factoringDays);
           setCommissionPct(sheet.commissionPct * 100);
           setForeignBankCharges(sheet.foreignBankCharges);
@@ -540,6 +544,8 @@ export function useCostSheetFacade() {
 
         discountRate,
         paymentTermsDays,
+        arTermId: selectedArTermId || null,
+        apTermId: selectedApTermId || null,
         factoringDays,
         commissionPct: commissionPct / 100,
         foreignBankCharges,
@@ -678,6 +684,10 @@ export function useCostSheetFacade() {
     setDiscountRate,
     paymentTermsDays,
     setPaymentTermsDays,
+    selectedArTermId,
+    setSelectedArTermId,
+    selectedApTermId,
+    setSelectedApTermId,
     factoringDays,
     setFactoringDays,
     commissionPct,

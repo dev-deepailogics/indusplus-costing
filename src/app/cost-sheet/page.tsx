@@ -1252,9 +1252,11 @@ function CostSheetContent() {
         setStyleCategory(activeStyle.styleCategory || "");
         setWashType(activeStyle.washType || "");
         setOrderQuantity(activeStyle.orderQuantity || 0);
-        setOrderType(
-          (activeStyle.orderType || "") as "Denim" | "Non Denim" | "",
-        );
+        if (activeStyle.orderType) {
+          setOrderType(
+            activeStyle.orderType as "Denim" | "Non Denim" | "",
+          );
+        }
         setSmvSewingInput(
           activeStyle.smvSewing ? activeStyle.smvSewing.toString() : ""
         );
@@ -1740,6 +1742,8 @@ function CostSheetContent() {
 
       discountRate: (parseFloat(discountRateInput) || 0) / 100,
       paymentTermsDays: parseFloat(paymentTermsDaysInput) || 0,
+      arTermId: selectedArTermId || null,
+      apTermId: selectedApTermId || null,
       factoringDays: parseFloat(factoringDaysInput) || 0,
       commissionPct: (parseFloat(commissionInput) || 0) / 100,
       foreignBankCharges: parseFloat(foreignBankChargesInput) || 0,

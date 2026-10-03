@@ -105,6 +105,8 @@ export function rowToCostSheetItem(row: Record<string, any>): SavedCostSheetItem
     lineTargetOverride: row.line_target_override ?? null,
     discountRate: row.discount_rate,
     paymentTermsDays: row.payment_terms_days,
+    arTermId: row.ar_term_id ?? undefined,
+    apTermId: row.ap_term_id ?? undefined,
     factoringDays: row.factoring_days,
     commissionPct: row.commission_pct,
     foreignBankCharges: row.foreign_bank_charges,

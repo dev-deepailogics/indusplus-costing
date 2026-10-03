@@ -51,6 +51,8 @@ export async function ensureCostSheetTable(pool: Pool): Promise<void> {
             line_target_override   FLOAT          NULL,
             discount_rate          FLOAT          NOT NULL DEFAULT 0,
             payment_terms_days     INT            NOT NULL DEFAULT 0,
+            ar_term_id             NVARCHAR(64)   NULL,
+            ap_term_id             NVARCHAR(64)   NULL,
             factoring_days         INT            NOT NULL DEFAULT 0,
             commission_pct         FLOAT          NOT NULL DEFAULT 0,
             foreign_bank_charges   FLOAT          NOT NULL DEFAULT 0,
@@ -102,6 +104,10 @@ export async function ensureCostSheetTable(pool: Pool): Promise<void> {
       ALTER TABLE pre_order_cost_sheets ADD created_by_email NVARCHAR(256) NULL;
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'created_by_name')
       ALTER TABLE pre_order_cost_sheets ADD created_by_name NVARCHAR(256) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'ar_term_id')
+      ALTER TABLE pre_order_cost_sheets ADD ar_term_id NVARCHAR(64) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'ap_term_id')
+      ALTER TABLE pre_order_cost_sheets ADD ap_term_id NVARCHAR(64) NULL;
   `);
 
   isTableEnsured = true;

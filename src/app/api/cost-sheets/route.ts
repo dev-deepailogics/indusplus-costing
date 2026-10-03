@@ -169,6 +169,8 @@ export async function POST(request: NextRequest) {
       .input("line_target_override", item.lineTargetOverride ?? null)
       .input("discount_rate", item.discountRate)
       .input("payment_terms_days", item.paymentTermsDays)
+      .input("ar_term_id", item.arTermId ?? null)
+      .input("ap_term_id", item.apTermId ?? null)
       .input("factoring_days", item.factoringDays)
       .input("commission_pct", item.commissionPct)
       .input("foreign_bank_charges", item.foreignBankCharges)
@@ -210,7 +212,7 @@ export async function POST(request: NextRequest) {
           costing_date, costing_stage, country, payment_terms, shipment_mode,
           delivery_terms, parity_sale, parity_procurement, manpower,
           efficiency_override, rejection_override, rejection_pct, line_target_override,
-          discount_rate, payment_terms_days, factoring_days, commission_pct,
+          discount_rate, payment_terms_days, ar_term_id, ap_term_id, factoring_days, commission_pct,
           foreign_bank_charges, tax_eds_pct, inland_freight_pct, local_bank_charges_pct,
           order_fob, quoted_price, intl_freight,
           intl_insurance, no_of_colors, merch_group, work_order_number,
@@ -225,7 +227,7 @@ export async function POST(request: NextRequest) {
           @costing_date, @costing_stage, @country, @payment_terms, @shipment_mode,
           @delivery_terms, @parity_sale, @parity_procurement, @manpower,
           @efficiency_override, @rejection_override, @rejection_pct, @line_target_override,
-          @discount_rate, @payment_terms_days, @factoring_days, @commission_pct,
+          @discount_rate, @payment_terms_days, @ar_term_id, @ap_term_id, @factoring_days, @commission_pct,
           @foreign_bank_charges, @tax_eds_pct, @inland_freight_pct, @local_bank_charges_pct,
           @order_fob, @quoted_price, @intl_freight,
           @intl_insurance, @no_of_colors, @merch_group, @work_order_number,

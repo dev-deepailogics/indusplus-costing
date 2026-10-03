@@ -35,7 +35,7 @@ export function SearchableSelect({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number; minWidth: number; maxWidth: number } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,20 +56,23 @@ export function SearchableSelect({
   const calculatePosition = () => {
     if (!inputRef.current) return null;
     const rect = inputRef.current.getBoundingClientRect();
-    const dropdownWidth = Math.max(rect.width, 340);
-    let left = align === "right" ? rect.right - dropdownWidth : rect.left;
+    const minWidth = Math.max(rect.width, 380);
+    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const maxWidth = Math.min(680, viewportWidth - 24);
+    let left = align === "right" ? rect.right - minWidth : rect.left;
 
     // Viewport overflow boundary guards
     if (typeof window !== "undefined") {
-      if (left + dropdownWidth > window.innerWidth - 12) {
-        left = window.innerWidth - dropdownWidth - 12;
+      if (left + minWidth > window.innerWidth - 12) {
+        left = Math.max(12, window.innerWidth - minWidth - 12);
       }
       if (left < 12) left = 12;
 
       return {
         top: rect.bottom + window.scrollY + 4,
         left: left + window.scrollX,
-        width: dropdownWidth,
+        minWidth,
+        maxWidth,
       };
     }
     return null;
@@ -221,15 +224,17 @@ export function SearchableSelect({
               position: "absolute",
               top: `${coords.top}px`,
               left: `${coords.left}px`,
-              width: `${coords.width}px`,
+              minWidth: `${coords.minWidth}px`,
+              maxWidth: `${coords.maxWidth}px`,
+              width: "max-content",
               zIndex: 999999,
             }}
-            className="max-h-64 overflow-auto rounded-lg border border-slate-200 bg-white dark:bg-slate-900 shadow-2xl py-1 text-slate-800 dark:text-slate-100 animate-in fade-in-50 zoom-in-95 duration-100"
+            className="max-h-72 overflow-auto rounded-lg border border-slate-200 bg-white dark:bg-slate-900 shadow-2xl py-1 text-slate-800 dark:text-slate-100 animate-in fade-in-50 zoom-in-95 duration-100"
           >
             {allowCustom && query.trim() && !hasExactMatch && (
               <button
                 type="button"
-                className="block w-full truncate px-3 py-2 text-left text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50/70 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border-b border-blue-200 dark:border-blue-800 transition-colors"
+                className="block w-full px-3 py-2 text-left text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50/70 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border-b border-blue-200 dark:border-blue-800 transition-colors whitespace-normal break-words"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   onChange(query.trim());
@@ -272,9 +277,9 @@ export function SearchableSelect({
                     }}
                   >
                     <div className="flex flex-col min-w-0">
-                      <span className="truncate">{o.label}</span>
+                      <span className="whitespace-normal break-words leading-snug">{o.label}</span>
                       {o.subLabel && !isDefaultOption && (
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono whitespace-normal break-words mt-0.5">
                           {o.subLabel}
                         </span>
                       )}

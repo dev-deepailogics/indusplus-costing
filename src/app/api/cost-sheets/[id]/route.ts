@@ -170,6 +170,8 @@ export async function PUT(
       .input("line_target_override", item.lineTargetOverride ?? null)
       .input("discount_rate", item.discountRate)
       .input("payment_terms_days", item.paymentTermsDays)
+      .input("ar_term_id", item.arTermId ?? null)
+      .input("ap_term_id", item.apTermId ?? null)
       .input("factoring_days", item.factoringDays)
       .input("commission_pct", item.commissionPct)
       .input("foreign_bank_charges", item.foreignBankCharges)
@@ -226,6 +228,8 @@ export async function PUT(
           line_target_override   = @line_target_override,
           discount_rate          = @discount_rate,
           payment_terms_days     = @payment_terms_days,
+          ar_term_id             = @ar_term_id,
+          ap_term_id             = @ap_term_id,
           factoring_days         = @factoring_days,
           commission_pct         = @commission_pct,
           foreign_bank_charges   = @foreign_bank_charges,
