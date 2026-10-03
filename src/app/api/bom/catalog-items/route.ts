@@ -25,18 +25,17 @@ export async function GET() {
   try {
     const pool = await getIndusPool();
     const result = await pool.request().query<{
-      RowId: number;
-      FABRIC: string | null;
-      FLD: string | null;
-      Local_Denim: string | null;
+      AccessCode: string | null;
+      GroupCode: string | null;
+      GroupName: string | null;
       InventoryCode: string | null;
       InventoryName: string | null;
     }>(
-      `SELECT [RowId], [FABRIC], [FLD], [Local_Denim], [InventoryCode], [InventoryName]
+      `SELECT [AccessCode], [GroupCode], [GroupName], [InventoryCode], [InventoryName]
        FROM   [dbo].[S_FabricTrimMasterView]
        WHERE  ([InventoryName] IS NOT NULL AND [InventoryName] <> '')
           OR  ([InventoryCode] IS NOT NULL AND [InventoryCode] <> '')
-       ORDER  BY [FABRIC], [Local_Denim], [InventoryName]`
+       ORDER  BY [AccessCode], [GroupName], [InventoryName]`
     );
 
     const fabricsMap = new Map<string, CatalogItemDB>();
@@ -46,9 +45,9 @@ export async function GET() {
     const specialChargesMap = new Map<string, CatalogItemDB>();
 
     for (const r of result.recordset) {
-      const type = (r.FABRIC || "").toUpperCase().trim();
-      const groupCode = (r.FLD || "").trim();
-      const groupName = (r.Local_Denim || "").trim();
+      const type = (r.AccessCode || "").toUpperCase().trim();
+      const groupCode = (r.GroupCode || "").trim();
+      const groupName = (r.GroupName || "").trim();
       const itemCode = (r.InventoryCode || "").trim();
       let itemName = (r.InventoryName || "").trim() || itemCode;
 
