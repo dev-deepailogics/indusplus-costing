@@ -24,6 +24,7 @@ import { useAuth } from "@/lib/auth/auth-provider";
 import {
   CostSheetApprovalWorkflow,
   type CostSheetApprovals,
+  isCostSheetApprovedByAnyHead,
 } from "@/features/cost-sheet";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -450,6 +451,9 @@ function CostSheetContent() {
     isWashingApproved ||
     !canEditChemicals;
 
+  // Whether the rejection grid (process-sum mode) is currently active
+  const isRejectionGridActive = rejectionGrid?.useGridRejection !== false;
+
   const isSpecialChargesLocked =
     isReadOnly ||
     isDirectorApproved ||
@@ -564,6 +568,13 @@ function CostSheetContent() {
   const [customersList, setCustomersList] = useState<string[]>([]);
   const [categoriesList, setCategoriesList] = useState<string[]>([]);
   const [washTypesList, setWashTypesList] = useState<string[]>([]);
+
+  // When grid is active, wash types come from the Washing tab ROW labels in the DB
+  // (wash types are stored as qty_band rows; qty bands are the style_category columns).
+  // When grid is inactive, the wash type dropdown is hidden entirely (irrelevant to calculation).
+  const effectiveWashTypesList = isRejectionGridActive
+    ? (rejectionGrid?.tables?.["Washing"]?.rowLabels ?? washTypesList)
+    : washTypesList;
   const [orderTypesList, setOrderTypesList] = useState<string[]>([]);
   const [costingStageList, setCostingStageList] = useState<string[]>([]);
   const [shipmentModeList, setShipmentModeList] = useState<string[]>([]);
@@ -577,15 +588,22 @@ function CostSheetContent() {
   // indus-plus: Styles & Work Orders from S_StyleAndWorkOrdersView
   const [indusStyleRows, setIndusStyleRows] = useState<StyleWorkOrderRow[]>([]);
 
-  // Scoped indusStyleRows according to assigned customer(s)
+  // Scoped indusStyleRows according to assigned customer(s) and selected customerName
   const scopedIndusStyleRows = useMemo(() => {
-    if (assignedCustomers.length === 0) return indusStyleRows;
-    const allowed = assignedCustomers.map((c) => c.toLowerCase());
-    return indusStyleRows.filter((r) => {
-      const target = r.customer?.trim().toLowerCase();
-      return target && allowed.includes(target);
-    });
-  }, [indusStyleRows, assignedCustomers]);
+    let rows = indusStyleRows;
+    if (assignedCustomers.length > 0) {
+      const allowed = assignedCustomers.map((c) => c.toLowerCase());
+      rows = rows.filter((r) => {
+        const target = r.customer?.trim().toLowerCase();
+        return target && allowed.includes(target);
+      });
+    }
+    const custNorm = (customerName || "").trim().toLowerCase();
+    if (custNorm) {
+      rows = rows.filter((r) => r.customer?.trim().toLowerCase() === custNorm);
+    }
+    return rows;
+  }, [indusStyleRows, assignedCustomers, customerName]);
 
   // Fetch customers from indus-plus DB on mount
   useEffect(() => {
@@ -704,9 +722,10 @@ function CostSheetContent() {
   const applyCustomerParameters = (
     cust: string,
     cosTable?: SimpleTableData,
-    commTable?: SimpleTableData
+    commTable?: SimpleTableData,
+    forceApply = false
   ) => {
-    if (costSheetIdParam) return;
+    if (!forceApply && loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet, approvals)) return;
     const custNorm = (cust || "").trim().toLowerCase();
 
     // 1. Cost as % of Sales card lookup
@@ -928,16 +947,16 @@ function CostSheetContent() {
     };
   }, [styleIdParam, costSheetIdParam]);
 
-  // Re-apply customer-specific parameter cards whenever customer changes or tables load
+  // Re-apply customer-specific parameter cards whenever customer changes or tables load (if not approved by any head)
   useEffect(() => {
-    if (costSheetIdParam) return;
+    if (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet, approvals)) return;
     if (!costOfSalesTable && !customerCommissionTable) return;
     applyCustomerParameters(customerName, costOfSalesTable, customerCommissionTable);
-  }, [customerName, costOfSalesTable, customerCommissionTable, costSheetIdParam]);
+  }, [customerName, costOfSalesTable, customerCommissionTable, loadedCostSheet, approvals]);
 
-  // Auto-calculate & sync Customer-wise Testing Cost in Special Charges
+  // Auto-calculate & sync Customer-wise Testing Cost in Special Charges (if not approved by any head)
   useEffect(() => {
-    if (costSheetIdParam) return;
+    if (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet, approvals)) return;
     if (!customerTestingCostData || !activeStyle || isSpecialChargesLocked) return;
 
     const sam = parseFloat(smvSewingInput) || activeStyle.smvSewing || 0;
@@ -991,7 +1010,7 @@ function CostSheetContent() {
       }
       return prev;
     });
-  }, [customerName, smvSewingInput, customerTestingCostData, isSpecialChargesLocked, costSheetIdParam, parityProcurement]);
+  }, [customerName, smvSewingInput, customerTestingCostData, isSpecialChargesLocked, parityProcurement, loadedCostSheet, approvals]);
 
   // Load saved snapshot if costSheetId exists
   useEffect(() => {
@@ -1047,9 +1066,81 @@ function CostSheetContent() {
         setPaymentTerms(sheet.paymentTerms);
         setShipmentMode(sheet.shipmentMode);
         setDeliveryTerms(sheet.deliveryTerms);
-        setParitySale(sheet.paritySale);
-        setParityProcurement(sheet.parityProcurement);
         setManpower(sheet.manpower);
+
+        const isApproved = isCostSheetApprovedByAnyHead(sheet, sheet.approvals);
+        if (isApproved) {
+          setParitySale(sheet.paritySale);
+          setParityProcurement(sheet.parityProcurement);
+          setDiscountRateInput(
+            sheet.discountRate !== undefined
+              ? parseFloat((sheet.discountRate * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setCommissionInput(
+            sheet.commissionPct !== undefined
+              ? parseFloat((sheet.commissionPct * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setTaxEdsInput(
+            sheet.taxEdsPct !== undefined
+              ? parseFloat((sheet.taxEdsPct * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setInlandFreightInput(
+            sheet.inlandFreightPct !== undefined
+              ? parseFloat((sheet.inlandFreightPct * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setLocalBankChargesInput(
+            sheet.localBankChargesPct !== undefined
+              ? parseFloat((sheet.localBankChargesPct * 100).toFixed(4)).toString()
+              : "0",
+          );
+          setRebateInput(
+            sheet.rebatePct !== undefined
+              ? parseFloat((sheet.rebatePct * 100).toFixed(4)).toString()
+              : "0",
+          );
+        } else {
+          // If unapproved, apply current parameters from active card for this customer
+          if (costOfSalesTable || customerCommissionTable) {
+            applyCustomerParameters(sheet.customerName || "", costOfSalesTable, customerCommissionTable, true);
+          } else {
+            setParitySale(sheet.paritySale);
+            setParityProcurement(sheet.parityProcurement);
+            setDiscountRateInput(
+              sheet.discountRate !== undefined
+                ? parseFloat((sheet.discountRate * 100).toFixed(4)).toString()
+                : "0",
+            );
+            setCommissionInput(
+              sheet.commissionPct !== undefined
+                ? parseFloat((sheet.commissionPct * 100).toFixed(4)).toString()
+                : "0",
+            );
+            setTaxEdsInput(
+              sheet.taxEdsPct !== undefined
+                ? parseFloat((sheet.taxEdsPct * 100).toFixed(4)).toString()
+                : "0",
+            );
+            setInlandFreightInput(
+              sheet.inlandFreightPct !== undefined
+                ? parseFloat((sheet.inlandFreightPct * 100).toFixed(4)).toString()
+                : "0",
+            );
+            setLocalBankChargesInput(
+              sheet.localBankChargesPct !== undefined
+                ? parseFloat((sheet.localBankChargesPct * 100).toFixed(4)).toString()
+                : "0",
+            );
+            setRebateInput(
+              sheet.rebatePct !== undefined
+                ? parseFloat((sheet.rebatePct * 100).toFixed(4)).toString()
+                : "0",
+            );
+          }
+        }
 
         setEfficiencyOverride(
           sheet.efficiencyOverride !== null && sheet.efficiencyOverride !== undefined
@@ -1069,11 +1160,6 @@ function CostSheetContent() {
             : "",
         );
 
-        setDiscountRateInput(
-          sheet.discountRate !== undefined
-            ? parseFloat((sheet.discountRate * 100).toFixed(4)).toString()
-            : "0",
-        );
         setPaymentTermsDaysInput(
           sheet.paymentTermsDays !== undefined
             ? sheet.paymentTermsDays.toString()
@@ -1086,34 +1172,9 @@ function CostSheetContent() {
             ? sheet.factoringDays.toString()
             : "0",
         );
-        setCommissionInput(
-          sheet.commissionPct !== undefined
-            ? parseFloat((sheet.commissionPct * 100).toFixed(4)).toString()
-            : "0",
-        );
         setForeignBankChargesInput(
           sheet.foreignBankCharges !== undefined
             ? sheet.foreignBankCharges.toString()
-            : "0",
-        );
-        setTaxEdsInput(
-          sheet.taxEdsPct !== undefined
-            ? parseFloat((sheet.taxEdsPct * 100).toFixed(4)).toString()
-            : "0",
-        );
-        setInlandFreightInput(
-          sheet.inlandFreightPct !== undefined
-            ? parseFloat((sheet.inlandFreightPct * 100).toFixed(4)).toString()
-            : "0",
-        );
-        setLocalBankChargesInput(
-          sheet.localBankChargesPct !== undefined
-            ? parseFloat((sheet.localBankChargesPct * 100).toFixed(4)).toString()
-            : "0",
-        );
-        setRebateInput(
-          sheet.rebatePct !== undefined
-            ? parseFloat((sheet.rebatePct * 100).toFixed(4)).toString()
             : "0",
         );
 
@@ -1710,7 +1771,7 @@ function CostSheetContent() {
       bomChemicals: activeStyle.bomChemicals,
       bomSpecialCharges: activeStyle.bomSpecialCharges,
 
-      directLabourFohSnapshot: loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh ?? null,
+      directLabourFohSnapshot: directLabourFoh ?? null,
 
       calculations: {
         targetFobUSD: calcs.targetFobUSD,
@@ -1839,7 +1900,9 @@ function CostSheetContent() {
       bomChemicals: activeStyle.bomChemicals,
       bomSpecialCharges: activeStyle.bomSpecialCharges,
 
-      directLabourFohSnapshot: loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh ?? null,
+      directLabourFohSnapshot: (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet, approvals))
+        ? (loadedCostSheet.directLabourFohSnapshot ?? directLabourFoh ?? null)
+        : (directLabourFoh ?? null),
 
       calculations: {
         targetFobUSD: calcs.targetFobUSD,
@@ -1909,7 +1972,10 @@ function CostSheetContent() {
       smvSewing: parseFloat(smvSewingInput) || activeStyle.smvSewing,
     };
 
-    const effectiveDLF = loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh;
+    const isApproved = isCostSheetApprovedByAnyHead(loadedCostSheet, approvals);
+    const effectiveDLF = isApproved
+      ? (loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh)
+      : directLabourFoh;
 
     const arEntry = arPaymentTermsData?.terms?.find((t) => t.id === selectedArTermId);
     const apEntry = apPaymentTermsData?.terms?.find((t) => t.id === selectedApTermId);
@@ -1981,9 +2047,13 @@ function CostSheetContent() {
     stylesCategoryGrid,
     smvSewingInput,
     loadedCostSheet,
+    approvals,
   ]);
 
-  if (loadingStyles || !activeStyle || !calcs) {
+  // Block render until the rejection grid has loaded when it's the active mode
+  // (prevents the 4.15% default flashing before data arrives from the API)
+  const isRejectionGridNeeded = rejectionGrid?.useGridRejection !== false;
+  if (loadingStyles || !activeStyle || !calcs || (isRejectionGridNeeded && !rejectionGrid)) {
     return (
       <div className="p-8 text-center text-sm text-muted-foreground">
         Loading Cost Sheet calculator…
@@ -2261,7 +2331,7 @@ function CostSheetContent() {
                   <span className="font-semibold text-muted-foreground">
                     Customer Name:
                   </span>
-                  {!isDbSelected && assignedCustomers.length === 0 && (
+                  {assignedCustomers.length === 0 && (
                     <button
                       type="button"
                       onClick={() => setIsManualCustomer((prev) => !prev)}
@@ -2275,7 +2345,7 @@ function CostSheetContent() {
                 {isManualCustomer && assignedCustomers.length === 0 ? (
                   <input
                     type="text"
-                    disabled={isDbSelected}
+                    disabled={false}
                     placeholder="Enter manual name…"
                     className="w-32 h-6 px-1.5 text-xs rounded text-left transition-all outline-none bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 shadow-2xs hover:border-blue-500 focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 font-medium"
                     value={customerName}
@@ -2284,15 +2354,17 @@ function CostSheetContent() {
                 ) : (
                   <SearchableSelect
                     className="w-32"
-                    disabled={isDbSelected || assignedCustomers.length === 1}
+                    disabled={assignedCustomers.length === 1}
                     allowCustom={assignedCustomers.length === 0}
                     placeholder="Select customer…"
                     value={customerName}
                     onChange={(val) => {
                       if (val === "__manual__") {
                         setIsManualCustomer(true);
-                      } else {
+                      } else if (val !== customerName) {
                         setCustomerName(val);
+                        setWorkOrderNumber("");
+                        handleStyleChange("custom");
                       }
                     }}
                     options={
@@ -2340,7 +2412,11 @@ function CostSheetContent() {
                   placeholder="Search style…"
                   value={activeStyle.id === "custom" ? "" : activeStyle.id}
                   onChange={(val) => {
-                    handleStyleChange(val || "custom");
+                    const nextStyleId = val || "custom";
+                    const currentStyleId = activeStyle.id || "custom";
+                    if (nextStyleId !== currentStyleId) {
+                      handleStyleChange(nextStyleId);
+                    }
                   }}
                   options={[
                     { value: "custom", label: "-- Custom Style --" },
@@ -2494,23 +2570,25 @@ function CostSheetContent() {
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground flex items-center gap-1">
-                  Wash Type:
-                  {isWashingApproved && (
-                    <span title="Locked by Washing Head">
-                      <Lock className="size-3 text-emerald-500" />
-                    </span>
-                  )}
-                </span>
-                <SearchableSelect
-                  className="w-32"
-                  disabled={isDbSelected || isWashingLocked}
-                  value={washType}
-                  onChange={(val) => setWashType(val)}
-                  options={[{ value: "", label: "" }, ...washTypesList.map(t => ({ value: t, label: t }))]}
-                />
-              </div>
+              {isRejectionGridActive && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-muted-foreground flex items-center gap-1">
+                    Wash Type:
+                    {isWashingApproved && (
+                      <span title="Locked by Washing Head">
+                        <Lock className="size-3 text-emerald-500" />
+                      </span>
+                    )}
+                  </span>
+                  <SearchableSelect
+                    className="w-32"
+                    disabled={isDbSelected || isWashingLocked}
+                    value={washType}
+                    onChange={(val) => setWashType(val)}
+                    options={[{ value: "", label: "" }, ...effectiveWashTypesList.map(t => ({ value: t, label: t }))]}
+                  />
+                </div>
+              )}
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
@@ -3792,19 +3870,16 @@ function CostSheetContent() {
                               onChange={(val) => {
                                 const chosen = val;
                                 const found = fabricCatalog.find(
-                                  (c) => c.itemName === chosen,
+                                  (c) => c.itemName === chosen || c.itemCode === chosen,
                                 );
                                 updateFabricBOM(idx, {
-                                  itemName: chosen,
+                                  itemName: found?.itemName || chosen,
                                   ...(found && found.ratePKR ? { ratePKR: found.ratePKR } : {}),
                                 });
                               }}
                               options={[
                                 { value: "", label: "-- Select Fabric --" },
-                                ...fabricCatalog.map((c) => ({
-                                  value: c.itemName,
-                                  label: c.itemName,
-                                })),
+                                ...fabricCatalog.map((c) => ({ value: c.itemName, label: c.itemName, subLabel: c.itemCode && c.itemCode !== c.itemName ? c.itemCode : undefined, searchKey: c.itemCode || "" })),
                               ]}
                             />
                           ) : (
@@ -4020,20 +4095,17 @@ function CostSheetContent() {
                               value={item.itemName}
                               onChange={(val) => {
                                 const chosen = val;
-                                const found = fabricCatalog.find(
-                                  (c) => c.itemName === chosen,
+                                const found = liningCatalog.find(
+                                  (c) => c.itemName === chosen || c.itemCode === chosen,
                                 );
                                 updateLiningBOM(idx, {
-                                  itemName: chosen,
+                                  itemName: found?.itemName || chosen,
                                   ...(found && found.ratePKR ? { ratePKR: found.ratePKR } : {}),
                                 });
                               }}
                               options={[
                                 { value: "", label: "-- Select Lining --" },
-                                ...fabricCatalog.map((c) => ({
-                                  value: c.itemName,
-                                  label: c.itemName,
-                                })),
+                                ...liningCatalog.map((c) => ({ value: c.itemName, label: c.itemName, subLabel: c.itemCode && c.itemCode !== c.itemName ? c.itemCode : undefined, searchKey: c.itemCode || "" })),
                               ]}
                             />
                           ) : (
@@ -4281,20 +4353,17 @@ function CostSheetContent() {
                                   onChange={(val) => {
                                     const chosen = val;
                                     const found = trimsCatalog.find(
-                                      (t) => t.itemName === chosen,
+                                      (t) => t.itemName === chosen || t.itemCode === chosen,
                                     );
                                     updateAccessoriesBOM(idx, {
-                                      itemName: chosen,
+                                      itemName: found?.itemName || chosen,
                                       ...(found?.category ? { category: found.category } : {}),
                                       ...(found?.ratePKR ? { ratePKR: found.ratePKR } : {}),
                                     });
                                   }}
                                   options={[
                                     { value: "", label: "-- Select Trim --" },
-                                    ...trimsCatalog.map((t) => ({
-                                      value: t.itemName,
-                                      label: `[${t.category ?? t.groupName ?? "Trim"}] ${t.itemName}`,
-                                    })),
+                                    ...trimsCatalog.map((t) => ({ value: t.itemName, label: t.itemName, subLabel: t.itemCode && t.itemCode !== t.itemName ? t.itemCode : undefined, searchKey: (t.itemCode || "") + " " + (t.category || "") })),
                                   ]}
                                 />
                               ) : (

@@ -513,6 +513,75 @@ async function getRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>): Prom
     processes.push("Fabric", "Cutting", "Sewing", "Finishing", "WIP", "E1");
   }
 
+  // Ensure Washing process is always present (wash type names are rows, qty bands are columns)
+  if (!tables["Washing"]) {
+    // Seed default Washing rejection rates into DB
+    // DB orientation: qty_band = wash type name (row), style_category = qty band (column)
+    const washQtyBands = ["<=500", "501-1000", "1001-2000", "2001-3000", "3001-4000", "4001-5000", "5001-10000", "10001-25000", ">25000"];
+    const washTypes = ["Dyeing", "EW/Biopolish", "EW/Bleach", "EW/Caustic", "Stone Bleach", "Stone Caustic", "Stone Wash", "Pinky Random", "Bleach Random", "Snow Random", "Rinse", "Rinse/Softner", "Softner", "Silicon Ball"];
+    const lowerRateTypes = new Set(["rinse", "rinse/softner", "softner", "silicon ball"]);
+    const rates: Record<string, { low: number; high: number }> = {
+      "<=500":       { low: 1.0, high: 1.5 },
+      "501-1000":    { low: 1.0, high: 1.0 },
+      "1001-2000":   { low: 1.0, high: 1.0 },
+      "2001-3000":   { low: 0.7, high: 1.0 },
+      "3001-4000":   { low: 0.7, high: 1.0 },
+      "4001-5000":   { low: 0.7, high: 0.9 },
+      "5001-10000":  { low: 0.7, high: 0.9 },
+      "10001-25000": { low: 0.65, high: 0.75 },
+      ">25000":      { low: 0.65, high: 0.75 },
+    };
+    // cells[washType][qtyBand] — rows=wash types, columns=qty bands
+    const washingCells: Record<string, Record<string, string>> = {};
+    for (const wt of washTypes) {
+      washingCells[wt] = {};
+      for (const band of washQtyBands) {
+        const isLow = lowerRateTypes.has(wt.toLowerCase());
+        const r = rates[band] || { low: 1.0, high: 1.0 };
+        washingCells[wt][band] = `${(isLow ? r.low : r.high).toFixed(2)}%`;
+      }
+    }
+    tables["Washing"] = { rowLabels: washTypes, columnLabels: washQtyBands, cells: washingCells };
+    if (!processes.includes("Washing")) processes.push("Washing");
+
+    // Persist to DB so it is editable from now on
+    try {
+      const washingProcessOrder = processes.indexOf("Washing");
+      const insertRows: string[] = [];
+      const seedReq = pool.request();
+      let idx = 0;
+      // Outer loop = wash types (stored as qty_band = row)
+      // Inner loop = qty bands (stored as style_category = column)
+      for (let ri = 0; ri < washTypes.length; ri++) {
+        const wt = washTypes[ri];
+        for (let ci = 0; ci < washQtyBands.length; ci++) {
+          const band = washQtyBands[ci];
+          seedReq.input(`sp_${idx}`, sql.NVarChar(64), "Washing");
+          seedReq.input(`sq_${idx}`, sql.NVarChar(64), wt);    // qty_band = wash type name
+          seedReq.input(`sc_${idx}`, sql.NVarChar(64), band);  // style_category = qty band
+          seedReq.input(`sv_${idx}`, sql.NVarChar(32), washingCells[wt][band]);
+          seedReq.input(`spo_${idx}`, sql.Int, washingProcessOrder);
+          seedReq.input(`sro_${idx}`, sql.Int, ri);
+          seedReq.input(`sco_${idx}`, sql.Int, ci);
+          insertRows.push(`(@sp_${idx}, @sq_${idx}, @sc_${idx}, @sv_${idx}, @spo_${idx}, @sro_${idx}, @sco_${idx})`);
+          idx++;
+        }
+      }
+      // Insert in batches of 50
+      const BATCH = 50;
+      for (let b = 0; b < insertRows.length; b += BATCH) {
+        const batchSql = insertRows.slice(b, b + BATCH).join(", ");
+        await pool.request().query(
+          `INSERT INTO rejection_grid (process, qty_band, style_category, value, process_order, row_order, col_order)\nSELECT * FROM (VALUES ${batchSql}) AS V(process,qty_band,style_category,value,process_order,row_order,col_order)\nWHERE NOT EXISTS (SELECT 1 FROM rejection_grid WHERE process='Washing');`
+        );
+      }
+    } catch {
+      // Seed failure is non-fatal — UI will show the default data from memory
+    }
+  } else if (!processes.includes("Washing")) {
+    processes.push("Washing");
+  }
+
   // Load customer single rejection rates
   const customerRejections: Record<string, string> = {};
   try {

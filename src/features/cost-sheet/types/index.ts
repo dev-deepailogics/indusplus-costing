@@ -163,3 +163,35 @@ export interface SavedCostSheetItem {
 
   savedAt: string; // ISO Date string
 }
+
+/**
+ * Returns true if the cost sheet has been approved by any head (Fabric, MMC, IE, Washing, Marketing, Costing Head, or Director).
+ * When approved, the cost sheet snapshot and parameter values (Cost as % of Sales, Direct Labour and FOH) are frozen.
+ */
+export function isCostSheetApprovedByAnyHead(
+  sheet?: SavedCostSheetItem | null,
+  approvals?: CostSheetApprovals | null
+): boolean {
+  if (!sheet && !approvals) return false;
+  const app = approvals || sheet?.approvals;
+
+  if (app) {
+    const stageApproved = Boolean(
+      app.fabric?.status === "approved" ||
+      app.mmc?.status === "approved" ||
+      app.ie?.status === "approved" ||
+      app.washing?.status === "approved" ||
+      app.marketing?.status === "approved" ||
+      app.costingHead?.status === "approved" ||
+      app.director?.status === "approved"
+    );
+    if (stageApproved) return true;
+  }
+
+  const status = sheet?.approvalStatus || app?.overallStatus;
+  if (status && status !== "draft" && status !== "rejected") {
+    return true;
+  }
+
+  return false;
+}

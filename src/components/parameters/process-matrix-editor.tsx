@@ -6,7 +6,7 @@ import { MatrixTableEditor } from "./matrix-table-editor";
 import type { MatrixTableData, ProcessMatrixTableData } from "@/lib/parameters/types";
 
 import type { StyleMasterItem } from "@/lib/style-master/types";
-import { calculateSizeBracket, mapSMVToCategory, getWashingRejection } from "@/lib/cost-sheet/formula-engine";
+import { calculateSizeBracket, mapSMVToCategory, getWashingRejectionFromGrid } from "@/lib/cost-sheet/formula-engine";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -211,7 +211,7 @@ export function ProcessMatrixEditor({
     }
   }
 
-  // Construct read-only Total Table (dynamic processes sum)
+  // Construct read-only Total Table (dynamic processes sum including Washing)
   const totalTable = useMemo(() => {
     const firstTable = Object.values(data.tables)[0];
     if (!firstTable) return null;
@@ -222,6 +222,8 @@ export function ProcessMatrixEditor({
       for (const col of firstTable.columnLabels) {
         let sum = 0;
         for (const p of data.processes) {
+          // Skip Washing — it has different column structure (wash types, not style categories)
+          if (p === "Washing") continue;
           const t = data.tables[p];
           if (t && t.cells[row]?.[col]) {
             sum += parseFloat(t.cells[row][col]) || 0;
@@ -251,13 +253,17 @@ export function ProcessMatrixEditor({
       // Check if customer has single rate
       const custRateStr = data.customerRejections?.[style.customerName];
       const hasCustomerSingleRate = Boolean(custRateStr && parseFloat(custRateStr) > 0);
-
       const processRejections: Record<string, number> = {};
       let baseRejectionSum = 0;
+
       for (const p of data.processes) {
+        if (p === "Washing") continue;
         const table = data.tables[p];
         if (table) {
-          const cellStr = table.cells[sizeBracket]?.[styleCategoryClass] || "0%";
+          const lookupCategory = (p === "Fabric" || p === "Cutting" || p === "Finishing")
+            ? "High Fashion"
+            : styleCategoryClass;
+          const cellStr = table.cells[sizeBracket]?.[lookupCategory] || "0%";
           const cellVal = parseFloat(cellStr) / 100;
           processRejections[p] = cellVal;
           baseRejectionSum += cellVal;
@@ -266,7 +272,12 @@ export function ProcessMatrixEditor({
         }
       }
 
-      const washingRejection = getWashingRejection(style.washType, sizeBracket);
+      const washingRejection = getWashingRejectionFromGrid(
+        style.washType,
+        sizeBracket,
+        data.tables["Washing"]?.cells
+      );
+      processRejections["Washing"] = washingRejection;
       
       let totalRejection = 0;
       let rejectionSource: "grid" | "customer" | "default" = "grid";
@@ -603,7 +614,8 @@ export function ProcessMatrixEditor({
             <MatrixTableEditor
               data={data.tables[p]}
               onSave={(table) => saveProcessTable(p, table)}
-              rowLabelHeader="Qty. Band"
+              rowLabelHeader={p === "Washing" ? "Wash Type" : "Qty. Band"}
+              validateRowsAsQtyBands={p !== "Washing"}
               canCreate={canCreate}
               canEdit={canEdit}
               canDelete={canDelete}
@@ -638,7 +650,7 @@ export function ProcessMatrixEditor({
                 </Table>
               </div>
               <p className="text-xs text-muted-foreground italic px-1">
-                Note: This table automatically sums Fabric + Cutting + Sewing + Finishing + WIP + E1 tables cell-by-cell.
+                Note: This table sums Fabric + Cutting + Sewing + Finishing + WIP + E1. Washing rejection is applied per wash type via its own separate tab.
               </p>
             </div>
           </TabsContent>

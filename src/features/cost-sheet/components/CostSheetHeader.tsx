@@ -77,15 +77,19 @@ export function CostSheetHeader({
   onOpenPrintModal,
   loadingBOM,
 }: CostSheetHeaderProps) {
-  // Build style select options combining Style Master & Indus DB
+  // Build style select options combining Style Master & Indus DB (filtered by customerName if set)
+  const custNorm = (activeStyle.customerName || "").trim().toLowerCase();
   const styleOptions: SearchableSelectOption[] = [
     { value: "custom", label: "Custom Style (Blank)" },
-    ...stylesList.map((s) => ({
-      value: s.id,
-      label: `${s.id} - ${s.styleName} (${s.customerName})`,
-    })),
+    ...stylesList
+      .filter((s) => !custNorm || s.customerName?.trim().toLowerCase() === custNorm)
+      .map((s) => ({
+        value: s.id,
+        label: `${s.id} - ${s.styleName} (${s.customerName})`,
+      })),
     ...indusDbList
       .filter((db) => !stylesList.some((s) => s.id === db.styleCode))
+      .filter((db) => !custNorm || db.customer?.trim().toLowerCase() === custNorm)
       .map((db) => ({
         value: db.styleCode,
         label: `${db.styleCode} - ${db.styleName} [Indus DB]`,

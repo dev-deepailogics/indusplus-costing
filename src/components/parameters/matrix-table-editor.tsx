@@ -145,6 +145,7 @@ export function MatrixTableEditor({
   data,
   onSave,
   rowLabelHeader = "Qty.",
+  validateRowsAsQtyBands,
   canCreate = true,
   canEdit = true,
   canDelete = true,
@@ -152,13 +153,16 @@ export function MatrixTableEditor({
   data: MatrixTableData;
   onSave: (data: MatrixTableData) => Promise<void>;
   rowLabelHeader?: string;
+  validateRowsAsQtyBands?: boolean;
   canCreate?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
 }) {
+  const isQtyBand = validateRowsAsQtyBands ?? (rowLabelHeader === "Qty." || rowLabelHeader === "Qty. Band");
+
   const [localData, setLocalData] = useState<MatrixTableData>(() => {
     if (!data) return data;
-    const rowLabels = rowLabelHeader === "Qty."
+    const rowLabels = isQtyBand
       ? sortQtyRowLabels(data.rowLabels || [])
       : (data.rowLabels || []);
     return { ...data, rowLabels };
@@ -169,12 +173,12 @@ export function MatrixTableEditor({
 
   useEffect(() => {
     if (data) {
-      const rowLabels = rowLabelHeader === "Qty."
+      const rowLabels = isQtyBand
         ? sortQtyRowLabels(data.rowLabels || [])
         : (data.rowLabels || []);
       setLocalData({ ...data, rowLabels });
     }
-  }, [data, rowLabelHeader]);
+  }, [data, isQtyBand]);
 
   const hasChanges = useMemo(() => {
     if (!data || !localData) return false;
@@ -182,8 +186,11 @@ export function MatrixTableEditor({
   }, [data, localData]);
 
   const qtyValidation = useMemo(() => {
+    if (!isQtyBand) {
+      return { isValid: true, errors: [], conflictingRows: new Set<string>() };
+    }
     return validateQtyBands(localData?.rowLabels || []);
-  }, [localData?.rowLabels]);
+  }, [localData?.rowLabels, isQtyBand]);
 
   if (!localData || !localData.columnLabels || !localData.rowLabels || !localData.cells) {
     return (
@@ -210,7 +217,7 @@ export function MatrixTableEditor({
     const trimmed = newLabel.trim();
     if (!trimmed || trimmed === oldLabel) return;
 
-    if (rowLabelHeader === "Qty.") {
+    if (isQtyBand) {
       const valRes = parseQtyBandValidation(trimmed);
       if (!valRes.isValid) {
         toast.error(`Invalid quantity band "${trimmed}": ${valRes.error || "Only numerical ranges are allowed."}`);
@@ -224,7 +231,7 @@ export function MatrixTableEditor({
     }
 
     let nextRowLabels = localData.rowLabels.map((r) => (r === oldLabel ? trimmed : r));
-    if (rowLabelHeader === "Qty.") {
+    if (isQtyBand) {
       nextRowLabels = sortQtyRowLabels(nextRowLabels);
     }
 
@@ -248,7 +255,7 @@ export function MatrixTableEditor({
     const trimmed = label.trim();
     if (!trimmed) return;
 
-    if (rowLabelHeader === "Qty.") {
+    if (isQtyBand) {
       const valRes = parseQtyBandValidation(trimmed);
       if (!valRes.isValid) {
         toast.error(`Invalid quantity band "${trimmed}": ${valRes.error || "Only numerical ranges are allowed."}`);
@@ -262,7 +269,7 @@ export function MatrixTableEditor({
     }
 
     let nextRowLabels = [...localData.rowLabels, trimmed];
-    if (rowLabelHeader === "Qty.") {
+    if (isQtyBand) {
       nextRowLabels = sortQtyRowLabels(nextRowLabels);
     }
 
@@ -279,9 +286,11 @@ export function MatrixTableEditor({
     try {
       await onSave(nextData);
       toast.success(`Row "${trimmed}" added and saved in order`);
-      const testValidation = validateQtyBands(nextData.rowLabels);
-      if (!testValidation.isValid) {
-        toast.warning(testValidation.errors[0]);
+      if (isQtyBand) {
+        const testValidation = validateQtyBands(nextData.rowLabels);
+        if (!testValidation.isValid) {
+          toast.warning(testValidation.errors[0]);
+        }
       }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Failed to save new row";
@@ -419,7 +428,7 @@ export function MatrixTableEditor({
                 <TableCell className="font-medium">
                   <RowLabelInput
                     initialValue={row}
-                    isQty={rowLabelHeader === "Qty."}
+                    isQty={isQtyBand}
                     isConflicting={qtyValidation.conflictingRows.has(row)}
                     disabled={!canEdit}
                     onCommit={(newLabel) => renameRow(row, newLabel)}
@@ -489,7 +498,7 @@ export function MatrixTableEditor({
         </div>
       </div>
 
-      {rowLabelHeader === "Qty." ? (
+      {isQtyBand ? (
         <AddQuantityBandDialog
           open={addRowOpen}
           onOpenChange={setAddRowOpen}

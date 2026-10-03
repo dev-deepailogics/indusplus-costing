@@ -225,24 +225,34 @@ export function calculateSizeBracket(qty: number, availableBrackets?: string[]):
   return ">25000";
 }
 
-export function getWashingRejection(washType: string, sizeBracket: string): number {
-  const lowerRateWashes = ["rinse", "softner", "softener", "rinse/softner", "rinse/softener", "silicon ball"];
-  const isLower = lowerRateWashes.includes(washType.toLowerCase());
-
-  const rates: Record<string, { low: number; high: number }> = {
-    "<=500": { low: 1.0, high: 1.5 },
-    "501-1000": { low: 1.0, high: 1.0 },
-    "1001-2000": { low: 1.0, high: 1.0 },
-    "2001-3000": { low: 0.7, high: 1.0 },
-    "3001-4000": { low: 0.7, high: 1.0 },
-    "4001-5000": { low: 0.7, high: 0.9 },
-    "5001-10000": { low: 0.7, high: 0.9 },
-    "10001-25000": { low: 0.65, high: 0.75 },
-    ">25000": { low: 0.65, high: 0.75 },
-  };
-
-  const bracketRates = rates[sizeBracket] || { low: 1.0, high: 1.0 };
-  return (isLower ? bracketRates.low : bracketRates.high) / 100;
+/**
+ * Looks up the washing rejection rate from the DB-driven Washing table
+ * stored in params.rejectionGrid.tables["Washing"].
+ * Rows (qty_band field in DB) = wash type names (Dyeing, EW/Biopolish, Rinse…)
+ * Columns (style_category field in DB) = qty bands (<=500, 501-1000…)
+ * So the lookup is: cells[washTypeName][sizeBracket]
+ * Returns 0 if the table or cell is not configured.
+ */
+export function getWashingRejectionFromGrid(
+  washType: string,
+  sizeBracket: string,
+  washingTable?: Record<string, Record<string, string>>
+): number {
+  if (!washingTable || !washType || !sizeBracket) return 0;
+  const normWash = washType.trim().toLowerCase();
+  // Find matching row key (case-insensitive) — rows are wash type names
+  const rowKey = Object.keys(washingTable).find(
+    (k) => k.trim().toLowerCase() === normWash
+  );
+  if (!rowKey) return 0;
+  // Find matching column key (case-insensitive) — columns are qty bands
+  const colKey = Object.keys(washingTable[rowKey] || {}).find(
+    (k) => k.trim().toLowerCase() === sizeBracket.trim().toLowerCase()
+  );
+  if (!colKey) return 0;
+  const raw = (washingTable[rowKey]?.[colKey] || "0").replace("%", "").trim();
+  const val = parseFloat(raw);
+  return isNaN(val) ? 0 : val / 100;
 }
 
 export interface CalculationResult {
@@ -470,21 +480,29 @@ export function runFormulaEngine(
     const isGridActive = params.rejectionGrid?.useGridRejection !== false;
 
     if (isGridActive) {
-      // ── ACTIVE: Grid Mode (Dynamic Processes Sum + Washing) ──
+      // ── ACTIVE: Grid Mode (Dynamic Processes Sum + Washing from DB) ──
       if (params.rejectionGrid?.tables) {
         let sumRej = 0;
-        const processes = ["Fabric", "Cutting", "Sewing", "Finishing", "WIP", "E1"];
-        processes.forEach((procName) => {
-          const table = params.rejectionGrid?.tables[procName];
-          if (table?.cells) {
-            const lookupCategory = (procName === "Fabric" || procName === "Cutting" || procName === "Finishing")
-              ? "High Fashion"
-              : styleCategory;
-            const rateStr = table.cells[sizeBracket]?.[lookupCategory] || "0";
-            sumRej += parseFloat(rateStr.replace("%", "")) / 100;
-          }
-        });
-        sumRej += getWashingRejection(style.washType, sizeBracket);
+        // Use DB-driven processes list; exclude "Washing" (handled separately below)
+        const allProcesses = params.rejectionGrid.processes ?? ["Fabric", "Cutting", "Sewing", "Finishing", "WIP", "E1"];
+        allProcesses
+          .filter((p) => p !== "Washing")
+          .forEach((procName) => {
+            const table = params.rejectionGrid?.tables[procName];
+            if (table?.cells) {
+              const lookupCategory = (procName === "Fabric" || procName === "Cutting" || procName === "Finishing")
+                ? "High Fashion"
+                : styleCategory;
+              const rateStr = table.cells[sizeBracket]?.[lookupCategory] || "0";
+              sumRej += parseFloat(rateStr.replace("%", "")) / 100;
+            }
+          });
+        // Washing rejection: DB-driven lookup (rows=washType names, cols=qty bands)
+        sumRej += getWashingRejectionFromGrid(
+          style.washType,
+          sizeBracket,
+          params.rejectionGrid.tables["Washing"]?.cells
+        );
         rejectionPct = sumRej;
       } else {
         rejectionPct = style.rejectionPct ?? 0.0415;

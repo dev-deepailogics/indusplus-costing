@@ -1,41 +1,7 @@
-import { getIndusPool } from "@/lib/db";
+import { getPool, getIndusPool } from "@/lib/db";
 import { NextResponse } from "next/server";
 
-/**
- * Maps indus-plus GroupCode → Cost Sheet accessory category.
- */
-const TRIM_CATEGORY_MAP: Record<string, string> = {
-  T27: "Zipper",
-  T26: "Thread",
-  T15: "Label",
-  T29: "Label",
-  T12: "Tag",
-  T24: "Tag",
-  T06: "Carton",
-  T35: "Carton",
-  T28: "Carton",
-  T05: "Carton",
-  T19: "Poly Bag",
-  T03: "Button & Rivets",
-  T21: "Button & Rivets",
-  T02: "Button & Rivets",
-  T01: "Sticker",
-  T04: "Sticker",
-  T11: "Trims Mix Materials",
-  T09: "Trims Mix Materials",
-  T07: "Trims Mix Materials",
-  T10: "Trims Mix Materials",
-  T14: "Trims Mix Materials",
-  T16: "Trims Mix Materials",
-  T17: "Trims Mix Materials",
-  T18: "Trims Mix Materials",
-  T23: "Packing Mix Materials",
-  T30: "Packing Mix Materials",
-  T25: "Trims Mix Materials",
-  T31: "Trims Mix Materials",
-  T36: "Trims Mix Materials",
-  T37: "Trims Mix Materials",
-};
+export const dynamic = "force-dynamic";
 
 export interface CatalogItemDB {
   itemName: string;
@@ -49,29 +15,28 @@ export interface CatalogItemDB {
 
 /**
  * GET /api/bom/catalog-items
- * Returns unique items from MSSQL S_StyleCardBOMConsumptionSAMView categorized as:
+ * Returns items from MSSQL S_FabricTrimMasterView (costing db) categorized as:
  * - fabrics
  * - linings
  * - trims / accessories
- * - chemicals
- * - specialCharges
+ * And operation catalogs (chemicals, specialCharges).
  */
 export async function GET() {
   try {
-    const pool = await getIndusPool();
+    const pool = await getPool();
     const result = await pool.request().query<{
-      AccessCode: string | null;
-      GroupCode: string | null;
-      GroupName: string | null;
-      ItemCode: string | null;
-      ItemName: string | null;
-      UOM: string | null;
-      LastPurchasedPrice: string | null;
+      RowId: number;
+      FABRIC: string | null;
+      FLD: string | null;
+      Local_Denim: string | null;
+      InventoryCode: string | null;
+      InventoryName: string | null;
     }>(
-      `SELECT DISTINCT AccessCode, GroupCode, GroupName, ItemCode, ItemName, UOM, LastPurchasedPrice
-       FROM   S_StyleCardBOMConsumptionSAMView
-       WHERE  ItemName IS NOT NULL AND ItemName <> '' AND ItemName <> 'NULL'
-       ORDER  BY AccessCode, GroupCode, ItemName`
+      `SELECT [RowId], [FABRIC], [FLD], [Local_Denim], [InventoryCode], [InventoryName]
+       FROM   [dbo].[S_FabricTrimMasterView]
+       WHERE  ([InventoryName] IS NOT NULL AND [InventoryName] <> '')
+          OR  ([InventoryCode] IS NOT NULL AND [InventoryCode] <> '')
+       ORDER  BY [FABRIC], [Local_Denim], [InventoryName]`
     );
 
     const fabricsMap = new Map<string, CatalogItemDB>();
@@ -81,75 +46,61 @@ export async function GET() {
     const specialChargesMap = new Map<string, CatalogItemDB>();
 
     for (const r of result.recordset) {
-      const accessCode = (r.AccessCode || "").toUpperCase().trim();
-      const groupCode = (r.GroupCode || "").toUpperCase().trim();
-      const groupName = (r.GroupName || "").trim();
-      const itemName = (r.ItemName || "").trim();
-      const itemCode = (r.ItemCode || "").trim();
-      const uom = (r.UOM || "").trim();
-      const ratePKR =
-        r.LastPurchasedPrice && r.LastPurchasedPrice !== "NULL"
-          ? parseFloat(r.LastPurchasedPrice) || 0
-          : 0;
+      const type = (r.FABRIC || "").toUpperCase().trim();
+      const groupCode = (r.FLD || "").trim();
+      const groupName = (r.Local_Denim || "").trim();
+      const itemCode = (r.InventoryCode || "").trim();
+      let itemName = (r.InventoryName || "").trim() || itemCode;
 
       if (!itemName) continue;
+
+      // Clean prepended category prefixes if present
+      if (groupName && itemName.toLowerCase().startsWith(groupName.toLowerCase())) {
+        const stripped = itemName.slice(groupName.length).trim();
+        if (stripped) {
+          itemName = stripped;
+        }
+      }
 
       const itemObj: CatalogItemDB = {
         itemName,
         itemCode,
         groupCode,
         groupName,
-        uom,
-        ratePKR,
+        category: groupName,
+        ratePKR: 0,
       };
 
-      if (accessCode === "FABRIC") {
-        if (groupCode === "FPL" || groupName.toLowerCase().includes("lining") || itemName.toLowerCase().includes("lining")) {
-          if (!liningsMap.has(itemName)) {
-            liningsMap.set(itemName, itemObj);
+      if (type === "FABRIC") {
+        if (
+          groupCode.toUpperCase() === "FPL" ||
+          groupName.toLowerCase().includes("lining") ||
+          itemName.toLowerCase().includes("lining")
+        ) {
+          const key = `${itemName}|||${itemCode}`;
+          if (!liningsMap.has(key)) {
+            liningsMap.set(key, itemObj);
           }
         } else {
-          if (!fabricsMap.has(itemName)) {
-            fabricsMap.set(itemName, itemObj);
+          const key = `${itemName}|||${itemCode}`;
+          if (!fabricsMap.has(key)) {
+            fabricsMap.set(key, itemObj);
           }
         }
-      } else if (accessCode === "TRIM") {
-        const cat = TRIM_CATEGORY_MAP[groupCode] ?? groupName ?? "Trims Mix Materials";
-        itemObj.category = cat;
-        const key = `${cat}|||${itemName}`;
-        if (!trimsMap.has(key)) {
-          trimsMap.set(key, itemObj);
-        }
-      } else if (
-        accessCode.includes("CHEM") ||
-        groupName.toLowerCase().includes("chem") ||
-        groupCode.includes("CHEM")
-      ) {
-        if (!chemicalsMap.has(itemName)) {
-          chemicalsMap.set(itemName, itemObj);
-        }
-      } else if (
-        accessCode.includes("SPECIAL") ||
-        groupName.toLowerCase().includes("special") ||
-        groupName.toLowerCase().includes("charge")
-      ) {
-        if (!specialChargesMap.has(itemName)) {
-          specialChargesMap.set(itemName, itemObj);
-        }
       } else {
-        // Fallback for any other items: treat as trims / general items
-        const cat = TRIM_CATEGORY_MAP[groupCode] ?? groupName ?? "General";
-        itemObj.category = cat;
-        const key = `${cat}|||${itemName}`;
+        // TRIM / Accessories
+        itemObj.category = groupName || "Trim";
+        const key = `${itemObj.category}|||${itemName}|||${itemCode}`;
         if (!trimsMap.has(key)) {
           trimsMap.set(key, itemObj);
         }
       }
     }
 
-    // Also query S_OperationsCatalog for Washing (chemicals/treatments) and Finishing/Special Operations
+    // Also query S_OperationsCatalog for Washing (chemicals) and Finishing/Special Operations from indusPool if available
     try {
-      const opsResult = await pool.request().query<{
+      const indusPool = await getIndusPool();
+      const opsResult = await indusPool.request().query<{
         Department: string | null;
         Section: string | null;
         OperationCode: string | null;

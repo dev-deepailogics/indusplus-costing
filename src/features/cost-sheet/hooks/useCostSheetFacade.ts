@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { CostSheetService } from "../services/CostSheetService";
 import { runFormulaEngine, calculateSizeBracket, mapSMVToCategory, type CalculationResult } from "../services/CostSheetFormulaEngine";
-import type { SavedCostSheetItem } from "../types";
+import { type SavedCostSheetItem, isCostSheetApprovedByAnyHead } from "../types";
 import type { CatalogItem } from "@/features/item-catalog";
 import { ParametersService, type SimpleTableData, type MatrixTableData, type ProcessMatrixTableData, type DropdownListsData } from "@/features/parameters";
 import type { StyleMasterItem, BOMFabricItem, BOMLiningItem, BOMAccessoriesItem, BOMChemicalsItem, BOMSpecialChargesItem } from "@/features/style-master";
@@ -65,6 +65,7 @@ export function useCostSheetFacade() {
   const [cutToShipGrid, setCutToShipGrid] = useState<MatrixTableData>();
   const [rejectionGrid, setRejectionGrid] = useState<ProcessMatrixTableData>();
   const [stylesGrid, setStylesGrid] = useState<SimpleTableData>();
+  const [costOfSalesTable, setCostOfSalesTable] = useState<SimpleTableData>();
 
   // Dropdown lists
   const [paymentTermsList, setPaymentTermsList] = useState<string[]>([]);
@@ -134,6 +135,18 @@ export function useCostSheetFacade() {
         }
       })
       .catch((err) => console.error("Failed to load styles-and-workorders:", err));
+
+    fetch("/api/bom/catalog-items")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.fabrics) {
+          setFabricCatalog(data.fabrics.map((f: any) => ({ id: f.itemCode || f.itemName, name: f.itemName })));
+        }
+        if (data.linings) {
+          setLiningCatalog(data.linings.map((l: any) => ({ id: l.itemCode || l.itemName, name: l.itemName })));
+        }
+      })
+      .catch((err) => console.error("Failed to load catalog items:", err));
   }, []);
 
   // Fetch Parameter Subscriptions
@@ -171,40 +184,7 @@ export function useCostSheetFacade() {
       }
     });
 
-    const unsubCostOfSales = ParametersService.subscribeToTable<SimpleTableData>("cost-as-percent-of-sales", (data) => {
-      const activeRows = data?.cards?.find((c) => c.isActive)?.rows ?? data?.rows ?? [];
-      if (activeRows.length && !costSheetIdParam) {
-        const getVal = (desc: string) => {
-          const row = activeRows.find(
-            (r) => r.values.description?.toLowerCase().trim() === desc.toLowerCase().trim()
-          );
-          const val = row?.values.percentOfSales;
-          if (!val || val.trim() === "" || val.trim() === "-") return null;
-          const parsed = parseFloat(val);
-          return isNaN(parsed) ? null : parsed;
-        };
-
-        const combinedTaxEds = getVal("Tax & EDS") ?? getVal("Taxes & EDS") ?? getVal("Tax and EDS");
-        const eds = getVal("EDS");
-        const taxes = getVal("Taxes") ?? getVal("Tax");
-        const rebate = getVal("Rebate");
-        const exchangeRate = getVal("Exchange Rate");
-        const inlandFreight = getVal("Inland Freight");
-        const localBankCharges = getVal("Local Bank Charges");
-        const discountRateVal = getVal("Discount Rate");
-
-        const totalTaxEds = combinedTaxEds !== null ? combinedTaxEds : ((taxes || 0) + (eds || 0));
-        setTaxEdsPct(totalTaxEds > 0 ? totalTaxEds / 100 : 0);
-        if (exchangeRate !== null && exchangeRate > 0) {
-          setParitySale(exchangeRate);
-          setParityProcurement(exchangeRate);
-        }
-        setRebatePct(rebate !== null && rebate > 0 ? rebate : 0);
-        setInlandFreightPct(inlandFreight !== null && inlandFreight > 0 ? inlandFreight / 100 : 0);
-        setLocalBankChargesPct(localBankCharges !== null && localBankCharges > 0 ? localBankCharges / 100 : 0);
-        setDiscountRate(discountRateVal !== null && discountRateVal > 0 ? discountRateVal / 100 : 0);
-      }
-    });
+    const unsubCostOfSales = ParametersService.subscribeToTable<SimpleTableData>("cost-as-percent-of-sales", setCostOfSalesTable);
 
     return () => {
       unsubDLF();
@@ -214,7 +194,44 @@ export function useCostSheetFacade() {
       unsubDropdowns();
       unsubCostOfSales();
     };
-  }, [costSheetIdParam]);
+  }, []);
+
+  // Sync Cost as % of Sales parameters if sheet is not approved by any head
+  useEffect(() => {
+    if (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet)) return;
+    const activeRows = costOfSalesTable?.cards?.find((c) => c.isActive)?.rows ?? costOfSalesTable?.rows ?? [];
+    if (activeRows.length) {
+      const getVal = (desc: string) => {
+        const row = activeRows.find(
+          (r) => r.values.description?.toLowerCase().trim() === desc.toLowerCase().trim()
+        );
+        const val = row?.values.percentOfSales;
+        if (!val || val.trim() === "" || val.trim() === "-") return null;
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? null : parsed;
+      };
+
+      const combinedTaxEds = getVal("Tax & EDS") ?? getVal("Taxes & EDS") ?? getVal("Tax and EDS");
+      const eds = getVal("EDS");
+      const taxes = getVal("Taxes") ?? getVal("Tax");
+      const rebate = getVal("Rebate");
+      const exchangeRate = getVal("Exchange Rate");
+      const inlandFreight = getVal("Inland Freight");
+      const localBankCharges = getVal("Local Bank Charges");
+      const discountRateVal = getVal("Discount Rate");
+
+      const totalTaxEds = combinedTaxEds !== null ? combinedTaxEds : ((taxes || 0) + (eds || 0));
+      setTaxEdsPct(totalTaxEds > 0 ? totalTaxEds / 100 : 0);
+      if (exchangeRate !== null && exchangeRate > 0) {
+        setParitySale(exchangeRate);
+        setParityProcurement(exchangeRate);
+      }
+      setRebatePct(rebate !== null && rebate > 0 ? rebate : 0);
+      setInlandFreightPct(inlandFreight !== null && inlandFreight > 0 ? inlandFreight / 100 : 0);
+      setLocalBankChargesPct(localBankCharges !== null && localBankCharges > 0 ? localBankCharges / 100 : 0);
+      setDiscountRate(discountRateVal !== null && discountRateVal > 0 ? discountRateVal / 100 : 0);
+    }
+  }, [costOfSalesTable, loadedCostSheet]);
 
   // Load saved snapshot if costSheetId exists
   useEffect(() => {
@@ -260,9 +277,18 @@ export function useCostSheetFacade() {
           setPaymentTerms(sheet.paymentTerms);
           setShipmentMode(sheet.shipmentMode);
           setDeliveryTerms(sheet.deliveryTerms);
-          setParitySale(sheet.paritySale);
-          setParityProcurement(sheet.parityProcurement);
           setManpower(sheet.manpower);
+
+          const isApproved = isCostSheetApprovedByAnyHead(sheet, sheet.approvals);
+          if (isApproved) {
+            setParitySale(sheet.paritySale);
+            setParityProcurement(sheet.parityProcurement);
+            setDiscountRate(sheet.discountRate);
+            if (sheet.rebatePct !== undefined) setRebatePct(sheet.rebatePct);
+            if (sheet.taxEdsPct !== undefined) setTaxEdsPct(sheet.taxEdsPct);
+            if (sheet.inlandFreightPct !== undefined) setInlandFreightPct(sheet.inlandFreightPct);
+            if (sheet.localBankChargesPct !== undefined) setLocalBankChargesPct(sheet.localBankChargesPct);
+          }
 
           setEfficiencyOverride(
             sheet.efficiencyOverride !== null ? (sheet.efficiencyOverride * 100).toString() : ""
@@ -278,7 +304,6 @@ export function useCostSheetFacade() {
             sheet.lineTargetOverride !== null ? sheet.lineTargetOverride.toString() : ""
           );
 
-          setDiscountRate(sheet.discountRate);
           setPaymentTermsDays(sheet.paymentTermsDays);
           setFactoringDays(sheet.factoringDays);
           setCommissionPct(sheet.commissionPct * 100);
@@ -293,10 +318,6 @@ export function useCostSheetFacade() {
           setDeliveryDestination(sheet.deliveryDestination || "");
           setExFactoryDate(sheet.exFactoryDate || "");
           setInhouseOrSubcontract(sheet.inhouseOrSubcontract || "In-House");
-          if (sheet.rebatePct !== undefined) setRebatePct(sheet.rebatePct);
-          if (sheet.taxEdsPct !== undefined) setTaxEdsPct(sheet.taxEdsPct);
-          if (sheet.inlandFreightPct !== undefined) setInlandFreightPct(sheet.inlandFreightPct);
-          if (sheet.localBankChargesPct !== undefined) setLocalBankChargesPct(sheet.localBankChargesPct);
 
           setReferenceName(sheet.referenceName || "");
         }
@@ -310,7 +331,10 @@ export function useCostSheetFacade() {
     const effOverrideVal = efficiencyOverride ? parseFloat(efficiencyOverride) / 100 : null;
     const rejOverrideVal = rejectionOverride ? parseFloat(rejectionOverride) / 100 : null;
     const targetOverrideVal = lineTargetOverride ? parseFloat(lineTargetOverride) : null;
-    const effectiveDLF = loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh;
+    const isApproved = isCostSheetApprovedByAnyHead(loadedCostSheet);
+    const effectiveDLF = isApproved
+      ? (loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh)
+      : directLabourFoh;
 
     return runFormulaEngine(
       activeStyle,
@@ -540,7 +564,9 @@ export function useCostSheetFacade() {
         bomChemicals: activeStyle.bomChemicals,
         bomSpecialCharges: activeStyle.bomSpecialCharges,
 
-        directLabourFohSnapshot: loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh ?? null,
+        directLabourFohSnapshot: (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet))
+          ? (loadedCostSheet.directLabourFohSnapshot ?? directLabourFoh ?? null)
+          : (directLabourFoh ?? null),
 
         calculations: {
           targetFobUSD: results.targetFobUSD,
