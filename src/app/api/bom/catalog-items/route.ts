@@ -1,4 +1,4 @@
-import { getPool, getIndusPool } from "@/lib/db";
+import { getIndusPool } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export interface CatalogItemDB {
 
 /**
  * GET /api/bom/catalog-items
- * Returns items from MSSQL S_FabricTrimMasterView (costing db) categorized as:
+ * Returns items from MSSQL S_FabricTrimMasterView (indus-plus db) categorized as:
  * - fabrics
  * - linings
  * - trims / accessories
@@ -23,7 +23,7 @@ export interface CatalogItemDB {
  */
 export async function GET() {
   try {
-    const pool = await getPool();
+    const pool = await getIndusPool();
     const result = await pool.request().query<{
       RowId: number;
       FABRIC: string | null;
