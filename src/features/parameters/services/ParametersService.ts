@@ -32,6 +32,7 @@ export class ParametersService {
     let cancelled = false;
     let abortController: AbortController | null = null;
 
+    let lastDataStr = "";
     async function fetchAndNotify() {
       try {
         if (abortController) abortController.abort();
@@ -43,6 +44,9 @@ export class ParametersService {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: T = await res.json();
+        const dataStr = JSON.stringify(data);
+        if (dataStr === lastDataStr) return;
+        lastDataStr = dataStr;
         if (!cancelled) onData(data);
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;

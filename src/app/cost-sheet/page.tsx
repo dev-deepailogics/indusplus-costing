@@ -947,12 +947,17 @@ function CostSheetContent() {
     };
   }, [styleIdParam, costSheetIdParam]);
 
-  // Re-apply customer-specific parameter cards whenever customer changes or tables load (if not approved by any head)
+  // Track previous customer to only apply default parameters when customer actually changes
+  const prevCustomerForParamsRef = useRef<string>("");
+
+  // Re-apply customer-specific parameter cards ONLY when creating a new cost sheet and customer changes
   useEffect(() => {
-    if (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet, approvals)) return;
+    if (costSheetIdParam || loadedCostSheet) return;
+    if (!customerName || prevCustomerForParamsRef.current === customerName) return;
     if (!costOfSalesTable && !customerCommissionTable) return;
+    prevCustomerForParamsRef.current = customerName;
     applyCustomerParameters(customerName, costOfSalesTable, customerCommissionTable);
-  }, [customerName, costOfSalesTable, customerCommissionTable, loadedCostSheet, approvals]);
+  }, [customerName, costOfSalesTable, customerCommissionTable, loadedCostSheet, costSheetIdParam]);
 
   // Auto-calculate & sync Customer-wise Testing Cost in Special Charges (if not approved by any head)
   useEffect(() => {
@@ -1291,10 +1296,14 @@ function CostSheetContent() {
   }, [paymentTerms, selectedArTermId, selectedApTermId]);
 
   // Auto-compute paymentTermsDays from AR - AP selection
+  // Only recalculate when the terms data is actually loaded and at least one entry is found.
+  // This prevents overwriting a correctly-loaded value with 0 when data hasn't arrived yet.
   useEffect(() => {
     if (!selectedArTermId && !selectedApTermId) return;
     const arEntry = arPaymentTermsData?.terms?.find((t) => t.id === selectedArTermId);
     const apEntry = apPaymentTermsData?.terms?.find((t) => t.id === selectedApTermId);
+    // If neither term is found in loaded data yet, don't overwrite the existing input value
+    if (!arEntry && !apEntry) return;
     const arDays = arEntry?.days ?? 0;
     const apDays = apEntry?.days ?? 0;
     const netDays = arDays - apDays;
@@ -2665,7 +2674,7 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
-                  Payable Terms-Fabric
+                  AP Payment Terms
                 </span>
                 <SearchableSelect
                   className="w-36"
@@ -2686,7 +2695,7 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
-                  Receivable Terms
+                  AR Payment Terms
                 </span>
                 <SearchableSelect
                   className="w-36"
@@ -2707,7 +2716,7 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
-                  Advance (Days)
+                  Factoring Advance (Days)
                 </span>
                 <input
                   type="number"
@@ -2747,7 +2756,7 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
-                  Merch_Group
+                  Merch. Group
                 </span>
                 <input
                   type="text"
@@ -2759,7 +2768,7 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
-                  Delv. Destination
+                  Delivery Destination
                 </span>
                 <SearchableSelect
                   className="w-32"
@@ -2771,7 +2780,7 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
-                  Parity-Sale
+                  Parity (Sale)
                 </span>
                 <div className="flex items-center gap-1">
                   <input
@@ -2794,7 +2803,7 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
-                  Parity-Procurement
+                  Parity (Procurement)
                 </span>
                 <div className="flex items-center gap-1">
                   <input
@@ -2817,7 +2826,7 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
-                  Inhouse/Sub-contract
+                  Inhouse or Subcontract
                 </span>
                 <SearchableSelect
                   className="w-32"

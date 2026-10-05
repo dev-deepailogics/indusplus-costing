@@ -131,7 +131,7 @@ export function SearchableSelect({
     };
   }, [open]);
 
-  const selected = options.find((o) => o.value === value);
+  const selected = options.find((o) => o.value === value || (value && o.label === value));
 
   const filtered = (() => {
     const q = debouncedQuery.toLowerCase().trim();
