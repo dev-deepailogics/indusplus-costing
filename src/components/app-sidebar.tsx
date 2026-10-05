@@ -109,25 +109,28 @@ export function AppSidebar() {
                 {/* Grid Item and Dropdown */}
                 <SidebarMenuItem>
                   <DropdownMenu>
-                    <DropdownMenuTrigger className="w-full text-left outline-none">
-                      <SidebarMenuButton
-                        tooltip="Grid Parameters"
-                        isActive={
-                          pathname.startsWith("/parameters/styles") ||
-                          pathname.startsWith(
-                            "/parameters/cut-to-ship-grid",
-                          ) ||
-                          pathname.startsWith("/parameters/rejection-grid")
-                        }
-                        className="w-full justify-between"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Grid3X3 className="size-4 shrink-0" />
-                          <span>Grid</span>
-                        </div>
-                        <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
-                      </SidebarMenuButton>
-                    </DropdownMenuTrigger>
+                    <DropdownMenuTrigger
+                      className="w-full text-left outline-none"
+                      render={
+                        <SidebarMenuButton
+                          tooltip="Grid Parameters"
+                          isActive={
+                            pathname.startsWith("/parameters/styles") ||
+                            pathname.startsWith(
+                              "/parameters/cut-to-ship-grid",
+                            ) ||
+                            pathname.startsWith("/parameters/rejection-grid")
+                          }
+                          className="w-full justify-between"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Grid3X3 className="size-4 shrink-0" />
+                            <span>Grid</span>
+                          </div>
+                          <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+                        </SidebarMenuButton>
+                      }
+                    />
                     <DropdownMenuContent
                       className="w-52 max-w-[calc(100vw-3rem)] animate-none z-50"
                       side={isMobile ? "bottom" : "right"}
@@ -168,30 +171,33 @@ export function AppSidebar() {
                 {/* Value Item and Dropdown */}
                 <SidebarMenuItem>
                   <DropdownMenu>
-                    <DropdownMenuTrigger className="w-full text-left outline-none">
-                      <SidebarMenuButton
-                        tooltip="Value Parameters"
-                        isActive={[
-                          "customer-commission",
-                          "customer-testing-cost",
-                          "cost-as-percent-of-sales",
-                          "direct-labour-foh",
-                          "admin-selling",
-                          "other-expenses",
-                          "ar-payment-terms",
-                          "ap-payment-terms",
-                        ].some((slug) =>
-                          pathname.startsWith(`/parameters/${slug}`),
-                        )}
-                        className="w-full justify-between"
-                      >
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="size-4 shrink-0" />
-                          <span>Value</span>
-                        </div>
-                        <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
-                      </SidebarMenuButton>
-                    </DropdownMenuTrigger>
+                    <DropdownMenuTrigger
+                      className="w-full text-left outline-none"
+                      render={
+                        <SidebarMenuButton
+                          tooltip="Value Parameters"
+                          isActive={[
+                            "customer-commission",
+                            "customer-testing-cost",
+                            "cost-as-percent-of-sales",
+                            "direct-labour-foh",
+                            "admin-selling",
+                            "other-expenses",
+                            "ar-payment-terms",
+                            "ap-payment-terms",
+                          ].some((slug) =>
+                            pathname.startsWith(`/parameters/${slug}`),
+                          )}
+                          className="w-full justify-between"
+                        >
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="size-4 shrink-0" />
+                            <span>Value</span>
+                          </div>
+                          <ChevronRight className="size-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
+                        </SidebarMenuButton>
+                      }
+                    />
                     <DropdownMenuContent
                       className="w-52 max-w-[calc(100vw-3rem)] animate-none z-50"
                       side={isMobile ? "bottom" : "right"}

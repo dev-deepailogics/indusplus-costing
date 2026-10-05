@@ -316,6 +316,7 @@ function CostSheetContent() {
 
   const markDirty = () => {
     if (!isDirtyRef.current) {
+      isDirtyRef.current = true;
       setIsDirty(true);
     }
   };
@@ -2089,8 +2090,7 @@ function CostSheetContent() {
 
   return (
     <div
-      onChangeCapture={markDirty}
-      onInputCapture={markDirty}
+      onChange={markDirty}
       className="space-y-6 max-w-7xl mx-auto"
     >
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
