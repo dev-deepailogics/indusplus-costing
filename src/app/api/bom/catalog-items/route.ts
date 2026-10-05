@@ -77,14 +77,6 @@ export async function GET() {
 
       if (!itemName) continue;
 
-      // Clean prepended category prefixes if present
-      if (groupName && itemName.toLowerCase().startsWith(groupName.toLowerCase())) {
-        const stripped = itemName.slice(groupName.length).trim();
-        if (stripped) {
-          itemName = stripped;
-        }
-      }
-
       const itemObj: CatalogItemDB = {
         itemName,
         itemCode,
