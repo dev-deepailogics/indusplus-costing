@@ -1,4 +1,4 @@
-import { getIndusPool } from "@/lib/db";
+import { getPool, getIndusPool } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export interface CatalogItemDB {
 
 /**
  * GET /api/bom/catalog-items
- * Returns items from MSSQL S_FabricTrimMasterView (indus-plus db) categorized as:
+ * Returns items from MSSQL S_FabricTrimMasterView categorized as:
  * - fabrics
  * - linings
  * - trims / accessories
@@ -23,20 +23,44 @@ export interface CatalogItemDB {
  */
 export async function GET() {
   try {
-    const pool = await getIndusPool();
-    const result = await pool.request().query<{
-      AccessCode: string | null;
-      GroupCode: string | null;
-      GroupName: string | null;
-      InventoryCode: string | null;
-      InventoryName: string | null;
-    }>(
-      `SELECT [AccessCode], [GroupCode], [GroupName], [InventoryCode], [InventoryName]
-       FROM   [dbo].[S_FabricTrimMasterView]
-       WHERE  ([InventoryName] IS NOT NULL AND [InventoryName] <> '')
-          OR  ([InventoryCode] IS NOT NULL AND [InventoryCode] <> '')
-       ORDER  BY [AccessCode], [GroupName], [InventoryName]`
-    );
+    const pool = await getPool();
+    let result;
+    try {
+      result = await pool.request().query<{
+        AccessCode: string | null;
+        GroupCode: string | null;
+        GroupName: string | null;
+        InventoryCode: string | null;
+        InventoryName: string | null;
+      }>(
+        `SELECT 
+           [FABRIC] AS AccessCode, 
+           [FLD] AS GroupCode, 
+           [Local_Denim] AS GroupName, 
+           [InventoryCode], 
+           [InventoryName]
+         FROM   [dbo].[S_FabricTrimMasterView]
+         WHERE  ([InventoryName] IS NOT NULL AND [InventoryName] <> '')
+            OR  ([InventoryCode] IS NOT NULL AND [InventoryCode] <> '')
+         ORDER  BY [FABRIC], [Local_Denim], [InventoryName]`
+      );
+    } catch {
+      // Fallback if table uses alternative column naming or is on indus pool
+      const indusPool = await getIndusPool();
+      result = await indusPool.request().query<{
+        AccessCode: string | null;
+        GroupCode: string | null;
+        GroupName: string | null;
+        InventoryCode: string | null;
+        InventoryName: string | null;
+      }>(
+        `SELECT [AccessCode], [GroupCode], [GroupName], [InventoryCode], [InventoryName]
+         FROM   [dbo].[S_FabricTrimMasterView]
+         WHERE  ([InventoryName] IS NOT NULL AND [InventoryName] <> '')
+            OR  ([InventoryCode] IS NOT NULL AND [InventoryCode] <> '')
+         ORDER  BY [AccessCode], [GroupName], [InventoryName]`
+      );
+    }
 
     const fabricsMap = new Map<string, CatalogItemDB>();
     const liningsMap = new Map<string, CatalogItemDB>();
