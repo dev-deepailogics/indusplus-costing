@@ -948,17 +948,12 @@ function CostSheetContent() {
     };
   }, [styleIdParam, costSheetIdParam]);
 
-  // Track previous customer to only apply default parameters when customer actually changes
-  const prevCustomerForParamsRef = useRef<string>("");
-
-  // Re-apply customer-specific parameter cards ONLY when creating a new cost sheet and customer changes
+  // Re-apply customer-specific parameter cards whenever customer changes or tables load (if not approved by any head)
   useEffect(() => {
-    if (costSheetIdParam || loadedCostSheet) return;
-    if (!customerName || prevCustomerForParamsRef.current === customerName) return;
+    if (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet, approvals)) return;
     if (!costOfSalesTable && !customerCommissionTable) return;
-    prevCustomerForParamsRef.current = customerName;
     applyCustomerParameters(customerName, costOfSalesTable, customerCommissionTable);
-  }, [customerName, costOfSalesTable, customerCommissionTable, loadedCostSheet, costSheetIdParam]);
+  }, [customerName, costOfSalesTable, customerCommissionTable, loadedCostSheet, approvals]);
 
   // Auto-calculate & sync Customer-wise Testing Cost in Special Charges (if not approved by any head)
   useEffect(() => {
