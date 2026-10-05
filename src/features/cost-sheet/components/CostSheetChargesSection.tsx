@@ -244,8 +244,8 @@ export function CostSheetChargesSection({
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-xs py-1.5">Markup &amp; Discounting</TableCell>
-                  <TableCell className="text-xs py-1.5 text-right">Rs. {results.markupDiscountPKR.toFixed(1)}</TableCell>
-                  <TableCell className="text-xs py-1.5 text-right">${results.markupDiscountUSD.toFixed(3)}</TableCell>
+                  <TableCell className="text-xs py-1.5 text-right">Rs. {Math.max(0, results.markupDiscountPKR).toFixed(1)}</TableCell>
+                  <TableCell className="text-xs py-1.5 text-right">${Math.max(0, results.markupDiscountUSD).toFixed(3)}</TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell className="text-xs py-1.5">Local Bank Charges</TableCell>

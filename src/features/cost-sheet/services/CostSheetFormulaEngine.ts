@@ -560,8 +560,8 @@ export function runFormulaEngine(
     ? (inputs.arDays - inputs.apDays)
     : paymentTermsDays;
 
-  const markupDiscountPKR = netDays * ((sellingPricePKR * discountRate) / 365);
-  const markupDiscountUSD = netDays * ((sellingPriceUSD * discountRate) / 365);
+  const markupDiscountPKR = Math.max(0, netDays * ((sellingPricePKR * discountRate) / 365));
+  const markupDiscountUSD = Math.max(0, netDays * ((sellingPriceUSD * discountRate) / 365));
   const markupDiscountPct = sellingPriceUSD > 0 ? markupDiscountUSD / sellingPriceUSD : 0;
 
   const bankChargesPKR = sellingPricePKR * localBankChargesPct;

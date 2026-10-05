@@ -955,6 +955,8 @@ function CostSheetContent() {
     applyCustomerParameters(customerName, costOfSalesTable, customerCommissionTable);
   }, [customerName, costOfSalesTable, customerCommissionTable, loadedCostSheet, approvals]);
 
+  const hasUserRemovedTestingCostRef = useRef<boolean>(false);
+
   // Auto-calculate & sync Customer-wise Testing Cost in Special Charges (if not approved by any head)
   useEffect(() => {
     if (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet, approvals)) return;
@@ -995,6 +997,10 @@ function CostSheetContent() {
         };
         return { ...prev, bomSpecialCharges: next };
       } else if (computedTestingPKR > 0) {
+        // Do NOT auto-insert Testing Cost if viewing/updating an existing cost sheet or if user removed it
+        if (costSheetIdParam || loadedCostSheet || hasUserRemovedTestingCostRef.current) {
+          return prev;
+        }
         return {
           ...prev,
           bomSpecialCharges: [
@@ -1011,7 +1017,7 @@ function CostSheetContent() {
       }
       return prev;
     });
-  }, [customerName, smvSewingInput, customerTestingCostData, isSpecialChargesLocked, parityProcurement, loadedCostSheet, approvals]);
+  }, [customerName, smvSewingInput, customerTestingCostData, isSpecialChargesLocked, parityProcurement, loadedCostSheet, approvals, costSheetIdParam]);
 
   // Load saved snapshot if costSheetId exists
   useEffect(() => {
@@ -1056,6 +1062,11 @@ function CostSheetContent() {
           bomChemicals: sheet.bomChemicals || [],
           bomSpecialCharges: sheet.bomSpecialCharges || [],
         };
+        const savedTesting = (sheet.bomSpecialCharges || []).some((item) => {
+          const n = (item.itemName || "").toLowerCase().trim();
+          return n === "testing cost" || n === "testing charges" || n === "testing";
+        });
+        hasUserRemovedTestingCostRef.current = !savedTesting;
         setActiveStyle(ensureStyleBOMDefaults(styleFromSheet));
         setNewFabricRows(new Set());
         setNewLiningRows(new Set());
@@ -1149,11 +1160,13 @@ function CostSheetContent() {
             : "",
         );
         setRejectionOverride(
-          sheet.rejectionOverride !== null && sheet.rejectionOverride !== undefined
-            ? parseFloat((sheet.rejectionOverride * 100).toFixed(4)).toString()
-            : sheet.rejectionPct !== null && sheet.rejectionPct !== undefined
-            ? parseFloat((sheet.rejectionPct * 100).toFixed(4)).toString()
-            : parseFloat((savedRejection * 100).toFixed(4)).toString(),
+          isApproved
+            ? (sheet.rejectionOverride !== null && sheet.rejectionOverride !== undefined
+                ? parseFloat((sheet.rejectionOverride * 100).toFixed(4)).toString()
+                : sheet.rejectionPct !== null && sheet.rejectionPct !== undefined
+                ? parseFloat((sheet.rejectionPct * 100).toFixed(4)).toString()
+                : parseFloat((savedRejection * 100).toFixed(4)).toString())
+            : "",
         );
         setLineTargetOverride(
           sheet.lineTargetOverride !== null && sheet.lineTargetOverride !== undefined
@@ -1309,6 +1322,7 @@ function CostSheetContent() {
   // Core Style Change Logic
   function executeStyleChange(id: string) {
     setIsDirty(false);
+    hasUserRemovedTestingCostRef.current = false;
     setNewFabricRows(new Set());
     setNewLiningRows(new Set());
     setNewAccessoryRows(new Set());
@@ -1668,6 +1682,17 @@ function CostSheetContent() {
         updated.rateUSD = procRateChg > 0 ? Number(patch.ratePKR) / procRateChg : 0;
       }
 
+      if (
+        (keyOrPatch === "itemName" && typeof val === "string") ||
+        (typeof keyOrPatch === "object" && "itemName" in keyOrPatch)
+      ) {
+        const nameVal = typeof keyOrPatch === "string" ? String(val || "") : String(keyOrPatch.itemName || "");
+        const normVal = nameVal.toLowerCase().trim();
+        if (normVal === "testing cost" || normVal === "testing charges" || normVal === "testing") {
+          hasUserRemovedTestingCostRef.current = false;
+        }
+      }
+
       updated.consPerPc = 1;
       updated.totalCostPKR = updated.ratePKR || 0;
 
@@ -1740,7 +1765,8 @@ function CostSheetContent() {
       manpower,
       efficiencyOverride:
         efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
-      rejectionOverride: effRejection,
+      rejectionOverride:
+        rejectionOverride !== "" ? parseFloat(rejectionOverride) / 100 : null,
       rejectionPct: effRejection,
       lineTargetOverride:
         lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
@@ -1869,7 +1895,8 @@ function CostSheetContent() {
       manpower,
       efficiencyOverride:
         efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
-      rejectionOverride: effRejection,
+      rejectionOverride:
+        rejectionOverride !== "" ? parseFloat(rejectionOverride) / 100 : null,
       rejectionPct: effRejection,
       lineTargetOverride:
         lineTargetOverride !== "" ? parseFloat(lineTargetOverride) : null,
@@ -1986,6 +2013,16 @@ function CostSheetContent() {
       ? (loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh)
       : directLabourFoh;
 
+    const savedRej =
+      loadedCostSheet?.rejectionPct ??
+      loadedCostSheet?.rejectionOverride ??
+      loadedCostSheet?.calculations?.rejectionPct ??
+      null;
+
+    const effRejOv = isApproved
+      ? (savedRej ?? (rejectionOverride !== "" ? parseFloat(rejectionOverride) / 100 : null))
+      : null;
+
     const arEntry = arPaymentTermsData?.terms?.find((t) => t.id === selectedArTermId);
     const apEntry = apPaymentTermsData?.terms?.find((t) => t.id === selectedApTermId);
 
@@ -1997,7 +2034,7 @@ function CostSheetContent() {
         parityProcurement: parityProcurement ?? 0,
         manpower,
         efficiencyOverride: effOv,
-        rejectionOverride: rejOv,
+        rejectionOverride: effRejOv,
         lineTargetOverride: tgtOv,
         costingStage,
         paymentTerms,
@@ -3441,13 +3478,13 @@ function CostSheetContent() {
                         </span>
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
-                        {calcs.markupDiscountPKR.toFixed(2)}
+                        {Math.max(0, calcs.markupDiscountPKR).toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
-                        ${calcs.markupDiscountUSD.toFixed(2)}
+                        ${Math.max(0, calcs.markupDiscountUSD).toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
-                        {fmtPct(calcs.markupDiscountPct, 2)}
+                        {fmtPct(Math.max(0, calcs.markupDiscountPct), 2)}
                       </TableCell>
                     </TableRow>
                     <TableRow className="h-7">
@@ -4783,6 +4820,11 @@ function CostSheetContent() {
                                   className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 p-0.5 rounded transition-colors inline-flex items-center justify-center cursor-pointer"
                                   onClick={() => {
                                     markDirty();
+                                    const removedItem = activeStyle.bomSpecialCharges[idx];
+                                    const normName = (removedItem?.itemName || "").toLowerCase().trim();
+                                    if (normName === "testing cost" || normName === "testing charges" || normName === "testing") {
+                                      hasUserRemovedTestingCostRef.current = true;
+                                    }
                                     setActiveStyle({
                                       ...activeStyle,
                                       bomSpecialCharges:

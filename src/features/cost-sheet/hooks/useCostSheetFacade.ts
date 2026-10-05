@@ -296,11 +296,13 @@ export function useCostSheetFacade() {
             sheet.efficiencyOverride !== null ? (sheet.efficiencyOverride * 100).toString() : ""
           );
           setRejectionOverride(
-            sheet.rejectionOverride !== null
-              ? (sheet.rejectionOverride * 100).toString()
-              : sheet.rejectionPct !== null && sheet.rejectionPct !== undefined
-              ? (sheet.rejectionPct * 100).toString()
-              : (savedRejection * 100).toString()
+            isApproved
+              ? (sheet.rejectionOverride !== null
+                  ? (sheet.rejectionOverride * 100).toString()
+                  : sheet.rejectionPct !== null && sheet.rejectionPct !== undefined
+                  ? (sheet.rejectionPct * 100).toString()
+                  : (savedRejection * 100).toString())
+              : ""
           );
           setLineTargetOverride(
             sheet.lineTargetOverride !== null ? sheet.lineTargetOverride.toString() : ""
@@ -340,6 +342,16 @@ export function useCostSheetFacade() {
       ? (loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh)
       : directLabourFoh;
 
+    const savedRej =
+      loadedCostSheet?.rejectionPct ??
+      loadedCostSheet?.rejectionOverride ??
+      loadedCostSheet?.calculations?.rejectionPct ??
+      null;
+
+    const effRejOverride = isApproved
+      ? (savedRej ?? rejOverrideVal)
+      : null;
+
     return runFormulaEngine(
       activeStyle,
       {
@@ -348,7 +360,7 @@ export function useCostSheetFacade() {
         parityProcurement,
         manpower,
         efficiencyOverride: effOverrideVal,
-        rejectionOverride: rejOverrideVal,
+        rejectionOverride: effRejOverride,
         lineTargetOverride: targetOverrideVal,
         costingStage,
         paymentTerms,
@@ -538,7 +550,7 @@ export function useCostSheetFacade() {
 
         manpower,
         efficiencyOverride: effOverrideVal,
-        rejectionOverride: effectiveRejection,
+        rejectionOverride: rejOverrideVal,
         rejectionPct: effectiveRejection,
         lineTargetOverride: lineTargetOverrideVal,
 
