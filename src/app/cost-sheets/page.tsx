@@ -339,6 +339,17 @@ export default function SavedCostSheetsPage() {
                     ? `${ebitdaMinCents.toFixed(2)}$`
                     : `-${Math.abs(ebitdaMinCents).toFixed(2)}$`;
 
+                  const isAnyHeadApproved = Boolean(
+                    sheet.approvals?.fabric?.status === "approved" ||
+                    sheet.approvals?.mmc?.status === "approved" ||
+                    sheet.approvals?.ie?.status === "approved" ||
+                    sheet.approvals?.washing?.status === "approved" ||
+                    sheet.approvals?.marketing?.status === "approved" ||
+                    sheet.approvals?.costingHead?.status === "approved" ||
+                    sheet.approvals?.director?.status === "approved" ||
+                    (sheet.approvalStatus && sheet.approvalStatus !== "draft" && sheet.approvalStatus !== "rejected")
+                  );
+
                   return (
                     <TableRow
                       key={sheet.id}
@@ -414,25 +425,20 @@ export default function SavedCostSheetsPage() {
                           >
                             <Eye className="size-3.5" />
                           </Button>
-                          {canEdit && (
+                          {!isAnyHeadApproved && canEdit && (
                             <Button
                               variant="outline"
                               size="icon"
-                              disabled={sheet.approvals?.director?.status === "approved"}
-                              className={`size-7 ${
-                                sheet.approvals?.director?.status === "approved"
-                                  ? "opacity-40 cursor-not-allowed text-slate-400 border-slate-200"
-                                  : "text-emerald-600 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 hover:text-emerald-700"
-                              }`}
+                              className="size-7 text-emerald-600 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 hover:text-emerald-700"
                               onClick={() =>
                                 router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=edit`)
                               }
-                              title={sheet.approvals?.director?.status === "approved" ? "Locked (Director Approved)" : "Edit Cost Sheet"}
+                              title="Edit Cost Sheet"
                             >
                               <Pencil className="size-3.5" />
                             </Button>
                           )}
-                          {canDelete && (
+                          {!isAnyHeadApproved && canDelete && (
                             <Button
                               variant="outline"
                               size="icon"

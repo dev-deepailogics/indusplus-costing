@@ -300,8 +300,9 @@ export async function DELETE(
         created_by_id: number | null;
         created_by_email: string | null;
         approval_status: string | null;
+        approvals: string | null;
       }>(`
-        SELECT id, customer_name, created_by_id, created_by_email, approval_status
+        SELECT id, customer_name, created_by_id, created_by_email, approval_status, approvals
         FROM pre_order_cost_sheets
         WHERE id = @checkId
       `);
@@ -310,10 +311,34 @@ export async function DELETE(
       return Response.json({ error: "Cost sheet not found" }, { status: 404 });
     }
 
+    const row = existingCheck.recordset[0];
+    let appObj: any = null;
+    try {
+      if (row.approvals) appObj = JSON.parse(row.approvals);
+    } catch {}
+
+    const isApprovedByAny = Boolean(
+      appObj?.fabric?.status === "approved" ||
+      appObj?.mmc?.status === "approved" ||
+      appObj?.ie?.status === "approved" ||
+      appObj?.washing?.status === "approved" ||
+      appObj?.marketing?.status === "approved" ||
+      appObj?.costingHead?.status === "approved" ||
+      appObj?.director?.status === "approved" ||
+      (row.approval_status && row.approval_status !== "draft" && row.approval_status !== "rejected")
+    );
+
+    if (isApprovedByAny) {
+      return Response.json(
+        { error: "Cannot delete: Cost sheet has already been signed off by department heads." },
+        { status: 400 }
+      );
+    }
+
     const teamCustomers = await resolveTeamCustomers(pool, session);
     const sessionWithTeams = { ...session, teamCustomers };
 
-    if (!canUserAccessCostSheet(sessionWithTeams, rowToCostSheetItem(existingCheck.recordset[0]))) {
+    if (!canUserAccessCostSheet(sessionWithTeams, rowToCostSheetItem(row))) {
       return Response.json(
         { error: "Forbidden: You do not have permission to delete this cost sheet." },
         { status: 403 }

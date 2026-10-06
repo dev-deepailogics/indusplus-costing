@@ -313,8 +313,16 @@ function CostSheetContent() {
 
   const isDirtyRef = useRef(false);
   isDirtyRef.current = isDirty;
+  const isInitializedRef = useRef(false);
 
-  const markDirty = () => {
+  const markDirty = (e?: React.SyntheticEvent) => {
+    // Cannot mark dirty if page is opened in read-only mode
+    if (isReadOnly) return;
+    // Ignore events during initial page load, data loading, or hydration
+    if (!isInitializedRef.current) return;
+    // Ignore untrusted synthetic events (e.g. browser autofill, password managers)
+    if (e && "isTrusted" in e.nativeEvent && !e.nativeEvent.isTrusted) return;
+
     if (!isDirtyRef.current) {
       isDirtyRef.current = true;
       setIsDirty(true);
@@ -382,6 +390,18 @@ function CostSheetContent() {
       setCustomerName(assignedCustomers[0]);
     }
   }, [assignedCustomers, costSheetIdParam]);
+
+  // Initial load settlement timer: ignore synthetic change / autofill events on mount
+  useEffect(() => {
+    if (!costSheetIdParam) {
+      const timer = setTimeout(() => {
+        isInitializedRef.current = true;
+        isDirtyRef.current = false;
+        setIsDirty(false);
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [costSheetIdParam]);
 
   const [styleCategory, setStyleCategory] = useState("");
   const [washType, setWashType] = useState("");
@@ -1231,6 +1251,13 @@ function CostSheetContent() {
         );
         setInhouseOrSubcontract(sheet.inhouseOrSubcontract || "");
         setLoadingStyles(false);
+        isDirtyRef.current = false;
+        setIsDirty(false);
+        setTimeout(() => {
+          isInitializedRef.current = true;
+          isDirtyRef.current = false;
+          setIsDirty(false);
+        }, 400);
       });
     }
   }, [costSheetIdParam, user, router]);
@@ -1322,6 +1349,14 @@ function CostSheetContent() {
   // Core Style Change Logic
   function executeStyleChange(id: string) {
     setIsDirty(false);
+    isDirtyRef.current = false;
+    isInitializedRef.current = false;
+    setTimeout(() => {
+      isInitializedRef.current = true;
+      isDirtyRef.current = false;
+      setIsDirty(false);
+    }, 400);
+
     hasUserRemovedTestingCostRef.current = false;
     setNewFabricRows(new Set());
     setNewLiningRows(new Set());
@@ -1393,6 +1428,13 @@ function CostSheetContent() {
   // Core Reset Logic
   function executeReset() {
     setIsDirty(false);
+    isDirtyRef.current = false;
+    isInitializedRef.current = false;
+    setTimeout(() => {
+      isInitializedRef.current = true;
+      isDirtyRef.current = false;
+      setIsDirty(false);
+    }, 400);
     if (loadedCostSheet) {
       router.push(`/cost-sheet?costSheetId=${loadedCostSheet.id}`);
       toast.info("Calculator reset to snapshot defaults");

@@ -272,6 +272,33 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     }
 
+    if (action === "reject") {
+      if (stage === "marketing") {
+        const fabricOk = approvals.fabric?.status === "approved";
+        const mmcOk = approvals.mmc?.status === "approved";
+        const ieOk = approvals.ie?.status === "approved";
+        const washingOk = approvals.washing?.status === "approved";
+        if (!fabricOk || !mmcOk || !ieOk || !washingOk) {
+          return NextResponse.json(
+            { error: "Marketing review requires all 4 departmental heads to complete sign-off first." },
+            { status: 400 }
+          );
+        }
+      }
+      if (stage === "costingHead" && approvals.marketing?.status !== "approved") {
+        return NextResponse.json(
+          { error: "Costing Head review requires prior Marketing approval." },
+          { status: 400 }
+        );
+      }
+      if (stage === "director" && approvals.costingHead?.status !== "approved") {
+        return NextResponse.json(
+          { error: "Director review requires prior Costing Head approval." },
+          { status: 400 }
+        );
+      }
+    }
+
     // Apply the action to the stage
     const now = new Date().toISOString();
 
@@ -294,64 +321,102 @@ export async function POST(request: NextRequest, context: RouteContext) {
         comments: comments?.trim(),
       };
     } else if (action === "revoke") {
-      // Enforce hierarchical revocation locks (admins bypass)
-      if (session.role !== "admin") {
-        if (stage === "fabric" || stage === "mmc" || stage === "ie" || stage === "washing") {
-          if (approvals.director?.status === "approved") {
-            return NextResponse.json(
-              { error: "Cannot revoke: Director has finalized this cost sheet. Director approval must be revoked first." },
-              { status: 400 }
-            );
-          }
-          if (approvals.costingHead?.status === "approved") {
-            return NextResponse.json(
-              { error: "Cannot revoke: Costing Head has already approved. Costing Head approval must be revoked first." },
-              { status: 400 }
-            );
-          }
-          if (approvals.marketing?.status === "approved") {
-            return NextResponse.json(
-              { error: "Cannot revoke: Marketing has already approved. Marketing approval must be revoked first." },
-              { status: 400 }
-            );
-          }
-        } else if (stage === "marketing") {
-          if (approvals.director?.status === "approved") {
-            return NextResponse.json(
-              { error: "Cannot revoke: Director has finalized this cost sheet. Director approval must be revoked first." },
-              { status: 400 }
-            );
-          }
-          if (approvals.costingHead?.status === "approved") {
-            return NextResponse.json(
-              { error: "Cannot revoke: Costing Head has already approved. Costing Head approval must be revoked first." },
-              { status: 400 }
-            );
-          }
-        } else if (stage === "costingHead") {
-          if (approvals.director?.status === "approved") {
-            return NextResponse.json(
-              { error: "Cannot revoke: Director has finalized this cost sheet. Director approval must be revoked first." },
-              { status: 400 }
-            );
-          }
+      const fabricApproved = approvals.fabric?.status === "approved";
+      const mmcApproved = approvals.mmc?.status === "approved";
+      const ieApproved = approvals.ie?.status === "approved";
+      const washingApproved = approvals.washing?.status === "approved";
+      const deptCompleted = fabricApproved && mmcApproved && ieApproved && washingApproved;
+
+      const marketingApproved = approvals.marketing?.status === "approved";
+      const costingHeadApproved = approvals.costingHead?.status === "approved";
+      const directorApproved = approvals.director?.status === "approved";
+
+      const directorRejected = approvals.director?.status === "rejected";
+      const costingHeadRejected = approvals.costingHead?.status === "rejected";
+      const marketingRejected = approvals.marketing?.status === "rejected";
+
+      const directorPending = costingHeadApproved && !directorApproved && !directorRejected;
+      const costingHeadPending = marketingApproved && !costingHeadApproved && !costingHeadRejected;
+      const marketingPending = deptCompleted && !marketingApproved && !marketingRejected;
+
+      // Enforce strict reverse hierarchical workflow - no direct jump allowed for revoke
+      if (stage === "costingHead") {
+        if (directorApproved) {
+          return NextResponse.json(
+            { error: "Cannot revoke Costing Head: Director has finalized this cost sheet. Director approval must be revoked first." },
+            { status: 400 }
+          );
+        }
+        if (directorPending) {
+          return NextResponse.json(
+            { error: "Cannot revoke Costing Head: Approval is currently with Director. Director must reject before Costing Head can revoke." },
+            { status: 400 }
+          );
+        }
+      } else if (stage === "marketing") {
+        if (directorApproved || directorPending) {
+          return NextResponse.json(
+            { error: "Cannot revoke Marketing: Cost sheet is at Director stage. Cannot skip approval hierarchy." },
+            { status: 400 }
+          );
+        }
+        if (costingHeadApproved) {
+          return NextResponse.json(
+            { error: "Cannot revoke Marketing: Costing Head has already approved. Costing Head must revoke first." },
+            { status: 400 }
+          );
+        }
+        if (costingHeadPending) {
+          return NextResponse.json(
+            { error: "Cannot revoke Marketing: Approval is currently with Costing Head. Costing Head must reject before Marketing can revoke." },
+            { status: 400 }
+          );
+        }
+      } else if (stage === "fabric" || stage === "mmc" || stage === "ie" || stage === "washing") {
+        if (directorApproved || directorPending) {
+          return NextResponse.json(
+            { error: `Cannot revoke ${stage.toUpperCase()}: Approval is at Director stage. Cannot skip approval hierarchy.` },
+            { status: 400 }
+          );
+        }
+        if (costingHeadApproved || costingHeadPending) {
+          return NextResponse.json(
+            { error: `Cannot revoke ${stage.toUpperCase()}: Approval is at Costing Head stage. Cannot skip approval hierarchy.` },
+            { status: 400 }
+          );
+        }
+        if (marketingApproved) {
+          return NextResponse.json(
+            { error: `Cannot revoke ${stage.toUpperCase()}: Marketing has already approved. Marketing approval must be revoked first.` },
+            { status: 400 }
+          );
+        }
+        if (marketingPending) {
+          return NextResponse.json(
+            { error: `Cannot revoke ${stage.toUpperCase()}: Approval is currently with Marketing. Marketing must reject before departmental stages can revoke.` },
+            { status: 400 }
+          );
         }
       }
 
-      // Reset that stage and any dependent subsequent stages
+      // Reset that stage
       approvals[stage] = {
         status: "pending",
       };
 
-      if (stage === "fabric" || stage === "mmc" || stage === "ie" || stage === "washing") {
-        if (approvals.marketing?.status === "approved") approvals.marketing = { status: "pending" };
-        if (approvals.costingHead?.status === "approved") approvals.costingHead = { status: "pending" };
-        if (approvals.director?.status === "approved") approvals.director = { status: "pending" };
+      // When revoking a stage, resolve any higher-level rejection that triggered this revocation
+      if (stage === "costingHead") {
+        if (approvals.director?.status === "rejected") {
+          approvals.director = { status: "pending" };
+        }
       } else if (stage === "marketing") {
-        if (approvals.costingHead?.status === "approved") approvals.costingHead = { status: "pending" };
-        if (approvals.director?.status === "approved") approvals.director = { status: "pending" };
-      } else if (stage === "costingHead") {
-        if (approvals.director?.status === "approved") approvals.director = { status: "pending" };
+        if (approvals.costingHead?.status === "rejected") {
+          approvals.costingHead = { status: "pending" };
+        }
+      } else if (stage === "fabric" || stage === "mmc" || stage === "ie" || stage === "washing") {
+        if (approvals.marketing?.status === "rejected") {
+          approvals.marketing = { status: "pending" };
+        }
       }
     }
 

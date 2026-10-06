@@ -143,6 +143,14 @@ export function CostSheetApprovalWorkflow({
   const costingHeadApproved = approvals.costingHead?.status === "approved";
   const directorApproved = approvals.director?.status === "approved";
 
+  const directorRejected = approvals.director?.status === "rejected";
+  const costingHeadRejected = approvals.costingHead?.status === "rejected";
+  const marketingRejected = approvals.marketing?.status === "rejected";
+
+  const directorPending = costingHeadApproved && !directorApproved && !directorRejected;
+  const costingHeadPending = marketingApproved && !costingHeadApproved && !costingHeadRejected;
+  const marketingPending = deptCompleted && !marketingApproved && !marketingRejected;
+
   const overallStatus = approvals.overallStatus || "draft";
 
   function canPerform(stage: ApprovalStage, action: "approve" | "reject" | "revoke"): {
@@ -180,48 +188,87 @@ export function CostSheetApprovalWorkflow({
       }
     }
 
+    if (action === "reject") {
+      if (stage === "marketing" && !deptCompleted) {
+        return {
+          allowed: false,
+          reason: "Marketing review requires all 4 departmental sign-offs first.",
+        };
+      }
+      if (stage === "costingHead" && !marketingApproved) {
+        return {
+          allowed: false,
+          reason: "Costing Head review requires Marketing approval first.",
+        };
+      }
+      if (stage === "director" && !costingHeadApproved) {
+        return {
+          allowed: false,
+          reason: "Director sign-off requires Costing Head approval first.",
+        };
+      }
+    }
+
     if (action === "revoke") {
-      if (stage === "fabric" || stage === "mmc" || stage === "ie" || stage === "washing") {
-        if (directorApproved && !isAdmin) {
+      if (stage === "costingHead") {
+        if (directorApproved) {
           return {
             allowed: false,
-            reason: "Locked: Final Director sign-off is complete.",
+            reason: "Locked: Director has approved. Director must revoke first.",
           };
         }
-        if (costingHeadApproved && !isAdmin) {
+        if (directorPending) {
           return {
             allowed: false,
-            reason: "Locked: Costing Head has approved. Costing Head must revoke first.",
-          };
-        }
-        if (marketingApproved && !isAdmin) {
-          return {
-            allowed: false,
-            reason: "Locked: Marketing has approved. Marketing must revoke first.",
+            reason: "Locked: Approval is currently with Director. Director must reject before Costing Head can revoke.",
           };
         }
       }
 
       if (stage === "marketing") {
-        if (directorApproved && !isAdmin) {
+        if (directorApproved || directorPending) {
           return {
             allowed: false,
-            reason: "Locked: Final Director sign-off is complete.",
+            reason: "Locked: Cost sheet is at Director stage. Cannot skip approval hierarchy.",
           };
         }
-        if (costingHeadApproved && !isAdmin) {
+        if (costingHeadApproved) {
           return {
             allowed: false,
             reason: "Locked: Costing Head has approved. Costing Head must revoke first.",
           };
         }
-      }
-
-      if (stage === "costingHead") {
-        if (directorApproved && !isAdmin) {
+        if (costingHeadPending) {
           return {
             allowed: false,
-            reason: "Locked: Final Director sign-off is complete. Director must revoke first.",
+            reason: "Locked: Approval is currently with Costing Head. Costing Head must reject before Marketing can revoke.",
+          };
+        }
+      }
+
+      if (stage === "fabric" || stage === "mmc" || stage === "ie" || stage === "washing") {
+        if (directorApproved || directorPending) {
+          return {
+            allowed: false,
+            reason: "Locked: Cost sheet is at Director stage. Cannot skip approval hierarchy.",
+          };
+        }
+        if (costingHeadApproved || costingHeadPending) {
+          return {
+            allowed: false,
+            reason: "Locked: Cost sheet is at Costing Head stage. Cannot skip approval hierarchy.",
+          };
+        }
+        if (marketingApproved) {
+          return {
+            allowed: false,
+            reason: "Locked: Marketing has approved. Marketing must revoke first.",
+          };
+        }
+        if (marketingPending) {
+          return {
+            allowed: false,
+            reason: "Locked: Approval is currently with Marketing. Marketing must reject before departmental stages can revoke.",
           };
         }
       }
@@ -333,7 +380,10 @@ export function CostSheetApprovalWorkflow({
 
             const check = canPerform(step.stage, "approve");
             const canApprove = check.allowed;
-            const canRevoke = canPerform(step.stage, "revoke").allowed;
+            const rejectCheck = canPerform(step.stage, "reject");
+            const canReject = rejectCheck.allowed && !isRejected;
+            const revokeCheck = canPerform(step.stage, "revoke");
+            const canRevoke = revokeCheck.allowed;
 
             return (
               <div
@@ -430,17 +480,17 @@ export function CostSheetApprovalWorkflow({
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={!canApprove || isProcessing}
+                        disabled={!canReject || isProcessing}
                         onClick={() => {
                           setCommentInput("");
                           setActiveModal({ stage: step.stage, action: "reject" });
                         }}
                         className={`w-full h-7 px-1 text-[11px] font-semibold truncate ${
-                          canApprove
+                          canReject
                             ? "text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900/60 dark:hover:bg-red-950/40"
                             : "text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-50 shadow-none"
                         }`}
-                        title="Reject with remarks"
+                        title={rejectCheck.reason || "Reject with remarks"}
                       >
                         Reject
                       </Button>
@@ -454,16 +504,26 @@ export function CostSheetApprovalWorkflow({
                         setCommentInput("");
                         setActiveModal({ stage: step.stage, action: "revoke" });
                       }}
-                      className="w-full h-7 text-[11px] text-muted-foreground hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40"
-                      title="Revoke approval"
+                      className={`w-full h-7 text-[11px] font-semibold truncate ${
+                        canRevoke
+                          ? "text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800 dark:text-amber-400 dark:border-amber-800 dark:hover:bg-amber-950/40 shadow-2xs"
+                          : "text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800 cursor-not-allowed opacity-50 shadow-none"
+                      }`}
+                      title={revokeCheck.reason || "Revoke approval"}
                     >
-                      <RotateCcw className="size-3 mr-1" /> Revoke
+                      <RotateCcw className="size-3 mr-1 shrink-0" /> Revoke
                     </Button>
                   )}
 
                   {!canApprove && !isApproved && check.reason && (
                     <span className="text-[9px] text-muted-foreground text-center leading-tight">
                       {check.reason}
+                    </span>
+                  )}
+
+                  {isApproved && !canRevoke && revokeCheck.reason && (
+                    <span className="text-[9px] text-muted-foreground text-center leading-tight">
+                      {revokeCheck.reason}
                     </span>
                   )}
                 </div>
@@ -503,7 +563,7 @@ export function CostSheetApprovalWorkflow({
               {activeModal?.action === "reject" &&
                 "Rejecting this section requires specifying the reason so the merchandiser can make adjustments."}
               {activeModal?.action === "revoke" &&
-                "Are you sure you want to revoke approval? Any subsequent approval stages will be reset."}
+                `Are you sure you want to revoke approval for ${STEPS.find((s) => s.stage === activeModal.stage)?.title || activeModal?.stage.toUpperCase()}? This stage will return to pending state.`}
             </DialogDescription>
           </DialogHeader>
 
