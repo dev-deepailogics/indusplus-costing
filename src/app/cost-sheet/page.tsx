@@ -1347,34 +1347,38 @@ function CostSheetContent() {
   }, [selectedArTermId, selectedApTermId, arPaymentTermsData, apPaymentTermsData]);
 
   // Core Style Change Logic
-  function executeStyleChange(id: string) {
-    setIsDirty(false);
-    isDirtyRef.current = false;
-    isInitializedRef.current = false;
-    setTimeout(() => {
-      isInitializedRef.current = true;
-      isDirtyRef.current = false;
-      setIsDirty(false);
-    }, 400);
-
+  function executeStyleChange(id: string, overrideCustomer?: string) {
     hasUserRemovedTestingCostRef.current = false;
     setNewFabricRows(new Set());
     setNewLiningRows(new Set());
     setNewAccessoryRows(new Set());
     setNewChemicalRows(new Set());
     setNewSpecialChargeRows(new Set());
+
+    const activeCust = overrideCustomer ?? customerName;
+
     if (id === "custom" || !id) {
       setLoadedCostSheet(null);
-      setActiveStyle(ensureStyleBOMDefaults(CUSTOM_STYLE));
+      setActiveStyle(
+        ensureStyleBOMDefaults({
+          ...CUSTOM_STYLE,
+          customerName: activeCust,
+        })
+      );
       setWorkOrderNumber("");
-      router.push("/cost-sheet?styleId=custom");
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("styleId", "custom");
+        url.searchParams.delete("styleCode");
+        window.history.replaceState({}, "", url.toString());
+      }
     } else {
       const woRow = indusStyleRows.find((r) => r.styleCode === id);
       const rawCust = woRow?.customer?.trim() || "";
       const matchedCust =
         customersList.find(
           (c) => c.toLowerCase() === rawCust.toLowerCase(),
-        ) || rawCust || customerName;
+        ) || rawCust || activeCust;
       if (woRow) {
         setWorkOrderNumber(woRow.workOrderNo);
         setCustomerName(matchedCust);
@@ -1391,7 +1395,12 @@ function CostSheetContent() {
       });
       setLoadedCostSheet(null);
       setActiveStyle(baseStyle);
-      router.push(`/cost-sheet?styleCode=${encodeURIComponent(id)}`);
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("styleCode", id);
+        url.searchParams.delete("styleId");
+        window.history.replaceState({}, "", url.toString());
+      }
       fetchIndusBOM(id).then((bom) => {
         if (!bom) return;
         const mapped = mapIndusBOMToStyle(bom);
@@ -1413,16 +1422,16 @@ function CostSheetContent() {
         if (mapped.styleCategory) setStyleCategory(mapped.styleCategory);
       });
     }
+
+    if (!isReadOnly) {
+      isDirtyRef.current = true;
+      setIsDirty(true);
+    }
   }
 
-  // Handle active style change from dropdown with unsaved changes interception
-  function handleStyleChange(id: string) {
-    if (isDirtyRef.current) {
-      setPendingNavigation({ type: "style", target: id });
-      setUnsavedModalOpen(true);
-      return;
-    }
-    executeStyleChange(id);
+  // Handle active style change from dropdown (directly executes and marks dirty without showing confirmation modal)
+  function handleStyleChange(id: string, overrideCustomer?: string) {
+    executeStyleChange(id, overrideCustomer);
   }
 
   // Core Reset Logic
@@ -2436,7 +2445,10 @@ function CostSheetContent() {
                     placeholder="Enter manual name…"
                     className="w-32 h-6 px-1.5 text-xs rounded text-left transition-all outline-none bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 shadow-2xs hover:border-blue-500 focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 font-medium"
                     value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
+                    onChange={(e) => {
+                      setCustomerName(e.target.value);
+                      markDirty(e);
+                    }}
                   />
                 ) : (
                   <SearchableSelect
@@ -2451,7 +2463,7 @@ function CostSheetContent() {
                       } else if (val !== customerName) {
                         setCustomerName(val);
                         setWorkOrderNumber("");
-                        handleStyleChange("custom");
+                        handleStyleChange("custom", val);
                       }
                     }}
                     options={
