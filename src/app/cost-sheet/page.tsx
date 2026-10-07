@@ -593,9 +593,13 @@ function CostSheetContent() {
   // When grid is active, wash types come from the Washing tab ROW labels in the DB
   // (wash types are stored as qty_band rows; qty bands are the style_category columns).
   // When grid is inactive, the wash type dropdown is hidden entirely (irrelevant to calculation).
-  const effectiveWashTypesList = isRejectionGridActive
-    ? (rejectionGrid?.tables?.["Washing"]?.rowLabels ?? washTypesList)
-    : washTypesList;
+  const effectiveWashTypesList = useMemo(() => {
+    const fromGrid = rejectionGrid?.tables?.["Washing"]?.rowLabels || [];
+    const combined = isRejectionGridActive
+      ? [...fromGrid, ...washTypesList]
+      : washTypesList;
+    return Array.from(new Set(combined.map((s) => s.trim()).filter(Boolean)));
+  }, [isRejectionGridActive, rejectionGrid, washTypesList]);
   const [orderTypesList, setOrderTypesList] = useState<string[]>([]);
   const [costingStageList, setCostingStageList] = useState<string[]>([]);
   const [shipmentModeList, setShipmentModeList] = useState<string[]>([]);
@@ -679,7 +683,7 @@ function CostSheetContent() {
                       : prev
                   );
                   if (mapped.smvSewing) setSmvSewingInput(mapped.smvSewing.toString());
-                  if (mapped.washType) setWashType(mapped.washType);
+                  if (mapped.washType) handleWashTypeChange(mapped.washType);
                   if (mapped.styleCategory) setStyleCategory(mapped.styleCategory);
                 });
               }
@@ -1418,7 +1422,7 @@ function CostSheetContent() {
             : prev
         );
         if (mapped.smvSewing) setSmvSewingInput(mapped.smvSewing.toString());
-        if (mapped.washType) setWashType(mapped.washType);
+        if (mapped.washType) handleWashTypeChange(mapped.washType);
         if (mapped.styleCategory) setStyleCategory(mapped.styleCategory);
       });
     }
@@ -1427,6 +1431,43 @@ function CostSheetContent() {
       isDirtyRef.current = true;
       setIsDirty(true);
     }
+  }
+
+  // Handle Wash Type change and sync with activeStyle and BOM Chemicals
+  function handleWashTypeChange(val: string) {
+    setWashType(val);
+    markDirty();
+    setActiveStyle((prev) => {
+      if (!prev) return prev;
+      let nextChemicals = [...(prev.bomChemicals || [])];
+      if (val) {
+        if (nextChemicals.length === 0) {
+          nextChemicals = [
+            {
+              washItem: val,
+              consPerPc: 1,
+              rateUSD: 0,
+              ratePKR: 0,
+              totalCostPKR: 0,
+            },
+          ];
+        } else {
+          // If first row has no washItem or matched the previous washType, update it to the new washType
+          const first = nextChemicals[0];
+          if (!first.washItem || first.washItem === washType) {
+            nextChemicals[0] = {
+              ...first,
+              washItem: val,
+            };
+          }
+        }
+      }
+      return {
+        ...prev,
+        washType: val,
+        bomChemicals: nextChemicals,
+      };
+    });
   }
 
   // Handle active style change from dropdown (directly executes and marks dirty without showing confirmation modal)
@@ -2578,7 +2619,7 @@ function CostSheetContent() {
                             : prev
                         );
                         if (mapped.smvSewing) setSmvSewingInput(mapped.smvSewing.toString());
-                        if (mapped.washType) setWashType(mapped.washType);
+                        if (mapped.washType) handleWashTypeChange(mapped.washType);
                         if (mapped.styleCategory) setStyleCategory(mapped.styleCategory);
                       });
                     }
@@ -2681,9 +2722,9 @@ function CostSheetContent() {
                   </span>
                   <SearchableSelect
                     className="w-32"
-                    disabled={isDbSelected || isWashingLocked}
+                    disabled={isWashingLocked}
                     value={washType}
-                    onChange={(val) => setWashType(val)}
+                    onChange={(val) => handleWashTypeChange(val)}
                     options={[{ value: "", label: "" }, ...effectiveWashTypesList.map(t => ({ value: t, label: t }))]}
                   />
                 </div>
@@ -4632,7 +4673,14 @@ function CostSheetContent() {
                       <TableRow className="bg-muted/20 font-bold h-6">
                         <TableCell colSpan={7} className="px-2 py-0.5 text-xs font-bold text-foreground">
                           <div className="flex items-center justify-between">
-                            <span>Chemical Costs</span>
+                            <div className="flex items-center gap-2">
+                              <span>Chemical Costs</span>
+                              {washType && (
+                                <Badge variant="outline" className="text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                                  Wash Type: {washType}
+                                </Badge>
+                              )}
+                            </div>
                             {isWashingApproved && (
                               <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium">
                                 <Lock className="size-3" /> Approved by Washing Head (Locked for others)
@@ -4644,8 +4692,10 @@ function CostSheetContent() {
                       {activeStyle.bomChemicals.map((item, idx) => {
                         return (
                           <TableRow key={`chem-${idx}`} className="h-7">
-                            <TableCell className="p-1 pl-2 text-xs text-muted-foreground font-semibold uppercase truncate">
-                              Chemicals
+                            <TableCell className="p-1 pl-2 text-xs text-muted-foreground font-semibold uppercase truncate" title={item.washItem || washType || "Chemicals"}>
+                              {item.washItem && item.washItem === washType
+                                ? `Wash (${washType})`
+                                : (washType ? `Wash (${washType})` : "Chemicals")}
                             </TableCell>
                             <TableCell colSpan={2} className="p-1">
                               <SearchableSelect
@@ -4657,11 +4707,17 @@ function CostSheetContent() {
                                   updateChemicalsBOM(idx, "washItem", val);
                                 }}
                                 options={[
-                                  { value: "", label: "-- Select Chemical --" },
+                                  { value: "", label: "-- Select Chemical / Wash --" },
+                                  ...(washType && !chemicalsList.includes(washType)
+                                    ? [{ value: washType, label: `${washType} (Selected Wash)` }]
+                                    : []),
                                   ...chemicalsList.map((c) => ({
                                     value: c,
                                     label: c,
                                   })),
+                                  ...effectiveWashTypesList
+                                    .filter((w) => w !== washType && !chemicalsList.includes(w))
+                                    .map((w) => ({ value: w, label: `${w} (Wash)` })),
                                 ]}
                               />
                             </TableCell>
@@ -4759,7 +4815,10 @@ function CostSheetContent() {
                                   bomChemicals: [
                                     ...activeStyle.bomChemicals,
                                     {
-                                      washItem: "",
+                                      washItem:
+                                        activeStyle.bomChemicals.length === 0
+                                          ? washType || ""
+                                          : "",
                                       consPerPc: 0,
                                       rateUSD: 0,
                                       ratePKR: 0,
