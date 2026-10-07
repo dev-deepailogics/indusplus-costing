@@ -451,7 +451,7 @@ export function runFormulaEngine(
 
   const isQtyOutOfRange = qty > 0 && !sizeBracket;
   const qtyRangeError = isQtyOutOfRange
-    ? `Order Quantity (${qty}) does not match any configured Qty Band in Cut-to-Ship Grid.`
+    ? `Order Quantity (${qty}) does not match any configured Qty Band in efficiency.`
     : undefined;
 
   let efficiency = 0;

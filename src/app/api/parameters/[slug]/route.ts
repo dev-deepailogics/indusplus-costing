@@ -1798,7 +1798,7 @@ export async function GET(
     let data: unknown;
 
     switch (slug) {
-      case "cut-to-ship-grid":
+      case "efficiency":
         data = await getCutToShipGrid(pool);
         break;
       case "rejection-grid":
@@ -1871,7 +1871,7 @@ export async function PUT(
     await ensureTables(pool);
 
     switch (slug) {
-      case "cut-to-ship-grid":
+      case "efficiency":
         await saveCutToShipGrid(pool, body as MatrixTableData);
         break;
       case "rejection-grid":

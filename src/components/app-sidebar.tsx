@@ -117,7 +117,7 @@ export function AppSidebar() {
                           isActive={
                             pathname.startsWith("/parameters/styles") ||
                             pathname.startsWith(
-                              "/parameters/cut-to-ship-grid",
+                              "/parameters/efficiency",
                             ) ||
                             pathname.startsWith("/parameters/rejection-grid")
                           }
@@ -137,7 +137,7 @@ export function AppSidebar() {
                       align="start"
                       sideOffset={4}
                     >
-                      {["styles", "cut-to-ship-grid", "rejection-grid"].map(
+                      {["styles", "efficiency", "rejection-grid"].map(
                         (slug) => {
                           const table = PARAMETER_TABLES.find(
                             (t) => t.slug === slug,

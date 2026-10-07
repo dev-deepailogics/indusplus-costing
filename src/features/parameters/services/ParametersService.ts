@@ -2,7 +2,7 @@ import type { ParameterDef } from "../types";
 
 export const PARAMETER_TABLES: ParameterDef[] = [
   { slug: "styles", title: "Style Categories (SAM Range)", kind: "simple" },
-  { slug: "cut-to-ship-grid", title: "Cut-to-Ship Grid", kind: "matrix" },
+  { slug: "efficiency", title: "Efficiency Grid", kind: "matrix" },
   { slug: "rejection-grid", title: "Rejection Grid", kind: "process-matrix" },
   { slug: "order-type", title: "Order Type", kind: "simple" },
   { slug: "customer-commission", title: "Customer Wise Commission", kind: "simple" },

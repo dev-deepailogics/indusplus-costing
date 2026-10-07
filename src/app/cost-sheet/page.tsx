@@ -848,7 +848,7 @@ function CostSheetContent() {
       setDirectLabourFoh,
     );
     const unsubCTS = subscribeToTable<MatrixTableData>(
-      "cut-to-ship-grid",
+      "efficiency",
       setCutToShipGrid,
     );
     const unsubRej = subscribeToTable<ProcessMatrixTableData>(

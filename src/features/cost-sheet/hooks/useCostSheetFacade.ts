@@ -154,7 +154,7 @@ export function useCostSheetFacade() {
   // Fetch Parameter Subscriptions
   useEffect(() => {
     const unsubDLF = ParametersService.subscribeToTable<SimpleTableData>("direct-labour-foh", setDirectLabourFoh);
-    const unsubCTS = ParametersService.subscribeToTable<MatrixTableData>("cut-to-ship-grid", setCutToShipGrid);
+    const unsubCTS = ParametersService.subscribeToTable<MatrixTableData>("efficiency", setCutToShipGrid);
     const unsubRej = ParametersService.subscribeToTable<ProcessMatrixTableData>("rejection-grid", setRejectionGrid);
     const unsubStylesGrid = ParametersService.subscribeToTable<SimpleTableData>("styles", setStylesGrid);
 
