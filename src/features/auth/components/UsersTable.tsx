@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import {
   Table,
@@ -23,7 +23,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RefreshCw, Plus, KeyRound, Power, Trash2 } from "lucide-react";
+import { RefreshCw, Plus, KeyRound, Power, Trash2, Search, X } from "lucide-react";
 import { useUsersFacade } from "../hooks/useUsersFacade";
 import { type UserProfile } from "../types";
 import type { RoleDefinition } from "@/lib/rbac/permissions";
@@ -104,6 +104,40 @@ export function UsersTable() {
   for (const r of roles) {
     roleLabels[r.slug] = r.name;
   }
+
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+
+  // Dynamic role options for dropdown
+  const filterRoleOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of roles) {
+      map.set(r.slug, r.name);
+    }
+    for (const u of users) {
+      if (u.role && !map.has(u.role)) {
+        map.set(u.role, roleLabels[u.role] ?? u.role);
+      }
+    }
+    return Array.from(map.entries()).map(([slug, name]) => ({ slug, name }));
+  }, [roles, users, roleLabels]);
+
+  // Filtered users list
+  const filteredUsers = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return users.filter((u) => {
+      if (roleFilter !== "all" && u.role !== roleFilter) {
+        return false;
+      }
+      if (q) {
+        const nameMatch = (u.displayName ?? "").toLowerCase().includes(q);
+        const emailMatch = (u.email ?? "").toLowerCase().includes(q);
+        return nameMatch || emailMatch;
+      }
+      return true;
+    });
+  }, [users, searchQuery, roleFilter]);
 
   // Create User dialog
   const [createOpen, setCreateOpen] = useState(false);
@@ -204,14 +238,64 @@ export function UsersTable() {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Manage Users</h1>
-        {canCreate && (
-          <Button onClick={openCreateDialog} size="sm">
-            <Plus className="mr-1.5 size-4" />
-            Create User
-          </Button>
-        )}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-2xl font-semibold tracking-tight">Manage Users</h1>
+          {(searchQuery || roleFilter !== "all") && (
+            <Badge variant="secondary" className="font-semibold text-xs px-2 py-0.5">
+              {filteredUsers.length} of {users.length}
+            </Badge>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Search by name or email */}
+          <div className="relative w-64 sm:w-72">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Search name, email…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8.5 pr-8 h-9 text-xs"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                title="Clear search"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Roles Dropdown Filter */}
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            aria-label="Filter users by role"
+            className="h-9 rounded-md border border-input bg-background px-3 text-xs font-medium focus:outline-hidden focus:ring-1 focus:ring-ring cursor-pointer"
+          >
+            <option value="all">All Roles</option>
+            {filterRoleOptions.map((r) => (
+              <option key={r.slug} value={r.slug}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+
+          {canCreate && (
+            <Button
+              onClick={openCreateDialog}
+              size="sm"
+              className="h-9 gap-1.5 font-semibold bg-[#990000] hover:bg-[#800000] text-white shadow-xs"
+            >
+              <Plus className="size-4" />
+              Create User
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="rounded-xl border bg-card shadow-sm overflow-x-auto">
@@ -226,7 +310,7 @@ export function UsersTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.map((u) => {
+            {filteredUsers.map((u) => {
               const isSelf = u.id === currentUserId;
               const isTargetAdmin = u.role === "admin";
               const canModifyThisUser = !isSelf && (isAdmin || !isTargetAdmin);
@@ -316,10 +400,30 @@ export function UsersTable() {
                 </TableRow>
               );
             })}
-            {users.length === 0 && (
+            {filteredUsers.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                  No users found.
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
+                  {searchQuery || roleFilter !== "all" ? (
+                    <div className="space-y-1.5 max-w-sm mx-auto">
+                      <p className="text-sm font-medium text-foreground">No users match your filters.</p>
+                      <p className="text-xs text-muted-foreground">
+                        Try searching for a different keyword or resetting your filter options.
+                      </p>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={() => {
+                          setSearchQuery("");
+                          setRoleFilter("all");
+                        }}
+                        className="text-xs text-[#990000] p-0 h-auto font-medium"
+                      >
+                        Reset filters
+                      </Button>
+                    </div>
+                  ) : (
+                    "No users found."
+                  )}
                 </TableCell>
               </TableRow>
             )}
