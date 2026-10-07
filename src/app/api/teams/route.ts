@@ -40,6 +40,19 @@ export async function ensureTeamsTables(pool: ConnectionPool) {
       CREATE INDEX IX_team_members_userId ON team_members (userId);
     END
   `);
+
+  // Safely sync team_members roleSlug with current users.role
+  try {
+    await pool.request().query(`
+      UPDATE m
+      SET m.roleSlug = u.role
+      FROM team_members m
+      INNER JOIN users u ON u.id = m.userId
+      WHERE u.role IS NOT NULL AND u.role <> '' AND m.roleSlug <> u.role;
+    `);
+  } catch {
+    // Non-blocking sync attempt
+  }
 }
 
 export interface TeamMemberDto {
@@ -95,17 +108,17 @@ export async function GET() {
         t.updatedAt,
         m.id AS memberId,
         m.userId,
-        m.roleSlug,
+        COALESCE(u.role, m.roleSlug) AS roleSlug,
         m.notes,
         m.createdAt AS memberCreatedAt,
         u.email AS userEmail,
         u.displayName AS userDisplayName,
         u.role AS userDefaultRole,
-        COALESCE(r.name, m.roleSlug) AS roleName
+        COALESCE(r.name, u.role, m.roleSlug) AS roleName
       FROM teams t
       LEFT JOIN team_members m ON m.teamId = t.id
       LEFT JOIN users u ON u.id = m.userId
-      LEFT JOIN roles r ON r.slug = m.roleSlug
+      LEFT JOIN roles r ON r.slug = COALESCE(u.role, m.roleSlug)
       ORDER BY t.createdAt DESC, m.id ASC
     `;
 

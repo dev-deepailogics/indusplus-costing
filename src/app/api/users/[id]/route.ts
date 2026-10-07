@@ -102,6 +102,18 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "User not found." }, { status: 404 });
     }
 
+    if (typeof body.role === "string" && body.role.trim()) {
+      try {
+        await pool
+          .request()
+          .input("syncUserId", id)
+          .input("syncRoleSlug", body.role.trim())
+          .query(`UPDATE team_members SET roleSlug = @syncRoleSlug WHERE userId = @syncUserId`);
+      } catch (teamSyncErr) {
+        console.warn("[PATCH /api/users/[id]] Failed to sync team_members role:", teamSyncErr);
+      }
+    }
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Update user error:", err);

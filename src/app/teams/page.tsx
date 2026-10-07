@@ -191,11 +191,14 @@ export default function ManageTeamsPage() {
     setFormCustomers(team.customers || []);
     setFormIsActive(team.isActive);
     setFormMembers(
-      team.members.map((m) => ({
-        userId: m.userId,
-        roleSlug: m.roleSlug,
-        notes: m.notes || "",
-      }))
+      team.members.map((m) => {
+        const u = allUsers.find((user) => user.id === m.userId);
+        return {
+          userId: m.userId,
+          roleSlug: u?.role || m.roleSlug,
+          notes: m.notes || "",
+        };
+      })
     );
     setIsFormOpen(true);
   };
@@ -207,11 +210,14 @@ export default function ManageTeamsPage() {
     setFormCustomers([...(team.customers || [])]);
     setFormIsActive(true);
     setFormMembers(
-      team.members.map((m) => ({
-        userId: m.userId,
-        roleSlug: m.roleSlug,
-        notes: m.notes || "",
-      }))
+      team.members.map((m) => {
+        const u = allUsers.find((user) => user.id === m.userId);
+        return {
+          userId: m.userId,
+          roleSlug: u?.role || m.roleSlug,
+          notes: m.notes || "",
+        };
+      })
     );
     setIsFormOpen(true);
     toast.info(`Cloned configuration from "${team.name}". Review and save.`);
