@@ -180,6 +180,7 @@ export default function SavedCostSheetsPage() {
     const dataToExport = filteredSheets.map((s) => ({
       "Cost Sheet ID": s.id,
       "Scenario Reference": s.referenceName,
+      "Work Order": s.workOrderNumber || "—",
       "Style ID": s.styleId,
       "Style Name": s.styleName,
       Customer: s.customerName,
@@ -214,12 +215,12 @@ export default function SavedCostSheetsPage() {
     return costSheets.filter((s) => {
       return (
         s.referenceName?.toLowerCase().includes(q) ||
+        s.workOrderNumber?.toLowerCase().includes(q) ||
         s.styleId?.toLowerCase().includes(q) ||
         s.styleName?.toLowerCase().includes(q) ||
         s.id?.toLowerCase().includes(q) ||
         s.customerName?.toLowerCase().includes(q) ||
-        s.costingStage?.toLowerCase().includes(q) ||
-        s.workOrderNumber?.toLowerCase().includes(q)
+        s.costingStage?.toLowerCase().includes(q)
       );
     });
   }, [costSheets, search]);
@@ -264,7 +265,7 @@ export default function SavedCostSheetsPage() {
             <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Search by ID, Style ID, Name, or Scenario..."
+              placeholder="Search by Work Order, Cost Sheet ID, Style, Customer, Scenario..."
               className="pl-9 h-9 w-full"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -296,6 +297,9 @@ export default function SavedCostSheetsPage() {
                   </TableHead>
                   <TableHead className="font-semibold text-foreground py-2.5 px-2">
                     Scenario Name
+                  </TableHead>
+                  <TableHead className="font-semibold text-foreground py-2.5 px-2">
+                    Work Order
                   </TableHead>
                   <TableHead className="font-semibold text-foreground py-2.5 px-2">
                     Style ID & Name
@@ -372,6 +376,15 @@ export default function SavedCostSheetsPage() {
                       </TableCell>
                       <TableCell className="font-semibold text-foreground text-xs py-2.5 px-2">
                         {sheet.referenceName}
+                      </TableCell>
+                      <TableCell className="text-xs py-2.5 px-2 font-mono">
+                        {sheet.workOrderNumber ? (
+                          <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/60 inline-block">
+                            {sheet.workOrderNumber}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/50">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-xs py-2.5 px-2">
                         <span className="font-semibold text-primary block text-[11px]">
