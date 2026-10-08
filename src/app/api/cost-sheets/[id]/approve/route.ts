@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       comments?: string;
     };
 
-    if (!stage || !["fabric", "mmc", "ie", "washing", "marketing", "costingHead", "director"].includes(stage)) {
+    if (!stage || !["cad", "fabric", "mmc", "ie", "washing", "marketing", "costingHead", "director"].includes(stage)) {
       return NextResponse.json({ error: "Invalid approval stage" }, { status: 400 });
     }
 
@@ -231,14 +231,28 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     // Sequential Prerequisites validation for approval
     if (action === "approve") {
+      // Step 1 is CAD: departmental heads require CAD approval first
+      if (stage === "fabric" || stage === "mmc" || stage === "ie" || stage === "washing") {
+        if (approvals.cad?.status !== "approved") {
+          return NextResponse.json(
+            {
+              error: "CAD approval is required before departmental head approvals.",
+            },
+            { status: 400 }
+          );
+        }
+      }
+
       if (stage === "marketing") {
+        const cadOk = approvals.cad?.status === "approved";
         const fabricOk = approvals.fabric?.status === "approved";
         const mmcOk = approvals.mmc?.status === "approved";
         const ieOk = approvals.ie?.status === "approved";
         const washingOk = approvals.washing?.status === "approved";
 
-        if (!fabricOk || !mmcOk || !ieOk || !washingOk) {
+        if (!cadOk || !fabricOk || !mmcOk || !ieOk || !washingOk) {
           const missing: string[] = [];
+          if (!cadOk) missing.push("CAD");
           if (!fabricOk) missing.push("Fabric Head");
           if (!mmcOk) missing.push("MMC Head");
           if (!ieOk) missing.push("IE Head");
@@ -246,7 +260,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
           return NextResponse.json(
             {
-              error: `Marketing approval requires prior approval from all departmental heads: ${missing.join(", ")} pending.`,
+              error: `Marketing approval requires prior approval from CAD and all departmental heads: ${missing.join(", ")} pending.`,
             },
             { status: 400 }
           );
@@ -273,14 +287,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (action === "reject") {
+      if (stage === "fabric" || stage === "mmc" || stage === "ie" || stage === "washing") {
+        if (approvals.cad?.status !== "approved") {
+          return NextResponse.json(
+            { error: "CAD approval must be completed before departmental heads can review." },
+            { status: 400 }
+          );
+        }
+      }
       if (stage === "marketing") {
+        const cadOk = approvals.cad?.status === "approved";
         const fabricOk = approvals.fabric?.status === "approved";
         const mmcOk = approvals.mmc?.status === "approved";
         const ieOk = approvals.ie?.status === "approved";
         const washingOk = approvals.washing?.status === "approved";
-        if (!fabricOk || !mmcOk || !ieOk || !washingOk) {
+        if (!cadOk || !fabricOk || !mmcOk || !ieOk || !washingOk) {
           return NextResponse.json(
-            { error: "Marketing review requires all 4 departmental heads to complete sign-off first." },
+            { error: "Marketing review requires CAD and all 4 departmental heads to complete sign-off first." },
             { status: 400 }
           );
         }
@@ -340,7 +363,32 @@ export async function POST(request: NextRequest, context: RouteContext) {
       const marketingPending = deptCompleted && !marketingApproved && !marketingRejected;
 
       // Enforce strict reverse hierarchical workflow - no direct jump allowed for revoke
-      if (stage === "costingHead") {
+      if (stage === "cad") {
+        if (directorApproved || directorPending) {
+          return NextResponse.json(
+            { error: "Cannot revoke CAD: Approval is at Director stage. Cannot skip approval hierarchy." },
+            { status: 400 }
+          );
+        }
+        if (costingHeadApproved || costingHeadPending) {
+          return NextResponse.json(
+            { error: "Cannot revoke CAD: Approval is at Costing Head stage. Cannot skip approval hierarchy." },
+            { status: 400 }
+          );
+        }
+        if (marketingApproved || marketingPending) {
+          return NextResponse.json(
+            { error: "Cannot revoke CAD: Approval is at Marketing stage. Cannot skip approval hierarchy." },
+            { status: 400 }
+          );
+        }
+        if (fabricApproved || mmcApproved || ieApproved || washingApproved) {
+          return NextResponse.json(
+            { error: "Cannot revoke CAD: Departmental heads have already approved. Departmental approvals must be revoked before revoking CAD." },
+            { status: 400 }
+          );
+        }
+      } else if (stage === "costingHead") {
         if (directorApproved) {
           return NextResponse.json(
             { error: "Cannot revoke Costing Head: Director has finalized this cost sheet. Director approval must be revoked first." },
@@ -436,6 +484,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     } else if (approvals.marketing?.status === "approved") {
       overallStatus = "marketing_approved";
     } else if (
+      approvals.cad?.status === "approved" ||
       approvals.fabric?.status === "approved" ||
       approvals.mmc?.status === "approved" ||
       approvals.ie?.status === "approved" ||

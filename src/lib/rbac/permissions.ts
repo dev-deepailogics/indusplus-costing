@@ -126,6 +126,13 @@ export const SECTION_REGISTRY: SectionDefinition[] = [
 
   // ── 3. Approval Workflow Sign-Offs ──
   {
+    key: "approval_cad",
+    label: "Approval: CAD",
+    group: "approvals",
+    description: "CAD sign-off stage verifying CAD marker, pattern, and initial specs (Step 1)",
+    applicableActions: ["view", "approve"],
+  },
+  {
     key: "approval_fabric",
     label: "Approval: Fabric Head",
     group: "approvals",
@@ -237,6 +244,7 @@ export function can(
 
 // ─── Map approval stage → permission section key ──────────────────────
 export const APPROVAL_STAGE_TO_SECTION: Record<string, string> = {
+  cad: "approval_cad",
   fabric: "approval_fabric",
   mmc: "approval_mmc",
   ie: "approval_ie",
@@ -291,6 +299,15 @@ export function buildDefaultPermissions(slug: string): SectionPermission[] {
       SECTION_REGISTRY.filter((s) => s.group === "cost_sheet_sections").forEach((s) => {
         set(s.key, { view: true, edit: true });
       });
+      break;
+
+    case "cad":
+    case "cad_head":
+      // View all sections, approve CAD
+      SECTION_REGISTRY.filter((s) => s.group === "cost_sheet_sections").forEach((s) => {
+        set(s.key, { view: true });
+      });
+      set("approval_cad", { view: true, approve: true });
       break;
 
     case "fabric_head":

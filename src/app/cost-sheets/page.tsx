@@ -144,6 +144,7 @@ export default function SavedCostSheetsPage() {
       );
     }
 
+    const cadApproved = approvals?.cad?.status === "approved";
     const deptApprovedCount = [
       approvals?.fabric?.status === "approved",
       approvals?.mmc?.status === "approved",
@@ -155,6 +156,14 @@ export default function SavedCostSheetsPage() {
       return (
         <Badge className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
           <Clock className="size-3" /> {deptApprovedCount}/4 Depts
+        </Badge>
+      );
+    }
+
+    if (cadApproved) {
+      return (
+        <Badge className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
+          <Clock className="size-3" /> CAD Approved
         </Badge>
       );
     }

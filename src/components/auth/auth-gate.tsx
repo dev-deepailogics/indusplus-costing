@@ -38,6 +38,7 @@ function isRouteAllowed(
       can("section_special_charges", "view") ||
       can("section_sam_labor", "view") ||
       can("section_profitability", "view") ||
+      can("approval_cad", "view") ||
       can("approval_fabric", "view") ||
       can("approval_mmc", "view") ||
       can("approval_ie", "view") ||

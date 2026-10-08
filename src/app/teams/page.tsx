@@ -90,6 +90,8 @@ interface RoleOption {
 const ROLE_BADGE_STYLES: Record<string, { bg: string; border: string }> = {
   admin: { bg: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400", border: "border-red-200 dark:border-red-800/60" },
   merchant: { bg: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300", border: "border-amber-200 dark:border-amber-800/60" },
+  cad: { bg: "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300", border: "border-cyan-200 dark:border-cyan-800/60" },
+  cad_head: { bg: "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300", border: "border-cyan-200 dark:border-cyan-800/60" },
   fabric_head: { bg: "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-800/60" },
   mmc_head: { bg: "bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300", border: "border-purple-200 dark:border-purple-800/60" },
   ie_head: { bg: "bg-sky-50 text-sky-800 dark:bg-sky-950/40 dark:text-sky-300", border: "border-sky-200 dark:border-sky-800/60" },

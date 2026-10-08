@@ -52,6 +52,7 @@ export interface CostSheetCalculations {
 }
 
 export type ApprovalStage =
+  | "cad"
   | "fabric"
   | "mmc"
   | "ie"
@@ -70,6 +71,7 @@ export interface ApprovalStep {
 }
 
 export interface CostSheetApprovals {
+  cad?: ApprovalStep;
   fabric?: ApprovalStep;
   mmc?: ApprovalStep;
   ie?: ApprovalStep;
@@ -177,6 +179,7 @@ export function isCostSheetApprovedByAnyHead(
 
   if (app) {
     const stageApproved = Boolean(
+      app.cad?.status === "approved" ||
       app.fabric?.status === "approved" ||
       app.mmc?.status === "approved" ||
       app.ie?.status === "approved" ||

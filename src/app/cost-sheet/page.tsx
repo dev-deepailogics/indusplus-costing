@@ -19,6 +19,8 @@ import {
   Lock,
   Crown,
   Timer,
+  CheckCircle2,
+  Clock,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-provider";
 import {
@@ -47,6 +49,7 @@ import {
   getCostSheetById,
   getNextCostSheetId,
   saveCostSheet,
+  approveCostSheet,
 } from "@/lib/cost-sheet/api";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 import {
@@ -244,6 +247,7 @@ function CostSheetContent() {
   const canEditSpecialCharges = can("section_special_charges", "edit");
   const canEditSAM = can("section_sam_labor", "edit");
   const canEditProfitability = can("section_profitability", "edit");
+  const canApproveCad = userRole === "admin" || can("approval_cad", "approve");
 
   const canEditCostSheetsPage = userRole === "admin" || can("page_cost_sheets", "edit") || can("cost_sheets", "edit");
   const canCreateCostSheetsPage = userRole === "admin" || can("page_cost_sheets", "create") || can("cost_sheets", "create");
@@ -421,6 +425,7 @@ function CostSheetContent() {
   const isMMCApproved = approvals?.mmc?.status === "approved";
   const isIEApproved = approvals?.ie?.status === "approved";
   const isWashingApproved = approvals?.washing?.status === "approved";
+  const isCadApproved = approvals?.cad?.status === "approved";
 
   // When Marketing approves -> previous 4 depts (Fabric, MMC, IE, Washing) and Header inputs become locked.
   // When Costing Head approves -> Marketing, Header, and profitability inputs become locked.
@@ -2461,6 +2466,127 @@ function CostSheetContent() {
                   value={costingDate}
                   onChange={(e) => setCostingDate(e.target.value)}
                 />
+              </div>
+
+              {/* CAD Approval — Step 1 of Approval Flow */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold text-muted-foreground flex items-center gap-1.5">
+                  CAD Approval
+                  {isCadApproved ? (
+                    <span title="CAD Approved">
+                      <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    </span>
+                  ) : (
+                    <span title="Pending CAD Approval">
+                      <Clock className="size-3.5 text-amber-500" />
+                    </span>
+                  )}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={isCadApproved}
+                    disabled={!loadedCostSheet || !canApproveCad}
+                    title={
+                      !loadedCostSheet
+                        ? "Save cost sheet first to approve"
+                        : !canApproveCad
+                        ? "Only CAD role (or Admin) can approve CAD"
+                        : isCadApproved
+                        ? "CAD is approved. Click to revoke or use workflow stepper"
+                        : "Click to approve CAD stage"
+                    }
+                    onChange={async () => {
+                      if (!loadedCostSheet) {
+                        toast.error("Please save the cost sheet first before approving.");
+                        return;
+                      }
+                      if (!canApproveCad) {
+                        toast.error("Only CAD role (or Admin) can perform CAD approval.");
+                        return;
+                      }
+                      if (!isCadApproved) {
+                        try {
+                          if (isDirty) {
+                            const saved = await handleUpdateExisting();
+                            if (!saved) return;
+                          }
+                          const res = await approveCostSheet(loadedCostSheet.id, {
+                            stage: "cad",
+                            action: "approve",
+                          });
+                          setApprovals(res.approvals);
+                          setLoadedCostSheet((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  approvals: res.approvals,
+                                  approvalStatus: res.approvalStatus,
+                                }
+                              : prev
+                          );
+                          toast.success("CAD approved successfully.");
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : "Failed to approve CAD");
+                        }
+                      } else {
+                        const hasSubsequent = Boolean(
+                          approvals.fabric?.status === "approved" ||
+                          approvals.mmc?.status === "approved" ||
+                          approvals.ie?.status === "approved" ||
+                          approvals.washing?.status === "approved" ||
+                          approvals.marketing?.status === "approved" ||
+                          approvals.costingHead?.status === "approved" ||
+                          approvals.director?.status === "approved"
+                        );
+                        if (hasSubsequent) {
+                          toast.error("Cannot revoke CAD: Subsequent approvals already exist. Revoke those stages first in the stepper.");
+                          return;
+                        }
+                        try {
+                          const res = await approveCostSheet(loadedCostSheet.id, {
+                            stage: "cad",
+                            action: "revoke",
+                          });
+                          setApprovals(res.approvals);
+                          setLoadedCostSheet((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  approvals: res.approvals,
+                                  approvalStatus: res.approvalStatus,
+                                }
+                              : prev
+                          );
+                          toast.success("CAD approval revoked.");
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : "Failed to revoke CAD approval");
+                        }
+                      }
+                    }}
+                    className="size-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                  />
+                  <input
+                    type="text"
+                    readOnly
+                    disabled
+                    value={
+                      approvals?.cad?.approvedAt
+                        ? new Date(approvals.cad.approvedAt).toLocaleString("en-US", {
+                            month: "2-digit",
+                            day: "2-digit",
+                            year: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                            second: "2-digit",
+                            hour12: true,
+                          })
+                        : ""
+                    }
+                    placeholder="Pending"
+                    className="w-32 h-7 px-2 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-mono text-center rounded shadow-2xs"
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-between gap-2">

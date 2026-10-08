@@ -71,6 +71,7 @@ async function runMigration() {
   const defaultRoles = [
     { name: "Admin",                      slug: "admin",        description: "Full access to all sections and features.",      isSystem: true },
     { name: "Merchant (Costing Creator)", slug: "merchant",     description: "Creates and manages cost sheets.",               isSystem: false },
+    { name: "CAD",                        slug: "cad",          description: "Approves CAD marker and pattern specs (Step 1).", isSystem: false },
     { name: "Fabric Head",                slug: "fabric_head",  description: "Approves fabric details on cost sheets.",        isSystem: false },
     { name: "MMC Head (Trims)",           slug: "mmc_head",     description: "Approves trims and accessories on cost sheets.", isSystem: false },
     { name: "IE Head (SAM)",              slug: "ie_head",      description: "Approves IE and SAM breakdowns.",                isSystem: false },

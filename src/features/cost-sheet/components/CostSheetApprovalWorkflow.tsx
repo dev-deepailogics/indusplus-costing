@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   AlertTriangle,
   RotateCcw,
+  Compass,
   Layers,
   Scissors,
   Timer,
@@ -58,6 +59,14 @@ interface StepConfig {
 }
 
 const STEPS: StepConfig[] = [
+  {
+    stage: "cad",
+    title: "CAD Approval",
+    permissionSection: "approval_cad",
+    roleLabel: "CAD",
+    icon: Compass,
+    description: "First sign-off stage verifying CAD marker, pattern, and initial specs.",
+  },
   {
     stage: "fabric",
     title: "Fabric Details",
@@ -133,6 +142,7 @@ export function CostSheetApprovalWorkflow({
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Departmental completeness check
+  const cadApproved = approvals.cad?.status === "approved";
   const fabricApproved = approvals.fabric?.status === "approved";
   const mmcApproved = approvals.mmc?.status === "approved";
   const ieApproved = approvals.ie?.status === "approved";
@@ -168,10 +178,22 @@ export function CostSheetApprovalWorkflow({
     }
 
     if (action === "approve") {
-      if (stage === "marketing" && !deptCompleted) {
+      if (
+        (stage === "fabric" ||
+          stage === "mmc" ||
+          stage === "ie" ||
+          stage === "washing") &&
+        !cadApproved
+      ) {
         return {
           allowed: false,
-          reason: "Fabric, MMC, IE, and Washing must all be approved first.",
+          reason: "CAD approval is required before departmental head approvals.",
+        };
+      }
+      if (stage === "marketing" && (!cadApproved || !deptCompleted)) {
+        return {
+          allowed: false,
+          reason: "CAD, Fabric, MMC, IE, and Washing must all be approved first.",
         };
       }
       if (stage === "costingHead" && !marketingApproved) {
@@ -189,10 +211,22 @@ export function CostSheetApprovalWorkflow({
     }
 
     if (action === "reject") {
-      if (stage === "marketing" && !deptCompleted) {
+      if (
+        (stage === "fabric" ||
+          stage === "mmc" ||
+          stage === "ie" ||
+          stage === "washing") &&
+        !cadApproved
+      ) {
         return {
           allowed: false,
-          reason: "Marketing review requires all 4 departmental sign-offs first.",
+          reason: "CAD must approve before departmental heads can review.",
+        };
+      }
+      if (stage === "marketing" && (!cadApproved || !deptCompleted)) {
+        return {
+          allowed: false,
+          reason: "Marketing review requires CAD and all 4 departmental sign-offs first.",
         };
       }
       if (stage === "costingHead" && !marketingApproved) {
@@ -210,6 +244,33 @@ export function CostSheetApprovalWorkflow({
     }
 
     if (action === "revoke") {
+      if (stage === "cad") {
+        if (directorApproved || directorPending) {
+          return {
+            allowed: false,
+            reason: "Locked: Cost sheet is at Director stage. Cannot skip approval hierarchy.",
+          };
+        }
+        if (costingHeadApproved || costingHeadPending) {
+          return {
+            allowed: false,
+            reason: "Locked: Cost sheet is at Costing Head stage. Cannot skip approval hierarchy.",
+          };
+        }
+        if (marketingApproved || marketingPending) {
+          return {
+            allowed: false,
+            reason: "Locked: Cost sheet is at Marketing stage. Cannot skip approval hierarchy.",
+          };
+        }
+        if (fabricApproved || mmcApproved || ieApproved || washingApproved) {
+          return {
+            allowed: false,
+            reason: "Locked: Departmental heads have already approved. Revoke departmental approvals first.",
+          };
+        }
+      }
+
       if (stage === "costingHead") {
         if (directorApproved) {
           return {
@@ -353,7 +414,7 @@ export function CostSheetApprovalWorkflow({
           ) : overallStatus === "in_review" ? (
             <Badge className="bg-blue-600 hover:bg-blue-600 text-white font-bold text-xs px-2.5 py-0.5 flex items-center gap-1.5 shadow-xs">
               <Clock className="size-3.5" />
-              In Review ({[fabricApproved, mmcApproved, ieApproved, washingApproved].filter(Boolean).length}/4 Depts)
+              In Review ({[cadApproved, fabricApproved, mmcApproved, ieApproved, washingApproved].filter(Boolean).length}/5 Initial Stages)
             </Badge>
           ) : overallStatus === "rejected" ? (
             <Badge variant="destructive" className="font-bold text-xs px-2.5 py-0.5 flex items-center gap-1.5 shadow-xs">
@@ -370,7 +431,7 @@ export function CostSheetApprovalWorkflow({
 
       <CardContent className="p-4 space-y-4">
         {/* Horizontal Flow Steps Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
           {STEPS.map((step, idx) => {
             const stepData = approvals[step.stage] as ApprovalStep | undefined;
             const status = stepData?.status || "pending";
