@@ -12,6 +12,9 @@ export * from "./components/CostSheetProcessesSection";
 export * from "./components/CostSheetChargesSection";
 export * from "./components/CostSheetSaveDialog";
 export * from "./components/CostSheetPrintView";
+export * from "./components/PrintCostSheetReport";
+export * from "./components/DuerPrintReport";
+
 export * from "./components/CostSheetsFilterBar";
 export * from "./components/CostSheetsTable";
 export * from "./components/CostSheetApprovalWorkflow";

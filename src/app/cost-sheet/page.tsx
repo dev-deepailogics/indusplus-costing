@@ -27,6 +27,8 @@ import {
   CostSheetApprovalWorkflow,
   type CostSheetApprovals,
   isCostSheetApprovedByAnyHead,
+  PrintCostSheetReport,
+  DuerPrintReport,
 } from "@/features/cost-sheet";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -305,6 +307,30 @@ function CostSheetContent() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [newSnapshotName, setNewSnapshotName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [printTemplate, setPrintTemplate] = useState<"standard" | "duer">("standard");
+
+  const handlePrint = (type?: "standard" | "duer") => {
+    const isDuer = (customerName || activeStyle?.customerName || "").toLowerCase().trim().includes("duer");
+    const targetType = isDuer ? (type || "duer") : "standard";
+    setPrintTemplate(targetType);
+
+    if (typeof document !== "undefined") {
+      let styleEl = document.getElementById("dynamic-print-page-style") as HTMLStyleElement | null;
+      if (!styleEl) {
+        styleEl = document.createElement("style");
+        styleEl.id = "dynamic-print-page-style";
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent =
+        targetType === "duer"
+          ? "@media print { @page { size: portrait !important; margin: 6mm 8mm !important; } }"
+          : "@media print { @page { size: landscape !important; margin: 5mm !important; } }";
+    }
+
+    setTimeout(() => {
+      window.print();
+    }, 80);
+  };
 
   // Unsaved Changes & Navigation Guard States
   const [isDirty, setIsDirty] = useState(false);
@@ -2217,10 +2243,11 @@ function CostSheetContent() {
     calcs.specialChargesCostUSD;
 
   return (
-    <div
-      onChange={markDirty}
-      className="space-y-6 max-w-7xl mx-auto"
-    >
+    <>
+      <div
+        onChange={markDirty}
+        className="space-y-6 max-w-7xl mx-auto print:hidden"
+      >
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -2260,6 +2287,18 @@ function CostSheetContent() {
           </p>
         </div>
         <div className="flex items-center gap-2 print:hidden">
+          {/* Only show DUER PRINT button when the customer is DUER */}
+          {(customerName || activeStyle?.customerName || "").toLowerCase().trim().includes("duer") && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePrint("duer")}
+              className="h-9 border-2 border-black text-[#dc2626] hover:text-[#b91c1c] hover:bg-red-50/60 font-bold tracking-wide shadow-2xs"
+            >
+              DUER PRINT
+            </Button>
+          )}
+
           {isReadOnly ? (
             canEditCostSheet ? (
               <Button
@@ -2336,7 +2375,7 @@ function CostSheetContent() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => window.print()}
+            onClick={() => handlePrint()}
             className="h-9"
           >
             <Printer className="mr-1.5 size-4" /> Print
@@ -5209,5 +5248,98 @@ function CostSheetContent() {
           </Dialog>
       </fieldset>
     </div>
+
+    {/* Print-Only Indus Plus Pre Order Cost Sheet Report */}
+    {/* Print-Only Reports */}
+    <div className="hidden print:block w-full">
+      {printTemplate === "duer" && (customerName || activeStyle?.customerName || "").toLowerCase().trim().includes("duer") ? (
+        <DuerPrintReport
+          activeStyle={activeStyle}
+          workOrderNumber={workOrderNumber}
+          calcs={calcs}
+          costingDate={costingDate}
+          costingStage={costingStage}
+          country={country}
+          customerName={customerName}
+          orderType={orderType}
+          styleCategory={styleCategory}
+          washType={washType}
+          orderQuantity={orderQuantity}
+          noOfColors={noOfColors}
+          exFactoryDate={exFactoryDate}
+          paymentTerms={
+            (() => {
+              const arObj = arPaymentTermsData?.terms?.find((t) => t.id === selectedArTermId);
+              const apObj = apPaymentTermsData?.terms?.find((t) => t.id === selectedApTermId);
+              if (arObj && apObj) return `${arObj.label} / ${apObj.label}`;
+              if (arObj) return arObj.label;
+              if (apObj) return apObj.label;
+              return paymentTerms || "";
+            })()
+          }
+          shipmentMode={shipmentMode}
+          deliveryTerms={deliveryTerms}
+          merchGroup={merchGroup}
+          deliveryDestination={deliveryDestination}
+          paritySale={paritySale}
+          parityProcurement={parityProcurement}
+          inhouseOrSubcontract={inhouseOrSubcontract}
+          manpower={manpower}
+          commissionInput={commissionInput}
+          taxEdsInput={taxEdsInput}
+          inlandFreightInput={inlandFreightInput}
+          localBankChargesInput={localBankChargesInput}
+          discountRateInput={discountRateInput}
+          rebateInput={rebateInput}
+          smvSewing={parseFloat(smvSewingInput) || activeStyle.smvSewing}
+          approvals={approvals}
+          costSheetNumber={loadedCostSheet?.id || "00004188"}
+          preparedByName={user?.displayName || "Muhammad Uzair"}
+        />
+      ) : (
+        <PrintCostSheetReport
+          activeStyle={activeStyle}
+          workOrderNumber={workOrderNumber}
+          calcs={calcs}
+          costingDate={costingDate}
+          costingStage={costingStage}
+          country={country}
+          customerName={customerName}
+          orderType={orderType}
+          styleCategory={styleCategory}
+          washType={washType}
+          orderQuantity={orderQuantity}
+          noOfColors={noOfColors}
+          exFactoryDate={exFactoryDate}
+          paymentTerms={
+            (() => {
+              const arObj = arPaymentTermsData?.terms?.find((t) => t.id === selectedArTermId);
+              const apObj = apPaymentTermsData?.terms?.find((t) => t.id === selectedApTermId);
+              if (arObj && apObj) return `${arObj.label} / ${apObj.label}`;
+              if (arObj) return arObj.label;
+              if (apObj) return apObj.label;
+              return paymentTerms || "";
+            })()
+          }
+          shipmentMode={shipmentMode}
+          deliveryTerms={deliveryTerms}
+          merchGroup={merchGroup}
+          deliveryDestination={deliveryDestination}
+          paritySale={paritySale}
+          parityProcurement={parityProcurement}
+          inhouseOrSubcontract={inhouseOrSubcontract}
+          manpower={manpower}
+          commissionInput={commissionInput}
+          taxEdsInput={taxEdsInput}
+          inlandFreightInput={inlandFreightInput}
+          localBankChargesInput={localBankChargesInput}
+          discountRateInput={discountRateInput}
+          rebateInput={rebateInput}
+          smvSewing={parseFloat(smvSewingInput) || activeStyle.smvSewing}
+        />
+      )}
+    </div>
+  </>
   );
 }
+
