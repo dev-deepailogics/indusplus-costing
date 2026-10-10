@@ -848,15 +848,16 @@ function CostSheetContent() {
       }
 
       const rows = matchedCard?.rows ?? commTable.rows ?? [];
-      if (rows.length) {
-        const row = rows[0];
-        const val = row?.values?.commissionPercent;
-        if (val && val.trim() !== "" && val.trim() !== "-") {
-          const parsed = parseFloat(val);
-          setCommissionInput(!isNaN(parsed) && parsed > 0 ? parsed.toString() : "0");
-        } else {
-          setCommissionInput("0");
-        }
+      const val = rows[0]?.values?.commissionPercent?.trim();
+      const parsed = val && val !== "-" ? parseFloat(val) : NaN;
+      const saved = loadedCostSheet?.commissionPct;
+      if (saved) {
+        // Value saved in the DB takes priority over the parameter card
+        setCommissionInput(parseFloat((saved * 100).toFixed(4)).toString());
+      } else if (!isNaN(parsed) && parsed > 0) {
+        setCommissionInput(parsed.toString());
+      } else {
+        setCommissionInput("0");
       }
     }
   };
