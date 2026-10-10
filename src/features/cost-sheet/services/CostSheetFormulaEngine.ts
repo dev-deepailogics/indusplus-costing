@@ -156,6 +156,12 @@ export function matchQtyToBracket(qty: number, label: string): boolean {
     return qty >= 125000;
   }
 
+  // Handle 25001+ or 25000+
+  if (clean.endsWith("+")) {
+    const min = parseFloat(clean.replace("+", "").replace(/,/g, "").trim());
+    return !isNaN(min) && qty >= min;
+  }
+
   // Handle <= X or < X
   if (clean.startsWith("<=")) {
     const max = parseFloat(clean.replace("<=", "").replace(/,/g, "").trim());
@@ -226,6 +232,48 @@ export function calculateSizeBracket(qty: number, availableBrackets?: string[]):
 }
 
 /**
+ * Utility to safely fetch cell value from a table matrix by matching qty (or sizeBracket) and column name.
+ */
+export function getCellByQtyOrBracket(
+  rowMap: Record<string, Record<string, string>> | undefined,
+  qty: number,
+  sizeBracket: string,
+  columnName: string
+): string | undefined {
+  if (!rowMap) return undefined;
+
+  let targetRowKey: string | undefined;
+
+  // 1. Match qty against row keys using bracket matching logic
+  if (qty !== undefined && qty > 0) {
+    targetRowKey = Object.keys(rowMap).find((k) => matchQtyToBracket(qty, k));
+  }
+
+  // 2. Fallback: match row key by sizeBracket string (case-insensitive)
+  if (!targetRowKey && sizeBracket) {
+    const normBracket = sizeBracket.trim().toLowerCase();
+    targetRowKey = Object.keys(rowMap).find(
+      (k) => k.trim().toLowerCase() === normBracket
+    );
+  }
+
+  if (!targetRowKey) return undefined;
+
+  const colMap = rowMap[targetRowKey];
+  if (!colMap) return undefined;
+
+  if (colMap[columnName] !== undefined) {
+    return colMap[columnName];
+  }
+
+  const normCol = columnName.trim().toLowerCase();
+  const colKey = Object.keys(colMap).find(
+    (k) => k.trim().toLowerCase() === normCol
+  );
+  return colKey ? colMap[colKey] : undefined;
+}
+
+/**
  * Looks up the washing rejection rate from the DB-driven Washing table
  * stored in params.rejectionGrid.tables["Washing"].
  * Rows (qty_band field in DB) = wash type names (Dyeing, EW/Biopolish, Rinse…)
@@ -236,21 +284,32 @@ export function calculateSizeBracket(qty: number, availableBrackets?: string[]):
 export function getWashingRejectionFromGrid(
   washType: string,
   sizeBracket: string,
-  washingTable?: Record<string, Record<string, string>>
+  washingTable?: Record<string, Record<string, string>>,
+  qty?: number
 ): number {
-  if (!washingTable || !washType || !sizeBracket) return 0;
+  if (!washingTable || !washType) return 0;
   const normWash = washType.trim().toLowerCase();
   // Find matching row key (case-insensitive) — rows are wash type names
   const rowKey = Object.keys(washingTable).find(
     (k) => k.trim().toLowerCase() === normWash
   );
   if (!rowKey) return 0;
-  // Find matching column key (case-insensitive) — columns are qty bands
-  const colKey = Object.keys(washingTable[rowKey] || {}).find(
-    (k) => k.trim().toLowerCase() === sizeBracket.trim().toLowerCase()
-  );
+
+  const colMap = washingTable[rowKey] || {};
+  let colKey: string | undefined;
+
+  if (qty !== undefined && qty > 0) {
+    colKey = Object.keys(colMap).find((k) => matchQtyToBracket(qty, k));
+  }
+  if (!colKey && sizeBracket) {
+    const normBracket = sizeBracket.trim().toLowerCase();
+    colKey = Object.keys(colMap).find(
+      (k) => k.trim().toLowerCase() === normBracket
+    );
+  }
+
   if (!colKey) return 0;
-  const raw = (washingTable[rowKey]?.[colKey] || "0").replace("%", "").trim();
+  const raw = (colMap[colKey] || "0").replace("%", "").trim();
   const val = parseFloat(raw);
   return isNaN(val) ? 0 : val / 100;
 }
@@ -457,8 +516,8 @@ export function runFormulaEngine(
   let efficiency = 0;
   if (efficiencyOverride !== null) {
     efficiency = efficiencyOverride;
-  } else if (styleCategory && sizeBracket) {
-    const dbVal = params.cutToShipGrid?.cells?.[sizeBracket]?.[styleCategory];
+  } else if (styleCategory && (sizeBracket || qty > 0)) {
+    const dbVal = getCellByQtyOrBracket(params.cutToShipGrid?.cells, qty, sizeBracket, styleCategory);
     if (dbVal !== undefined && dbVal !== null && dbVal.trim() !== "") {
       efficiency = parseFloat(dbVal.replace("%", "")) / 100;
     } else {
@@ -493,7 +552,7 @@ export function runFormulaEngine(
               const lookupCategory = (procName === "Fabric" || procName === "Cutting" || procName === "Finishing")
                 ? "High Fashion"
                 : styleCategory;
-              const rateStr = table.cells[sizeBracket]?.[lookupCategory] || "0";
+              const rateStr = getCellByQtyOrBracket(table.cells, qty, sizeBracket, lookupCategory) || "0";
               sumRej += parseFloat(rateStr.replace("%", "")) / 100;
             }
           });
@@ -501,7 +560,8 @@ export function runFormulaEngine(
         sumRej += getWashingRejectionFromGrid(
           style.washType,
           sizeBracket,
-          params.rejectionGrid.tables["Washing"]?.cells
+          params.rejectionGrid.tables["Washing"]?.cells,
+          qty
         );
         rejectionPct = sumRej;
       } else {

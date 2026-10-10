@@ -6,7 +6,7 @@ import { MatrixTableEditor } from "./matrix-table-editor";
 import type { MatrixTableData, ProcessMatrixTableData } from "@/lib/parameters/types";
 
 import type { StyleMasterItem } from "@/lib/style-master/types";
-import { calculateSizeBracket, mapSMVToCategory, getWashingRejectionFromGrid } from "@/lib/cost-sheet/formula-engine";
+import { calculateSizeBracket, mapSMVToCategory, getWashingRejectionFromGrid, getCellByQtyOrBracket } from "@/lib/cost-sheet/formula-engine";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -263,7 +263,7 @@ export function ProcessMatrixEditor({
           const lookupCategory = (p === "Fabric" || p === "Cutting" || p === "Finishing")
             ? "High Fashion"
             : styleCategoryClass;
-          const cellStr = table.cells[sizeBracket]?.[lookupCategory] || "0%";
+          const cellStr = getCellByQtyOrBracket(table.cells, style.orderQuantity, sizeBracket, lookupCategory) || "0%";
           const cellVal = parseFloat(cellStr) / 100;
           processRejections[p] = cellVal;
           baseRejectionSum += cellVal;
@@ -275,7 +275,8 @@ export function ProcessMatrixEditor({
       const washingRejection = getWashingRejectionFromGrid(
         style.washType,
         sizeBracket,
-        data.tables["Washing"]?.cells
+        data.tables["Washing"]?.cells,
+        style.orderQuantity
       );
       processRejections["Washing"] = washingRejection;
       
