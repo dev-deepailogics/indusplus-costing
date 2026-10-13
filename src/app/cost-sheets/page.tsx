@@ -117,29 +117,29 @@ export default function SavedCostSheetsPage() {
 
     if (status === "approved" || approvals?.director?.status === "approved") {
       return (
-        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
-          <CheckCircle2 className="size-3" /> Director Approved
+        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
+          <CheckCircle2 className="size-2.5" /> Dir Approved
         </Badge>
       );
     }
     if (status === "rejected") {
       return (
-        <Badge variant="destructive" className="font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
-          <XCircle className="size-3" /> Rejected
+        <Badge variant="destructive" className="font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
+          <XCircle className="size-2.5" /> Rejected
         </Badge>
       );
     }
     if (approvals?.costingHead?.status === "approved") {
       return (
-        <Badge className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
-          <Clock className="size-3" /> Costing Approved
+        <Badge className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
+          <Clock className="size-2.5" /> Costing Appr
         </Badge>
       );
     }
     if (approvals?.marketing?.status === "approved") {
       return (
-        <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
-          <Clock className="size-3" /> Marketing Approved
+        <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
+          <Clock className="size-2.5" /> Mktg Appr
         </Badge>
       );
     }
@@ -154,22 +154,22 @@ export default function SavedCostSheetsPage() {
 
     if (deptApprovedCount > 0) {
       return (
-        <Badge className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
-          <Clock className="size-3" /> {deptApprovedCount}/4 Depts
+        <Badge className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
+          <Clock className="size-2.5" /> {deptApprovedCount}/4 Depts
         </Badge>
       );
     }
 
     if (cadApproved) {
       return (
-        <Badge className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-[10px] px-2 py-0.5 gap-1 inline-flex items-center">
-          <Clock className="size-3" /> CAD Approved
+        <Badge className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
+          <Clock className="size-2.5" /> CAD Appr
         </Badge>
       );
     }
 
     return (
-      <Badge variant="outline" className="text-slate-500 dark:text-slate-400 font-medium text-[10px] px-2 py-0.5">
+      <Badge variant="outline" className="text-slate-500 dark:text-slate-400 font-medium text-[9px] px-1.5 py-0.5 whitespace-nowrap">
         Draft
       </Badge>
     );
@@ -178,7 +178,7 @@ export default function SavedCostSheetsPage() {
   // Excel Export
   function handleExport() {
     const dataToExport = filteredSheets.map((s) => ({
-      "Cost Sheet ID": s.id,
+      "Cost Sheet #": s.costSheetNumber || s.id,
       "Scenario Reference": s.referenceName,
       "Work Order": s.workOrderNumber || "—",
       "Style ID": s.styleId,
@@ -218,7 +218,7 @@ export default function SavedCostSheetsPage() {
         s.workOrderNumber?.toLowerCase().includes(q) ||
         s.styleId?.toLowerCase().includes(q) ||
         s.styleName?.toLowerCase().includes(q) ||
-        s.id?.toLowerCase().includes(q) ||
+        s.costSheetNumber?.toLowerCase().includes(q) ||
         s.customerName?.toLowerCase().includes(q) ||
         s.costingStage?.toLowerCase().includes(q)
       );
@@ -265,7 +265,7 @@ export default function SavedCostSheetsPage() {
             <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Search by Work Order, Cost Sheet ID, Style, Customer, Scenario..."
+              placeholder="Search by Cost Sheet #, Work Order, Style, Customer, Scenario..."
               className="pl-9 h-9 w-full"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -275,8 +275,8 @@ export default function SavedCostSheetsPage() {
       </Card>
 
       {/* cost sheets records table */}
-      <Card className="shadow-md border-muted/60">
-        <CardContent className="p-0 overflow-x-auto">
+      <Card className="shadow-md border-muted/60 overflow-hidden">
+        <CardContent className="p-0 overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-sm text-muted-foreground font-medium">
               Loading saved runs...
@@ -289,46 +289,46 @@ export default function SavedCostSheetsPage() {
               </span>
             </div>
           ) : (
-            <Table className="w-full text-xs">
+            <Table className="w-full text-xs table-fixed" containerClassName="overflow-x-hidden">
               <TableHeader className="bg-muted/40">
                 <TableRow>
-                  <TableHead className="font-semibold text-foreground py-2.5 pl-3">
-                    Cost Sheet ID
+                  <TableHead className="w-[8.5%] font-semibold text-foreground py-2 pl-2 pr-1 text-[11px] truncate">
+                    Cost Sheet #
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 px-2">
-                    Scenario Name
+                  <TableHead className="w-[10.5%] font-semibold text-foreground py-2 px-1 text-[11px] truncate">
+                    Description
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 px-2">
+                  <TableHead className="w-[7.5%] font-semibold text-foreground py-2 px-1 text-[11px] truncate">
                     Work Order
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 px-2">
+                  <TableHead className="w-[11%] font-semibold text-foreground py-2 px-1 text-[11px] truncate">
                     Style ID & Name
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 px-2">
+                  <TableHead className="w-[8.5%] font-semibold text-foreground py-2 px-1 text-[11px] truncate">
                     Customer
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-right">
+                  <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
                     Order Qty
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-right">
+                  <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
                     Order FOB
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 px-1.5 text-center">
+                  <TableHead className="w-[4.5%] font-semibold text-foreground py-2 px-1 text-center text-[11px] whitespace-nowrap">
                     Stage
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-center">
+                  <TableHead className="w-[9.5%] font-semibold text-foreground py-2 px-1 text-center text-[11px] whitespace-nowrap">
                     Approval
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-right">
-                    EBITDA / Min
+                  <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
+                    EBITDA/m
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-right">
-                    Net Profit/Pc
+                  <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
+                    Profit/Pc
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 px-2 text-right">
-                    Net Profit %
+                  <TableHead className="w-[5.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
+                    Profit %
                   </TableHead>
-                  <TableHead className="font-semibold text-foreground py-2.5 pr-3 text-right">
+                  <TableHead className="w-[8.5%] font-semibold text-foreground py-2 pr-2 pl-1 text-right text-[11px] whitespace-nowrap">
                     Actions
                   </TableHead>
                 </TableRow>
@@ -371,104 +371,104 @@ export default function SavedCostSheetsPage() {
                         router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=view`)
                       }
                     >
-                      <TableCell className="font-mono text-[11px] font-semibold text-primary py-2.5 pl-3">
-                        {sheet.id}
+                      <TableCell className="font-mono text-[10.5px] font-semibold text-primary py-2 pl-2 pr-1 truncate" title={sheet.costSheetNumber || sheet.id}>
+                        {sheet.costSheetNumber || sheet.id}
                       </TableCell>
-                      <TableCell className="font-semibold text-foreground text-xs py-2.5 px-2">
+                      <TableCell className="font-semibold text-foreground text-[11px] py-2 px-1 truncate" title={sheet.referenceName}>
                         {sheet.referenceName}
                       </TableCell>
-                      <TableCell className="text-xs py-2.5 px-2 font-mono">
+                      <TableCell className="text-[10px] py-2 px-1 font-mono truncate" title={sheet.workOrderNumber || "—"}>
                         {sheet.workOrderNumber ? (
-                          <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/60 inline-block">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 text-[10px] bg-slate-100 dark:bg-slate-800/80 px-1 py-0.5 rounded border border-slate-200 dark:border-slate-700/60 inline-block truncate max-w-full">
                             {sheet.workOrderNumber}
                           </span>
                         ) : (
                           <span className="text-muted-foreground/50">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-xs py-2.5 px-2">
-                        <span className="font-semibold text-primary block text-[11px]">
+                      <TableCell className="text-[10.5px] py-2 px-1 leading-tight overflow-hidden">
+                        <span className="font-semibold text-primary block text-[10.5px] truncate" title={sheet.styleId}>
                           {sheet.styleId}
                         </span>
-                        <span className="text-muted-foreground text-[10px] block truncate max-w-[150px]" title={sheet.styleName}>
+                        <span className="text-muted-foreground text-[9.5px] block truncate" title={sheet.styleName}>
                           {sheet.styleName}
                         </span>
                       </TableCell>
-                      <TableCell className="text-xs font-medium py-2.5 px-2">
+                      <TableCell className="text-[10.5px] font-medium py-2 px-1 truncate" title={sheet.customerName}>
                         {sheet.customerName}
                       </TableCell>
-                      <TableCell className="text-xs font-semibold text-muted-foreground text-right py-2.5 px-2">
+                      <TableCell className="text-[10.5px] font-semibold text-muted-foreground text-right py-2 px-1 whitespace-nowrap">
                         {orderQuantity.toLocaleString()} pcs
                       </TableCell>
-                      <TableCell className="text-xs font-bold text-foreground text-right py-2.5 px-2">
+                      <TableCell className="text-[10.5px] font-bold text-foreground text-right py-2 px-1 whitespace-nowrap">
                         ${orderFOB.toFixed(2)}
                       </TableCell>
-                      <TableCell className="text-center py-2.5 px-1.5">
+                      <TableCell className="text-center py-2 px-1">
                         <Badge
                           variant={
                             sheet.costingStage === "Final"
                               ? "secondary"
                               : "outline"
                           }
-                          className="text-[9px] px-1.5 py-0 font-bold"
+                          className="text-[8.5px] px-1 py-0 font-bold whitespace-nowrap"
                         >
-                          {sheet.costingStage}
+                          {sheet.costingStage || "—"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-center py-2.5 px-2">
+                      <TableCell className="text-center py-2 px-1 overflow-hidden">
                         {getApprovalBadge(sheet)}
                       </TableCell>
-                      <TableCell className="text-right text-xs font-semibold py-2.5 px-2">
+                      <TableCell className="text-right text-[10.5px] font-semibold py-2 px-1 whitespace-nowrap">
                         {formattedEbitda}
                       </TableCell>
                       <TableCell
-                        className={`text-right text-xs font-bold py-2.5 px-2 ${isProfitPositive ? "text-emerald-700" : "text-red-600"}`}
+                        className={`text-right text-[10.5px] font-bold py-2 px-1 whitespace-nowrap ${isProfitPositive ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}
                       >
                         {formattedProfitUSD}
                       </TableCell>
                       <TableCell
-                        className={`text-right text-xs font-extrabold py-2.5 px-2 ${isProfitPositive ? "text-emerald-700" : "text-red-600"}`}
+                        className={`text-right text-[10.5px] font-extrabold py-2 px-1 whitespace-nowrap ${isProfitPositive ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}
                       >
                         {profitPct.toFixed(2)}%
                       </TableCell>
                       <TableCell
-                        className="text-right py-2.5 pr-3"
+                        className="text-right py-2 pr-2 pl-1 whitespace-nowrap"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="flex justify-end gap-1">
+                        <div className="flex items-center justify-end gap-1">
                           <Button
                             variant="outline"
                             size="icon"
-                            className="size-7 text-sky-600 border-sky-200 bg-sky-50/50 hover:bg-sky-50 hover:text-sky-700"
+                            className="size-6 text-sky-600 border-sky-200 bg-sky-50/50 hover:bg-sky-50 hover:text-sky-700 shrink-0"
                             onClick={() =>
                               router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=view`)
                             }
                             title="View Cost Sheet (Read-Only)"
                           >
-                            <Eye className="size-3.5" />
+                            <Eye className="size-3" />
                           </Button>
                           {!isAnyHeadApproved && canEdit && (
                             <Button
                               variant="outline"
                               size="icon"
-                              className="size-7 text-emerald-600 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 hover:text-emerald-700"
+                              className="size-6 text-emerald-600 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 hover:text-emerald-700 shrink-0"
                               onClick={() =>
                                 router.push(`/cost-sheet?costSheetId=${sheet.id}&mode=edit`)
                               }
                               title="Edit Cost Sheet"
                             >
-                              <Pencil className="size-3.5" />
+                              <Pencil className="size-3" />
                             </Button>
                           )}
                           {!isAnyHeadApproved && canDelete && (
                             <Button
                               variant="outline"
                               size="icon"
-                              className="size-7 text-destructive border-destructive/20 hover:bg-destructive/5"
+                              className="size-6 text-destructive border-destructive/20 hover:bg-destructive/5 shrink-0"
                               onClick={(e) => handleDelete(sheet.id, e)}
                               title="Delete"
                             >
-                              <Trash2 className="size-3.5" />
+                              <Trash2 className="size-3" />
                             </Button>
                           )}
                         </div>

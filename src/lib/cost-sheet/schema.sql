@@ -1,4 +1,4 @@
--- DDL for pre_order_cost_sheets
+-- DDL for pre_order_cost_sheets and parameter tables
 -- Run once manually OR let the API auto-create it on first request.
 IF NOT EXISTS (SELECT 1
                FROM   INFORMATION_SCHEMA.TABLES
@@ -62,7 +62,14 @@ IF NOT EXISTS (SELECT 1
             direct_labour_foh_snapshot NVARCHAR (MAX) NULL,
             -- Calculated KPIs snapshot (JSON)
             calculations               NVARCHAR (MAX) DEFAULT '{}' NOT NULL,
-            saved_at                   NVARCHAR (64)  NOT NULL
+            saved_at                   NVARCHAR (64)  NOT NULL,
+            -- Audit fields
+            inserted_by                NVARCHAR (256) NULL,
+            inserted_at                DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by                 NVARCHAR (256) NULL,
+            updated_at                 DATETIME2      NULL,
+            deleted_by                 NVARCHAR (256) NULL,
+            deleted_at                 DATETIME2      NULL
         );
         CREATE INDEX IX_pcs_style_id
             ON pre_order_cost_sheets(style_id);
@@ -100,11 +107,17 @@ IF NOT EXISTS (SELECT 1
                WHERE  TABLE_NAME = 'cut_to_ship_grid')
     BEGIN
         CREATE TABLE cut_to_ship_grid (
-            qty_band       NVARCHAR (64) NOT NULL,
-            style_category NVARCHAR (64) NOT NULL,
-            value          NVARCHAR (32) DEFAULT '' NOT NULL,
-            row_order      INT           DEFAULT 0 NOT NULL,
-            col_order      INT           DEFAULT 0 NOT NULL,
+            qty_band       NVARCHAR (64)  NOT NULL,
+            style_category NVARCHAR (64)  NOT NULL,
+            value          NVARCHAR (32)  DEFAULT '' NOT NULL,
+            row_order      INT            DEFAULT 0 NOT NULL,
+            col_order      INT            DEFAULT 0 NOT NULL,
+            inserted_by    NVARCHAR (256) NULL,
+            inserted_at    DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by     NVARCHAR (256) NULL,
+            updated_at     DATETIME2      NULL,
+            deleted_by     NVARCHAR (256) NULL,
+            deleted_at     DATETIME2      NULL,
             PRIMARY KEY (qty_band, style_category)
         );
     END
@@ -115,13 +128,19 @@ IF NOT EXISTS (SELECT 1
                WHERE  TABLE_NAME = 'rejection_grid')
     BEGIN
         CREATE TABLE rejection_grid (
-            process        NVARCHAR (64) NOT NULL,
-            qty_band       NVARCHAR (64) NOT NULL,
-            style_category NVARCHAR (64) NOT NULL,
-            value          NVARCHAR (32) DEFAULT '' NOT NULL,
-            process_order  INT           DEFAULT 0 NOT NULL,
-            row_order      INT           DEFAULT 0 NOT NULL,
-            col_order      INT           DEFAULT 0 NOT NULL,
+            process        NVARCHAR (64)  NOT NULL,
+            qty_band       NVARCHAR (64)  NOT NULL,
+            style_category NVARCHAR (64)  NOT NULL,
+            value          NVARCHAR (32)  DEFAULT '' NOT NULL,
+            process_order  INT            DEFAULT 0 NOT NULL,
+            row_order      INT            DEFAULT 0 NOT NULL,
+            col_order      INT            DEFAULT 0 NOT NULL,
+            inserted_by    NVARCHAR (256) NULL,
+            inserted_at    DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by     NVARCHAR (256) NULL,
+            updated_at     DATETIME2      NULL,
+            deleted_by     NVARCHAR (256) NULL,
+            deleted_at     DATETIME2      NULL,
             PRIMARY KEY (process, qty_band, style_category)
         );
     END
@@ -132,9 +151,15 @@ IF NOT EXISTS (SELECT 1
                WHERE  TABLE_NAME = 'styles_columns')
     BEGIN
         CREATE TABLE styles_columns (
-            col_key    NVARCHAR (128) NOT NULL PRIMARY KEY,
-            col_label  NVARCHAR (256) NOT NULL,
-            sort_order INT            DEFAULT 0 NOT NULL
+            col_key     NVARCHAR (128) NOT NULL PRIMARY KEY,
+            col_label   NVARCHAR (256) NOT NULL,
+            sort_order  INT            DEFAULT 0 NOT NULL,
+            inserted_by NVARCHAR (256) NULL,
+            inserted_at DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by  NVARCHAR (256) NULL,
+            updated_at  DATETIME2      NULL,
+            deleted_by  NVARCHAR (256) NULL,
+            deleted_at  DATETIME2      NULL
         );
     END
 
@@ -143,10 +168,16 @@ IF NOT EXISTS (SELECT 1
                WHERE  TABLE_NAME = 'styles_values')
     BEGIN
         CREATE TABLE styles_values (
-            row_id    NVARCHAR (128) NOT NULL,
-            col_key   NVARCHAR (128) NOT NULL,
-            col_value NVARCHAR (MAX) DEFAULT '' NOT NULL,
-            row_order INT            DEFAULT 0 NOT NULL,
+            row_id      NVARCHAR (128) NOT NULL,
+            col_key     NVARCHAR (128) NOT NULL,
+            col_value   NVARCHAR (MAX) DEFAULT '' NOT NULL,
+            row_order   INT            DEFAULT 0 NOT NULL,
+            inserted_by NVARCHAR (256) NULL,
+            inserted_at DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by  NVARCHAR (256) NULL,
+            updated_at  DATETIME2      NULL,
+            deleted_by  NVARCHAR (256) NULL,
+            deleted_at  DATETIME2      NULL,
             PRIMARY KEY (row_id, col_key)
         );
         CREATE INDEX IX_styles_values_order
@@ -162,7 +193,13 @@ IF NOT EXISTS (SELECT 1
             id               NVARCHAR (128) NOT NULL PRIMARY KEY,
             description      NVARCHAR (256) DEFAULT '' NOT NULL,
             percent_of_sales NVARCHAR (64)  DEFAULT '' NOT NULL,
-            row_order        INT            DEFAULT 0 NOT NULL
+            row_order        INT            DEFAULT 0 NOT NULL,
+            inserted_by      NVARCHAR (256) NULL,
+            inserted_at      DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by       NVARCHAR (256) NULL,
+            updated_at       DATETIME2      NULL,
+            deleted_by       NVARCHAR (256) NULL,
+            deleted_at       DATETIME2      NULL
         );
     END
 
@@ -172,9 +209,15 @@ IF NOT EXISTS (SELECT 1
                WHERE  TABLE_NAME = 'order_types')
     BEGIN
         CREATE TABLE order_types (
-            id         NVARCHAR (128) NOT NULL PRIMARY KEY,
-            order_type NVARCHAR (128) DEFAULT '' NOT NULL,
-            row_order  INT            DEFAULT 0 NOT NULL
+            id          NVARCHAR (128) NOT NULL PRIMARY KEY,
+            order_type  NVARCHAR (128) DEFAULT '' NOT NULL,
+            row_order   INT            DEFAULT 0 NOT NULL,
+            inserted_by NVARCHAR (256) NULL,
+            inserted_at DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by  NVARCHAR (256) NULL,
+            updated_at  DATETIME2      NULL,
+            deleted_by  NVARCHAR (256) NULL,
+            deleted_at  DATETIME2      NULL
         );
     END
 
@@ -187,7 +230,13 @@ IF NOT EXISTS (SELECT 1
             id                 NVARCHAR (128) NOT NULL PRIMARY KEY,
             customer           NVARCHAR (256) DEFAULT '' NOT NULL,
             commission_percent NVARCHAR (64)  DEFAULT '' NOT NULL,
-            row_order          INT            DEFAULT 0 NOT NULL
+            row_order          INT            DEFAULT 0 NOT NULL,
+            inserted_by        NVARCHAR (256) NULL,
+            inserted_at        DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by         NVARCHAR (256) NULL,
+            updated_at         DATETIME2      NULL,
+            deleted_by         NVARCHAR (256) NULL,
+            deleted_at         DATETIME2      NULL
         );
     END
 
@@ -200,7 +249,13 @@ IF NOT EXISTS (SELECT 1
             id               NVARCHAR (128) NOT NULL PRIMARY KEY,
             description      NVARCHAR (256) DEFAULT '' NOT NULL,
             percent_of_sales NVARCHAR (64)  DEFAULT '' NOT NULL,
-            row_order        INT            DEFAULT 0 NOT NULL
+            row_order        INT            DEFAULT 0 NOT NULL,
+            inserted_by      NVARCHAR (256) NULL,
+            inserted_at      DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by       NVARCHAR (256) NULL,
+            updated_at       DATETIME2      NULL,
+            deleted_by       NVARCHAR (256) NULL,
+            deleted_at       DATETIME2      NULL
         );
     END
 
@@ -219,7 +274,13 @@ IF NOT EXISTS (SELECT 1
             cost_per_sam NVARCHAR (64)  DEFAULT '' NOT NULL,
             per_piece    NVARCHAR (64)  DEFAULT '' NOT NULL,
             use_type     NVARCHAR (32)  DEFAULT 'sam' NOT NULL,
-            row_order    INT            DEFAULT 0 NOT NULL
+            row_order    INT            DEFAULT 0 NOT NULL,
+            inserted_by  NVARCHAR (256) NULL,
+            inserted_at  DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by   NVARCHAR (256) NULL,
+            updated_at   DATETIME2      NULL,
+            deleted_by   NVARCHAR (256) NULL,
+            deleted_at   DATETIME2      NULL
         );
     END
 ELSE
@@ -271,7 +332,13 @@ IF NOT EXISTS (SELECT 1
             id           NVARCHAR (128) NOT NULL PRIMARY KEY,
             description  NVARCHAR (256) DEFAULT '' NOT NULL,
             cost_per_sam NVARCHAR (64)  DEFAULT '' NOT NULL,
-            row_order    INT            DEFAULT 0 NOT NULL
+            row_order    INT            DEFAULT 0 NOT NULL,
+            inserted_by  NVARCHAR (256) NULL,
+            inserted_at  DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by   NVARCHAR (256) NULL,
+            updated_at   DATETIME2      NULL,
+            deleted_by   NVARCHAR (256) NULL,
+            deleted_at   DATETIME2      NULL
         );
     END
 
@@ -281,9 +348,15 @@ IF NOT EXISTS (SELECT 1
                WHERE  TABLE_NAME = 'dropdown_lists')
     BEGIN
         CREATE TABLE dropdown_lists (
-            list_key   NVARCHAR (128) NOT NULL PRIMARY KEY,
-            list_label NVARCHAR (256) NOT NULL,
-            items_json NVARCHAR (MAX) DEFAULT '[]' NOT NULL,
-            sort_order INT            DEFAULT 0 NOT NULL
+            list_key    NVARCHAR (128) NOT NULL PRIMARY KEY,
+            list_label  NVARCHAR (256) NOT NULL,
+            items_json  NVARCHAR (MAX) DEFAULT '[]' NOT NULL,
+            sort_order  INT            DEFAULT 0 NOT NULL,
+            inserted_by NVARCHAR (256) NULL,
+            inserted_at DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by  NVARCHAR (256) NULL,
+            updated_at  DATETIME2      NULL,
+            deleted_by  NVARCHAR (256) NULL,
+            deleted_at  DATETIME2      NULL
         );
     END

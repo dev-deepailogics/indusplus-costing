@@ -87,7 +87,7 @@ export async function POST(request: Request) {
         }>(
           `SELECT id, email, displayName, passwordHash, role, assignedCustomer, isActive, mustResetPassword
            FROM users
-           WHERE email = @email`,
+           WHERE email = @email AND (isdeleted = 0 OR isdeleted IS NULL)`,
         );
       user = result.recordset[0];
     } catch {
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
         }>(
           `SELECT id, email, displayName, passwordHash, role, isActive, mustResetPassword
            FROM users
-           WHERE email = @email`,
+           WHERE email = @email AND (isdeleted = 0 OR isdeleted IS NULL)`,
         );
       if (fallbackResult.recordset[0]) {
         user = {

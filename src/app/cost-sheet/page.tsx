@@ -1951,7 +1951,10 @@ function CostSheetContent() {
 
     try {
       setIsSaving(true);
-      await saveCostSheet(snapshot);
+      const saveRes = await saveCostSheet(snapshot);
+      if (saveRes?.costSheetNumber) {
+        snapshot.costSheetNumber = saveRes.costSheetNumber;
+      }
       setLoadedCostSheet(snapshot);
       setSaveDialogOpen(false);
       setIsDirty(false);
@@ -2082,7 +2085,10 @@ function CostSheetContent() {
     };
 
     try {
-      await saveCostSheet(snapshot);
+      const saveRes = await saveCostSheet(snapshot);
+      if (saveRes?.costSheetNumber) {
+        snapshot.costSheetNumber = saveRes.costSheetNumber;
+      }
       setLoadedCostSheet(snapshot);
       toast.success("Saved Cost Sheet updated successfully");
       setIsDirty(false);
@@ -2260,7 +2266,7 @@ function CostSheetContent() {
                 variant="outline"
                 className="text-xs border-blue-200 bg-blue-50 text-blue-800 font-semibold px-2.5 py-1 rounded-md"
               >
-                Snapshot: {loadedCostSheet.id} ({loadedCostSheet.referenceName})
+                Snapshot: {loadedCostSheet.costSheetNumber || loadedCostSheet.id} ({loadedCostSheet.referenceName})
               </Badge>
             )}
             {isReadOnly && (
@@ -5294,11 +5300,12 @@ function CostSheetContent() {
           rebateInput={rebateInput}
           smvSewing={parseFloat(smvSewingInput) || activeStyle.smvSewing}
           approvals={approvals}
-          costSheetNumber={loadedCostSheet?.id || "00004188"}
+          costSheetNumber={loadedCostSheet?.costSheetNumber || loadedCostSheet?.id || ""}
           preparedByName={user?.displayName || "Muhammad Uzair"}
         />
       ) : (
         <PrintCostSheetReport
+          costSheetNumber={loadedCostSheet?.costSheetNumber || loadedCostSheet?.id}
           activeStyle={activeStyle}
           workOrderNumber={workOrderNumber}
           calcs={calcs}

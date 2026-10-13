@@ -5,6 +5,7 @@ import type { StyleMasterItem } from "@/features/style-master/types";
 import type { CalculationResult } from "../services/CostSheetFormulaEngine";
 
 export interface PrintCostSheetReportProps {
+  costSheetNumber?: string;
   activeStyle: StyleMasterItem;
   workOrderNumber?: string;
   calcs: CalculationResult;
@@ -73,6 +74,7 @@ function fmtPct(val?: number, decimals = 1): string {
 }
 
 export function PrintCostSheetReport({
+  costSheetNumber,
   activeStyle,
   workOrderNumber,
   calcs,
@@ -180,7 +182,7 @@ export function PrintCostSheetReport({
           Indus Plus (Pvt) Ltd.
         </h1>
         <h2 className="text-[17px] font-extrabold text-[#2563eb] m-0 leading-tight">
-          Pre Order Cost Sheet
+          Pre Order Cost Sheet {costSheetNumber ? `(#${costSheetNumber})` : ""}
         </h2>
       </div>
 

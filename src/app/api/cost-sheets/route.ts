@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth/session";
 import { checkSessionPermission } from "@/lib/rbac/server";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 import { canUserAccessCostSheet, rowToCostSheetItem } from "@/lib/cost-sheet/auth";
-import { ensureCostSheetTable, resolveTeamCustomers } from "@/lib/cost-sheet/db";
+import { ensureCostSheetTable, resolveTeamCustomers, generateNextCostSheetNumber } from "@/lib/cost-sheet/db";
 
 
 // ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     let query = `
       SELECT 
-        id, reference_name, style_id, style_name, customer_name,
+        id, cost_sheet_number, reference_name, style_id, style_name, customer_name,
         work_order_number,
         style_category, order_quantity, smv_sewing, cutting_sam, washing_sam, finishing_sam,
         order_type, wash_type, costing_date, costing_stage, order_fob, quoted_price,
@@ -139,6 +139,11 @@ export async function POST(request: NextRequest) {
       item.rejectionOverride ??
       (item.calculations?.rejectionPct ?? null);
 
+    const costSheetNumber =
+      (item.costSheetNumber && item.costSheetNumber.startsWith("POC"))
+        ? item.costSheetNumber
+        : (await generateNextCostSheetNumber(pool));
+
     const createdById = session.userId;
     const createdByEmail = session.email;
     const createdByName = session.displayName;
@@ -146,6 +151,7 @@ export async function POST(request: NextRequest) {
     await pool
       .request()
       .input("id", item.id)
+      .input("cost_sheet_number", costSheetNumber)
       .input("reference_name", item.referenceName)
       .input("style_id", item.styleId)
       .input("style_name", item.styleName)
@@ -207,7 +213,7 @@ export async function POST(request: NextRequest) {
       .input("saved_at", item.savedAt)
       .query(`
         INSERT INTO pre_order_cost_sheets (
-          id, reference_name, style_id, style_name, customer_name,
+          id, cost_sheet_number, reference_name, style_id, style_name, customer_name,
           style_category, order_quantity, smv_sewing, cutting_sam, washing_sam, finishing_sam,
           order_type, wash_type,
           costing_date, costing_stage, country, payment_terms, shipment_mode,
@@ -222,7 +228,7 @@ export async function POST(request: NextRequest) {
           bom_special_charges, direct_labour_foh_snapshot, calculations,
           created_by_id, created_by_email, created_by_name, saved_at
         ) VALUES (
-          @id, @reference_name, @style_id, @style_name, @customer_name,
+          @id, @cost_sheet_number, @reference_name, @style_id, @style_name, @customer_name,
           @style_category, @order_quantity, @smv_sewing, @cutting_sam, @washing_sam, @finishing_sam,
           @order_type, @wash_type,
           @costing_date, @costing_stage, @country, @payment_terms, @shipment_mode,
@@ -239,7 +245,7 @@ export async function POST(request: NextRequest) {
         )
       `);
 
-    return Response.json({ ok: true }, { status: 201 });
+    return Response.json({ ok: true, id: item.id, costSheetNumber }, { status: 201 });
   } catch (err) {
     console.error("[POST /api/cost-sheets]", err);
     return Response.json(

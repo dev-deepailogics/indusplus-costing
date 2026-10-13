@@ -84,6 +84,7 @@ export async function getPool(): Promise<sql.ConnectionPool> {
     .then((connectedPool) => {
       global.__mssqlPool = connectedPool;
       global.__mssqlPoolConnecting = undefined;
+      ensureAuditColumns(connectedPool).catch(() => {});
       return connectedPool;
     })
     .catch((err) => {
@@ -92,6 +93,113 @@ export async function getPool(): Promise<sql.ConnectionPool> {
     });
 
   return global.__mssqlPoolConnecting;
+}
+
+let auditColumnsEnsured = false;
+
+/**
+ * Ensures all database tables have the standard audit fields and users table has isdeleted soft deletion field.
+ */
+export async function ensureAuditColumns(pool: sql.ConnectionPool): Promise<void> {
+  if (auditColumnsEnsured) return;
+  try {
+    const tablesRes = await pool.request().query<{ TABLE_NAME: string }>(
+      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'"
+    );
+    const tables = tablesRes.recordset.map((r) => r.TABLE_NAME);
+
+    const auditFields = [
+      { name: "inserted_by", type: "NVARCHAR(256) NULL" },
+      { name: "inserted_at", type: "DATETIME2 NULL DEFAULT GETDATE()" },
+      { name: "updated_by", type: "NVARCHAR(256) NULL" },
+      { name: "updated_at", type: "DATETIME2 NULL" },
+      { name: "deleted_by", type: "NVARCHAR(256) NULL" },
+      { name: "deleted_at", type: "DATETIME2 NULL" },
+    ];
+
+    for (const table of tables) {
+      for (const field of auditFields) {
+        await pool.request().query(`
+          IF NOT EXISTS (
+            SELECT 1 FROM sys.columns 
+            WHERE object_id = OBJECT_ID('${table}') 
+              AND name = '${field.name}'
+          )
+          BEGIN
+            ALTER TABLE [${table}] ADD [${field.name}] ${field.type};
+          END
+        `);
+      }
+
+      // Rename / migrate legacy createdAt to inserted_at without data loss
+      await pool.request().query(`
+        IF EXISTS (
+          SELECT 1 FROM sys.columns 
+          WHERE object_id = OBJECT_ID('${table}') 
+            AND name = 'createdAt'
+        )
+        BEGIN
+          EXEC('UPDATE [${table}] SET inserted_at = createdAt WHERE createdAt IS NOT NULL AND inserted_at IS NULL;');
+          DECLARE @dfCreatedAt NVARCHAR(200);
+          SELECT @dfCreatedAt = d.name 
+          FROM sys.tables t
+          JOIN sys.columns c ON t.object_id = c.object_id
+          JOIN sys.default_constraints d ON c.default_object_id = d.object_id
+          WHERE t.name = '${table}' AND c.name = 'createdAt';
+          IF @dfCreatedAt IS NOT NULL
+            EXEC('ALTER TABLE [${table}] DROP CONSTRAINT [' + @dfCreatedAt + '];');
+          EXEC('ALTER TABLE [${table}] DROP COLUMN [createdAt];');
+        END
+      `);
+
+      // Rename / migrate legacy updatedAt to updated_at without data loss
+      await pool.request().query(`
+        IF EXISTS (
+          SELECT 1 FROM sys.columns 
+          WHERE object_id = OBJECT_ID('${table}') 
+            AND name = 'updatedAt'
+        )
+        BEGIN
+          EXEC('UPDATE [${table}] SET updated_at = updatedAt WHERE updatedAt IS NOT NULL AND updated_at IS NULL;');
+          DECLARE @dfUpdatedAt NVARCHAR(200);
+          SELECT @dfUpdatedAt = d.name 
+          FROM sys.tables t
+          JOIN sys.columns c ON t.object_id = c.object_id
+          JOIN sys.default_constraints d ON c.default_object_id = d.object_id
+          WHERE t.name = '${table}' AND c.name = 'updatedAt';
+          IF @dfUpdatedAt IS NOT NULL
+            EXEC('ALTER TABLE [${table}] DROP CONSTRAINT [' + @dfUpdatedAt + '];');
+          EXEC('ALTER TABLE [${table}] DROP COLUMN [updatedAt];');
+        END
+      `);
+    }
+
+    // pre_order_cost_sheets backfill from saved_at
+    await pool.request().query(`
+      IF EXISTS (
+        SELECT 1 FROM sys.columns 
+        WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'saved_at'
+      )
+      BEGIN
+        EXEC('UPDATE pre_order_cost_sheets SET inserted_at = TRY_CAST(saved_at AS DATETIME2) WHERE inserted_at IS NULL AND saved_at IS NOT NULL;');
+      END
+    `);
+
+    await pool.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM sys.columns 
+        WHERE object_id = OBJECT_ID('users') 
+          AND name = 'isdeleted'
+      )
+      BEGIN
+        ALTER TABLE [users] ADD [isdeleted] BIT NOT NULL DEFAULT 0;
+      END
+    `);
+
+    auditColumnsEnsured = true;
+  } catch (err) {
+    console.warn("[ensureAuditColumns] Error ensuring audit columns:", err);
+  }
 }
 
 /** Pool for the indus-plus database (MSSQL_INDUS_PLUS_CONNECTION_STRING). */

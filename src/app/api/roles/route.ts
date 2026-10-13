@@ -23,8 +23,12 @@ async function ensureRolesTables(pool: ConnectionPool) {
         description NVARCHAR(500) NULL,
         isSystem    BIT NOT NULL DEFAULT 0,
         isActive    BIT NOT NULL DEFAULT 1,
-        createdAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        updatedAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
       );
     END
 
@@ -39,6 +43,12 @@ async function ensureRolesTables(pool: ConnectionPool) {
         canEdit     BIT NOT NULL DEFAULT 0,
         canDelete   BIT NOT NULL DEFAULT 0,
         canApprove  BIT NOT NULL DEFAULT 0,
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL,
         CONSTRAINT FK_role_permissions_roleId FOREIGN KEY (roleId) REFERENCES roles(id) ON DELETE CASCADE,
         CONSTRAINT UQ_role_section UNIQUE (roleId, section)
       );
@@ -120,7 +130,7 @@ export async function GET() {
 
     // Fetch all roles
     const rolesResult = await pool.request().query(
-      `SELECT id, name, slug, description, isSystem, isActive, createdAt, updatedAt
+      `SELECT id, name, slug, description, isSystem, isActive, inserted_at, updated_at
        FROM roles
        WHERE isActive = 1
        ORDER BY isSystem DESC, name ASC`,
@@ -166,8 +176,10 @@ export async function GET() {
       isSystem: !!r.isSystem,
       isActive: !!r.isActive,
       permissions: permsByRole.get(r.id) || [],
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
+      createdAt: r.inserted_at,
+      inserted_at: r.inserted_at,
+      updatedAt: r.updated_at,
+      updated_at: r.updated_at,
     }));
 
     return NextResponse.json({ roles });
@@ -235,16 +247,17 @@ export async function POST(request: Request) {
       );
     }
 
-    // Insert role
+    const insertedBy = session.email || session.displayName || String(session.userId);
     const insertResult = await pool
       .request()
       .input("name", name)
       .input("slug", slug)
       .input("description", description)
+      .input("insertedBy", insertedBy)
       .query<{ id: number }>(
-        `INSERT INTO roles (name, slug, description)
+        `INSERT INTO roles (name, slug, description, inserted_by, inserted_at, updated_by, updated_at)
          OUTPUT INSERTED.id
-         VALUES (@name, @slug, @description)`,
+         VALUES (@name, @slug, @description, @insertedBy, GETUTCDATE(), @insertedBy, GETUTCDATE())`,
       );
 
     const roleId = insertResult.recordset[0]?.id;

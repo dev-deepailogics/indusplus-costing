@@ -89,7 +89,8 @@ export interface CostSheetApprovals {
 }
 
 export interface SavedCostSheetItem {
-  id: string; // Unique snapshot ID (e.g. PCS-STY-001-XXXX)
+  id: string; // Unique backend snapshot ID (e.g. PCS-STY-001-XXXX)
+  costSheetNumber?: string; // User-facing sequence number, e.g. POC000001
   referenceName: string; // e.g. "Scenario A - Base Quote"
   styleId: string; // Style reference
   styleName: string;

@@ -16,7 +16,7 @@ export function getCostSheetById(id: string): Promise<SavedCostSheetItem | null>
   return CostSheetService.getById(id);
 }
 
-export function saveCostSheet(item: SavedCostSheetItem): Promise<void> {
+export function saveCostSheet(item: SavedCostSheetItem): Promise<{ ok: boolean; costSheetNumber?: string }> {
   return CostSheetService.save(item);
 }
 

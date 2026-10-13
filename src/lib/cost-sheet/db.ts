@@ -73,11 +73,29 @@ export async function ensureCostSheetTable(pool: Pool): Promise<void> {
             bom_chemicals          NVARCHAR(MAX)  NOT NULL DEFAULT '[]',
             bom_special_charges    NVARCHAR(MAX)  NOT NULL DEFAULT '[]',
             calculations           NVARCHAR(MAX)  NOT NULL DEFAULT '{}',
-            saved_at               NVARCHAR(64)   NOT NULL
+            saved_at               NVARCHAR(64)   NOT NULL,
+            inserted_by            NVARCHAR(256)  NULL,
+            inserted_at            DATETIME2      NULL DEFAULT GETDATE(),
+            updated_by             NVARCHAR(256)  NULL,
+            updated_at             DATETIME2      NULL,
+            deleted_by             NVARCHAR(256)  NULL,
+            deleted_at             DATETIME2      NULL
         );
         CREATE INDEX IX_pcs_style_id ON pre_order_cost_sheets (style_id);
         CREATE INDEX IX_pcs_saved_at ON pre_order_cost_sheets (saved_at DESC);
     END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'inserted_by')
+      ALTER TABLE pre_order_cost_sheets ADD inserted_by NVARCHAR(256) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'inserted_at')
+      ALTER TABLE pre_order_cost_sheets ADD inserted_at DATETIME2 NULL DEFAULT GETDATE();
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'updated_by')
+      ALTER TABLE pre_order_cost_sheets ADD updated_by NVARCHAR(256) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'updated_at')
+      ALTER TABLE pre_order_cost_sheets ADD updated_at DATETIME2 NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'deleted_by')
+      ALTER TABLE pre_order_cost_sheets ADD deleted_by NVARCHAR(256) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'deleted_at')
+      ALTER TABLE pre_order_cost_sheets ADD deleted_at DATETIME2 NULL;
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'tax_eds_pct')
       ALTER TABLE pre_order_cost_sheets ADD tax_eds_pct FLOAT NULL;
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'inland_freight_pct')
@@ -108,9 +126,83 @@ export async function ensureCostSheetTable(pool: Pool): Promise<void> {
       ALTER TABLE pre_order_cost_sheets ADD ar_term_id NVARCHAR(64) NULL;
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'ap_term_id')
       ALTER TABLE pre_order_cost_sheets ADD ap_term_id NVARCHAR(64) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'cost_sheet_number')
+      ALTER TABLE pre_order_cost_sheets ADD cost_sheet_number NVARCHAR(64) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_pcs_cost_sheet_number' AND object_id = OBJECT_ID('pre_order_cost_sheets'))
+      CREATE INDEX IX_pcs_cost_sheet_number ON pre_order_cost_sheets (cost_sheet_number);
   `);
 
+  await backfillCostSheetNumbers(pool);
+
   isTableEnsured = true;
+}
+
+/**
+ * Generates the next sequential user-facing cost sheet number formatted as:
+ * POC###### e.g. POC000001.
+ */
+export async function generateNextCostSheetNumber(
+  pool: Pool,
+  _dateInput?: string
+): Promise<string> {
+  const prefix = "POC";
+
+  const result = await pool
+    .request()
+    .input("prefix", `${prefix}%`)
+    .query(`
+      SELECT cost_sheet_number
+      FROM pre_order_cost_sheets
+      WHERE cost_sheet_number LIKE @prefix
+    `);
+
+  let maxSeq = 0;
+  for (const row of result.recordset) {
+    const csNum = (row.cost_sheet_number as string) || "";
+    if (csNum.startsWith(prefix)) {
+      const seqPart = csNum.slice(prefix.length);
+      const seqVal = parseInt(seqPart, 10);
+      if (!isNaN(seqVal) && seqVal > maxSeq) {
+        maxSeq = seqVal;
+      }
+    }
+  }
+
+  const nextSeq = String(maxSeq + 1).padStart(6, "0");
+  return `${prefix}${nextSeq}`;
+}
+
+/**
+ * Backfills existing cost sheets that do not have a cost_sheet_number assigned in the POC###### format.
+ */
+export async function backfillCostSheetNumbers(pool: Pool) {
+  try {
+    const unnumbered = await pool.query<{ id: string; saved_at: string; costing_date: string }>(`
+      SELECT id, saved_at, costing_date
+      FROM pre_order_cost_sheets
+      WHERE cost_sheet_number IS NULL 
+         OR cost_sheet_number = ''
+         OR cost_sheet_number NOT LIKE 'POC%'
+      ORDER BY saved_at ASC, id ASC
+    `);
+
+    if (unnumbered.recordset.length === 0) return;
+
+    for (const row of unnumbered.recordset) {
+      const nextNum = await generateNextCostSheetNumber(pool);
+      await pool
+        .request()
+        .input("id", row.id)
+        .input("costSheetNumber", nextNum)
+        .query(`
+          UPDATE pre_order_cost_sheets
+          SET cost_sheet_number = @costSheetNumber
+          WHERE id = @id
+        `);
+    }
+  } catch (err) {
+    console.error("[backfillCostSheetNumbers] error:", err);
+  }
 }
 
 /**

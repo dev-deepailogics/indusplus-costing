@@ -9,6 +9,7 @@ import type {
   SimpleTableData,
   SimpleTableCard,
 } from "@/lib/parameters/types";
+import { ensureSyncedProcessTables } from "@/lib/parameters/rejection-grid-sync";
 
 // ---------------------------------------------------------------------------
 // DDL — runs once per server lifetime
@@ -483,20 +484,61 @@ async function saveCutToShipGrid(pool: Awaited<ReturnType<typeof getPool>>, data
 // 2. REJECTION GRID
 // ---------------------------------------------------------------------------
 async function getRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>): Promise<ProcessMatrixTableData> {
-  const result = await pool.request().query<{
-    process: string;
-    qty_band: string;
-    style_category: string;
-    value: string;
-    process_order: number;
-    row_order: number;
-    col_order: number;
-  }>("SELECT process, qty_band, style_category, value, process_order, row_order, col_order FROM rejection_grid ORDER BY process_order, row_order, col_order");
+  const [result, stylesData] = await Promise.all([
+    pool.request().query<{
+      process: string;
+      qty_band: string;
+      style_category: string;
+      value: string;
+      process_order: number;
+      row_order: number;
+      col_order: number;
+    }>("SELECT process, qty_band, style_category, value, process_order, row_order, col_order FROM rejection_grid ORDER BY process_order, row_order, col_order"),
+    getStyles(pool).catch(() => null),
+  ]);
+
+  let dynamicCategories: string[] = [];
+  if (stylesData) {
+    const activeRows = stylesData.cards?.find((c) => c.isActive)?.rows ?? stylesData.rows ?? [];
+    for (const r of activeRows) {
+      const name = (r.values.styleName || r.values.description || "").trim();
+      if (name && !dynamicCategories.includes(name)) {
+        dynamicCategories.push(name);
+      }
+    }
+  }
+
+  // Clean up any orphaned categories in rejection_grid DB table if active style categories exist
+  if (dynamicCategories.length > 0) {
+    const orphanedCategories = Array.from(
+      new Set(
+        result.recordset
+          .filter((r) => r.process !== "Washing" && !dynamicCategories.includes(r.style_category))
+          .map((r) => r.style_category)
+      )
+    );
+    if (orphanedCategories.length > 0) {
+      const delReq = pool.request();
+      orphanedCategories.forEach((cat, idx) => {
+        delReq.input(`oc_${idx}`, sql.NVarChar(64), cat);
+      });
+      const placeholders = orphanedCategories.map((_, idx) => `@oc_${idx}`).join(", ");
+      delReq
+        .query(`DELETE FROM rejection_grid WHERE process != 'Washing' AND style_category IN (${placeholders})`)
+        .catch((err) => {
+          console.error("[getRejectionGrid] Failed to cleanup orphaned categories:", err);
+        });
+    }
+  }
 
   const processMap = new Map<string, number>();
   const tables: Record<string, MatrixTableData> = {};
 
   for (const r of result.recordset) {
+    // If this category was deleted from Style Categories, skip it
+    if (r.process !== "Washing" && dynamicCategories.length > 0 && !dynamicCategories.includes(r.style_category)) {
+      continue;
+    }
     if (!processMap.has(r.process)) {
       processMap.set(r.process, r.process_order);
       tables[r.process] = { rowLabels: [], columnLabels: [], cells: {} };
@@ -617,14 +659,36 @@ async function getRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>): Prom
     // If table doesn't exist yet, ignore
   }
 
-  return { processes, tables, customerRejections, useGridRejection, defaultRejection };
+  const syncedTables = ensureSyncedProcessTables(
+    tables,
+    processes,
+    dynamicCategories.length > 0 ? dynamicCategories : undefined
+  );
+  return { processes, tables: syncedTables, customerRejections, useGridRejection, defaultRejection };
 }
 
 async function saveRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>, data: ProcessMatrixTableData): Promise<void> {
+  const stylesData = await getStyles(pool).catch(() => null);
+  let dynamicCategories: string[] = [];
+  if (stylesData) {
+    const activeRows = stylesData.cards?.find((c) => c.isActive)?.rows ?? stylesData.rows ?? [];
+    for (const r of activeRows) {
+      const name = (r.values.styleName || r.values.description || "").trim();
+      if (name && !dynamicCategories.includes(name)) {
+        dynamicCategories.push(name);
+      }
+    }
+  }
+
   const tx = new sql.Transaction(pool);
   await tx.begin();
   try {
     if (data.tables && Object.keys(data.tables).length > 0) {
+      const syncedTables = ensureSyncedProcessTables(
+        data.tables,
+        data.processes,
+        dynamicCategories.length > 0 ? dynamicCategories : undefined
+      );
       await new sql.Request(tx).query("DELETE FROM rejection_grid;");
 
       const rows: {
@@ -639,7 +703,7 @@ async function saveRejectionGrid(pool: Awaited<ReturnType<typeof getPool>>, data
 
       for (let pi = 0; pi < data.processes.length; pi++) {
         const process = data.processes[pi];
-        const matrix = data.tables[process];
+        const matrix = syncedTables[process];
         if (!matrix || !matrix.rowLabels || !matrix.columnLabels) continue;
 
         for (let ri = 0; ri < matrix.rowLabels.length; ri++) {
@@ -1018,6 +1082,97 @@ async function saveStyles(pool: Awaited<ReturnType<typeof getPool>>, data: Simpl
             .query(
               "INSERT INTO styles_values (card_id, card_name, card_customer, is_default, is_active, card_serial, row_id, col_key, col_value, row_order) VALUES (@card_id, @card_name, @card_customer, @is_default, @is_active, @card_serial, @row_id, @col_key, @col_value, @row_order)"
             );
+        }
+      }
+    }
+
+    // Keep rejection_grid and cut_to_ship_grid in sync with the active style categories
+    const activeCard = cardsToSave.find((c) => c.isActive) || cardsToSave[0];
+    const activeRows = activeCard?.rows ?? [];
+    const validCategoryNames = activeRows
+      .map((r) => (r.values.styleName || r.values.description || "").trim())
+      .filter(Boolean);
+
+    if (validCategoryNames.length > 0) {
+      // 1. Remove deleted categories from rejection_grid in DB
+      const rejDelReq = new sql.Request(tx);
+      validCategoryNames.forEach((cat, idx) => {
+        rejDelReq.input(`sc_${idx}`, sql.NVarChar(64), cat);
+      });
+      const rejPlaceholders = validCategoryNames.map((_, idx) => `@sc_${idx}`).join(", ");
+      await rejDelReq.query(
+        `DELETE FROM rejection_grid WHERE process != 'Washing' AND style_category NOT IN (${rejPlaceholders})`
+      );
+
+      // 2. Remove deleted categories from cut_to_ship_grid in DB
+      const cutDelReq = new sql.Request(tx);
+      validCategoryNames.forEach((cat, idx) => {
+        cutDelReq.input(`csc_${idx}`, sql.NVarChar(64), cat);
+      });
+      const cutPlaceholders = validCategoryNames.map((_, idx) => `@csc_${idx}`).join(", ");
+      await cutDelReq.query(
+        `DELETE FROM cut_to_ship_grid WHERE style_category NOT IN (${cutPlaceholders})`
+      );
+
+      // 3. Add any newly added categories into rejection_grid for existing quantity bands
+      const existingRejCatsRes = await new sql.Request(tx).query<{ style_category: string }>(
+        "SELECT DISTINCT style_category FROM rejection_grid WHERE process != 'Washing'"
+      );
+      const existingRejCats = new Set(existingRejCatsRes.recordset.map((r) => r.style_category));
+      const newRejCats = validCategoryNames.filter((cat) => !existingRejCats.has(cat));
+
+      if (newRejCats.length > 0) {
+        const bandsRes = await new sql.Request(tx).query<{
+          process: string;
+          qty_band: string;
+          process_order: number;
+          row_order: number;
+        }>("SELECT DISTINCT process, qty_band, process_order, row_order FROM rejection_grid WHERE process != 'Washing'");
+
+        for (const cat of newRejCats) {
+          const colOrder = validCategoryNames.indexOf(cat);
+          for (const b of bandsRes.recordset) {
+            await new sql.Request(tx)
+              .input("proc", sql.NVarChar(64), b.process)
+              .input("qty", sql.NVarChar(64), b.qty_band)
+              .input("cat", sql.NVarChar(64), cat)
+              .input("val", sql.NVarChar(32), "")
+              .input("po", sql.Int, b.process_order)
+              .input("ro", sql.Int, b.row_order)
+              .input("co", sql.Int, colOrder)
+              .query(
+                "INSERT INTO rejection_grid (process, qty_band, style_category, value, process_order, row_order, col_order) VALUES (@proc, @qty, @cat, @val, @po, @ro, @co)"
+              );
+          }
+        }
+      }
+
+      // 4. Add any newly added categories into cut_to_ship_grid for existing quantity bands
+      const existingCutCatsRes = await new sql.Request(tx).query<{ style_category: string }>(
+        "SELECT DISTINCT style_category FROM cut_to_ship_grid"
+      );
+      const existingCutCats = new Set(existingCutCatsRes.recordset.map((r) => r.style_category));
+      const newCutCats = validCategoryNames.filter((cat) => !existingCutCats.has(cat));
+
+      if (newCutCats.length > 0) {
+        const cutBandsRes = await new sql.Request(tx).query<{
+          qty_band: string;
+          row_order: number;
+        }>("SELECT DISTINCT qty_band, row_order FROM cut_to_ship_grid");
+
+        for (const cat of newCutCats) {
+          const colOrder = validCategoryNames.indexOf(cat);
+          for (const b of cutBandsRes.recordset) {
+            await new sql.Request(tx)
+              .input("qty", sql.NVarChar(64), b.qty_band)
+              .input("cat", sql.NVarChar(64), cat)
+              .input("val", sql.NVarChar(32), "")
+              .input("ro", sql.Int, b.row_order)
+              .input("co", sql.Int, colOrder)
+              .query(
+                "INSERT INTO cut_to_ship_grid (qty_band, style_category, value, row_order, col_order) VALUES (@qty, @cat, @val, @ro, @co)"
+              );
+          }
         }
       }
     }

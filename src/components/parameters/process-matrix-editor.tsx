@@ -3,7 +3,12 @@
 import { useEffect, useState, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MatrixTableEditor } from "./matrix-table-editor";
-import type { MatrixTableData, ProcessMatrixTableData } from "@/lib/parameters/types";
+import type { MatrixTableData, ProcessMatrixTableData, SimpleTableData } from "@/lib/parameters/types";
+import {
+  syncProcessTables,
+  ensureSyncedProcessTables,
+  getCanonicalBandsFromAllTables,
+} from "@/lib/parameters/rejection-grid-sync";
 
 import type { StyleMasterItem } from "@/lib/style-master/types";
 import { calculateSizeBracket, mapSMVToCategory, getWashingRejectionFromGrid, getCellByQtyOrBracket } from "@/lib/cost-sheet/formula-engine";
@@ -50,6 +55,8 @@ export function ProcessMatrixEditor({
   const [active, setActive] = useState(data.processes[0] || "Fabric");
   const [styles, setStyles] = useState<StyleMasterItem[]>([]);
   const [customerOptionsList, setCustomerOptionsList] = useState<string[]>([]);
+  const [styleCategories, setStyleCategories] = useState<string[]>([]);
+  const [stylesGridData, setStylesGridData] = useState<SimpleTableData | null>(null);
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -110,6 +117,29 @@ export function ProcessMatrixEditor({
     }
   }
 
+  // Fetch style categories from Style Categories (SAM Range) parameter dynamically
+  useEffect(() => {
+    fetch("/api/parameters/styles")
+      .then((res) => res.json())
+      .then((stylesData: SimpleTableData) => {
+        if (stylesData) {
+          setStylesGridData(stylesData);
+          const activeRows = stylesData.cards?.find((c) => c.isActive)?.rows ?? stylesData.rows ?? [];
+          const cats: string[] = [];
+          for (const r of activeRows) {
+            const name = (r.values?.styleName || r.values?.description || "").trim();
+            if (name && !cats.includes(name)) {
+              cats.push(name);
+            }
+          }
+          if (cats.length > 0) {
+            setStyleCategories(cats);
+          }
+        }
+      })
+      .catch((err) => console.error("[ProcessMatrixEditor] Failed to load style categories:", err));
+  }, []);
+
   // Fetch customer list from indus-plus DB
   useEffect(() => {
     fetch("/api/customers")
@@ -153,11 +183,56 @@ export function ProcessMatrixEditor({
     setModalOpen(true);
   }
 
-  // Save process matrix table
+  // Save process matrix table & synchronize quantity bands and style categories across all tabs
   async function saveProcessTable(process: string, table: MatrixTableData) {
-    await onSave({ ...data, tables: { ...data.tables, [process]: table } });
-    toast.success(`Rejection grid for ${process} saved.`);
+    const syncedTables = syncProcessTables(
+      process,
+      table,
+      data.tables,
+      data.processes,
+      styleCategories.length > 0 ? styleCategories : undefined
+    );
+    await onSave({ ...data, tables: syncedTables });
+    toast.success(`Rejection grid for ${process} saved & synced across tabs.`);
   }
+
+  // Ensure all process tabs have synchronized quantity bands and style categories on load
+  useEffect(() => {
+    if (!data.tables || !canEdit) return;
+    const canonicalBands = getCanonicalBandsFromAllTables(data.tables, data.processes);
+    if (canonicalBands.length === 0) return;
+
+    const isOutOfSync = data.processes.some((p) => {
+      if (p === "Washing") {
+        const cols = data.tables["Washing"]?.columnLabels || [];
+        return cols.length !== canonicalBands.length || cols.some((c, i) => c !== canonicalBands[i]);
+      } else {
+        const rows = data.tables[p]?.rowLabels || [];
+        const rowsOutOfSync = rows.length !== canonicalBands.length || rows.some((r, i) => r !== canonicalBands[i]);
+        if (rowsOutOfSync) return true;
+
+        if (styleCategories.length > 0) {
+          const cols = data.tables[p]?.columnLabels || [];
+          const colsOutOfSync =
+            cols.length !== styleCategories.length ||
+            cols.some((c, i) => c !== styleCategories[i]);
+          if (colsOutOfSync) return true;
+        }
+        return false;
+      }
+    });
+
+    if (isOutOfSync) {
+      const synced = ensureSyncedProcessTables(
+        data.tables,
+        data.processes,
+        styleCategories.length > 0 ? styleCategories : undefined
+      );
+      onSave({ ...data, tables: synced }).catch((err) =>
+        console.warn("[ProcessMatrixEditor] Auto-sync tables notice:", err)
+      );
+    }
+  }, [data, canEdit, onSave, styleCategories]);
 
   // Save single customer rejection rate inside modal
   async function handleSaveCustomerRate() {
@@ -213,13 +288,19 @@ export function ProcessMatrixEditor({
 
   // Construct read-only Total Table (dynamic processes sum including Washing)
   const totalTable = useMemo(() => {
-    const firstTable = Object.values(data.tables)[0];
-    if (!firstTable) return null;
+    const canonicalBands = getCanonicalBandsFromAllTables(data.tables, data.processes);
+    if (canonicalBands.length === 0) return null;
+
+    const firstStandardProc = data.processes.find((p) => p !== "Washing") || "Fabric";
+    const colLabels =
+      styleCategories.length > 0
+        ? styleCategories
+        : (data.tables[firstStandardProc]?.columnLabels || ["Basic", "Semi Fashion", "Fashion", "High Fashion"]);
 
     const cells: Record<string, Record<string, string>> = {};
-    for (const row of firstTable.rowLabels) {
+    for (const row of canonicalBands) {
       cells[row] = {};
-      for (const col of firstTable.columnLabels) {
+      for (const col of colLabels) {
         let sum = 0;
         for (const p of data.processes) {
           // Skip Washing — it has different column structure (wash types, not style categories)
@@ -233,11 +314,11 @@ export function ProcessMatrixEditor({
       }
     }
     return {
-      rowLabels: firstTable.rowLabels,
-      columnLabels: firstTable.columnLabels,
+      rowLabels: canonicalBands,
+      columnLabels: colLabels,
       cells,
     };
-  }, [data]);
+  }, [data, styleCategories]);
 
   // Compute live rejection totals per registered style master
   const styleSummaries = useMemo(() => {
@@ -248,7 +329,7 @@ export function ProcessMatrixEditor({
     return styles.map((style) => {
       const availableBrackets = data.processes.length > 0 ? data.tables[data.processes[0]]?.rowLabels : undefined;
       const sizeBracket = calculateSizeBracket(style.orderQuantity, availableBrackets);
-      const styleCategoryClass = mapSMVToCategory(style.smvSewing);
+      const styleCategoryClass = mapSMVToCategory(style.smvSewing, stylesGridData || undefined);
 
       // Check if customer has single rate
       const custRateStr = data.customerRejections?.[style.customerName];
@@ -610,19 +691,31 @@ export function ProcessMatrixEditor({
 
       {/* Process Tabs Content */}
       <Tabs value={active} onValueChange={(v) => setActive(v as string)}>
-        {data.processes.map((p) => (
-          <TabsContent key={p} value={p} className="pt-0">
-            <MatrixTableEditor
-              data={data.tables[p]}
-              onSave={(table) => saveProcessTable(p, table)}
-              rowLabelHeader={p === "Washing" ? "Wash Type" : "Qty. Band"}
-              validateRowsAsQtyBands={p !== "Washing"}
-              canCreate={canCreate}
-              canEdit={canEdit}
-              canDelete={canDelete}
-            />
-          </TabsContent>
-        ))}
+        {data.processes.map((p) => {
+          const tbl = data.tables[p];
+          const effectiveTable: MatrixTableData =
+            p !== "Washing" && styleCategories.length > 0 && tbl
+              ? {
+                  ...tbl,
+                  columnLabels: styleCategories,
+                  cells: tbl.cells || {},
+                }
+              : tbl;
+
+          return (
+            <TabsContent key={p} value={p} className="pt-0">
+              <MatrixTableEditor
+                data={effectiveTable}
+                onSave={(table) => saveProcessTable(p, table)}
+                rowLabelHeader={p === "Washing" ? "Wash Type" : "Qty. Band"}
+                validateRowsAsQtyBands={p !== "Washing"}
+                canCreate={canCreate}
+                canEdit={canEdit}
+                canDelete={canDelete}
+              />
+            </TabsContent>
+          );
+        })}
         {totalTable && (
           <TabsContent value="total-rejections" className="pt-0">
             <div className="space-y-3">

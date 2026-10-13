@@ -1,5 +1,6 @@
 import type { StyleMasterItem } from "@/features/style-master/types";
 import type { SimpleTableData, MatrixTableData, ProcessMatrixTableData } from "@/features/parameters/types";
+import { sortQtyRowLabels, getCanonicalBandsFromAllTables } from "@/lib/parameters/rejection-grid-sync";
 
 function getActiveRows(tableData: SimpleTableData | undefined, customerName?: string) {
   if (!tableData) return [];
@@ -211,24 +212,14 @@ export function matchQtyToBracket(qty: number, label: string): boolean {
 
 export function calculateSizeBracket(qty: number, availableBrackets?: string[]): string {
   if (availableBrackets && availableBrackets.length > 0) {
-    for (const bracket of availableBrackets) {
+    const sorted = sortQtyRowLabels(availableBrackets).reverse();
+    for (const bracket of sorted) {
       if (matchQtyToBracket(qty, bracket)) {
         return bracket;
       }
     }
-    return "";
   }
-
-  if (qty >= 125000) return "Capacity Qty";
-  if (qty <= 500) return "<=500";
-  if (qty <= 1000) return "501-1000";
-  if (qty <= 2000) return "1001-2000";
-  if (qty <= 3000) return "2001-3000";
-  if (qty <= 4000) return "3001-4000";
-  if (qty <= 5000) return "4001-5000";
-  if (qty <= 10000) return "5001-10000";
-  if (qty <= 25000) return "10001-25000";
-  return ">25000";
+  return "";
 }
 
 /**
@@ -244,9 +235,10 @@ export function getCellByQtyOrBracket(
 
   let targetRowKey: string | undefined;
 
-  // 1. Match qty against row keys using bracket matching logic
+  // 1. Match qty against row keys using bracket matching logic (check higher brackets first)
   if (qty !== undefined && qty > 0) {
-    targetRowKey = Object.keys(rowMap).find((k) => matchQtyToBracket(qty, k));
+    const sortedKeys = sortQtyRowLabels(Object.keys(rowMap)).reverse();
+    targetRowKey = sortedKeys.find((k) => matchQtyToBracket(qty, k));
   }
 
   // 2. Fallback: match row key by sizeBracket string (case-insensitive)
@@ -299,7 +291,8 @@ export function getWashingRejectionFromGrid(
   let colKey: string | undefined;
 
   if (qty !== undefined && qty > 0) {
-    colKey = Object.keys(colMap).find((k) => matchQtyToBracket(qty, k));
+    const sortedCols = sortQtyRowLabels(Object.keys(colMap)).reverse();
+    colKey = sortedCols.find((k) => matchQtyToBracket(qty, k));
   }
   if (!colKey && sizeBracket) {
     const normBracket = sizeBracket.trim().toLowerCase();
@@ -499,7 +492,10 @@ export function runFormulaEngine(
 
   const smv = style.smvSewing;
   const qty = style.orderQuantity;
-  const availableBrackets = params.cutToShipGrid?.rowLabels;
+  const rejBands = params.rejectionGrid?.tables
+    ? getCanonicalBandsFromAllTables(params.rejectionGrid.tables, params.rejectionGrid.processes)
+    : [];
+  const availableBrackets = rejBands.length > 0 ? rejBands : params.cutToShipGrid?.rowLabels;
   const sizeBracket = calculateSizeBracket(qty, availableBrackets);
   const styleCategory = mapSMVToCategory(smv, params.stylesCategoryGrid);
 
@@ -553,7 +549,10 @@ export function runFormulaEngine(
                 ? "High Fashion"
                 : styleCategory;
               const rateStr = getCellByQtyOrBracket(table.cells, qty, sizeBracket, lookupCategory) || "0";
-              sumRej += parseFloat(rateStr.replace("%", "")) / 100;
+              const parsedRate = parseFloat(rateStr.replace("%", "").trim());
+              if (!isNaN(parsedRate)) {
+                sumRej += parsedRate / 100;
+              }
             }
           });
         // Washing rejection: DB-driven lookup (rows=washType names, cols=qty bands)

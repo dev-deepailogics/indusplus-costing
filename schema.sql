@@ -16,8 +16,13 @@ BEGIN
         assignedCustomer  NVARCHAR(255) NULL,
         isActive          BIT           NOT NULL DEFAULT 1,
         mustResetPassword BIT           NOT NULL DEFAULT 0,
-        createdAt         DATETIME2     NOT NULL DEFAULT GETUTCDATE(),
-        updatedAt         DATETIME2     NOT NULL DEFAULT GETUTCDATE()
+        isdeleted         BIT           NOT NULL DEFAULT 0,
+        inserted_by       NVARCHAR(256) NULL,
+        inserted_at       DATETIME2     NOT NULL DEFAULT GETUTCDATE(),
+        updated_by        NVARCHAR(256) NULL,
+        updated_at        DATETIME2     NOT NULL DEFAULT GETUTCDATE(),
+        deleted_by        NVARCHAR(256) NULL,
+        deleted_at        DATETIME2     NULL
     );
 END;
 
@@ -27,6 +32,14 @@ IF NOT EXISTS (
 )
 BEGIN
     ALTER TABLE users ADD assignedCustomer NVARCHAR(255) NULL;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'isdeleted'
+)
+BEGIN
+    ALTER TABLE users ADD isdeleted BIT NOT NULL DEFAULT 0;
 END;
 
 -- 2. ROLES TABLE
@@ -39,8 +52,12 @@ BEGIN
         description NVARCHAR(500) NULL,
         isSystem    BIT NOT NULL DEFAULT 0,
         isActive    BIT NOT NULL DEFAULT 1,
-        createdAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        updatedAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
     );
 END;
 
@@ -56,6 +73,12 @@ BEGIN
         canEdit     BIT NOT NULL DEFAULT 0,
         canDelete   BIT NOT NULL DEFAULT 0,
         canApprove  BIT NOT NULL DEFAULT 0,
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL,
         CONSTRAINT FK_role_permissions_roleId FOREIGN KEY (roleId) REFERENCES roles(id) ON DELETE CASCADE,
         CONSTRAINT UQ_role_section UNIQUE (roleId, section)
     );
@@ -70,8 +93,12 @@ BEGIN
         description NVARCHAR(500) NULL,
         customers   NVARCHAR(MAX) NOT NULL DEFAULT '[]',
         isActive    BIT NOT NULL DEFAULT 1,
-        createdAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        updatedAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
     );
     CREATE INDEX IX_teams_isActive ON teams (isActive);
 END;
@@ -93,7 +120,12 @@ BEGIN
         userId      INT NOT NULL,
         roleSlug    NVARCHAR(100) NOT NULL,
         notes       NVARCHAR(255) NULL,
-        createdAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL,
         CONSTRAINT FK_team_members_teamId FOREIGN KEY (teamId) REFERENCES teams(id) ON DELETE CASCADE,
         CONSTRAINT FK_team_members_userId FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
         CONSTRAINT UQ_team_user_role UNIQUE (teamId, userId, roleSlug)
@@ -104,7 +136,7 @@ END;
 
 IF NOT EXISTS (
     SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
-    WHERE TABLE_NAME = 'team_members' AND COLUMN_NAME = 'createdAt'
+    WHERE TABLE_NAME = 'team_members' AND COLUMN_NAME = 'inserted_at'
 )
 BEGIN
     IF EXISTS (
@@ -112,11 +144,18 @@ BEGIN
         WHERE TABLE_NAME = 'team_members' AND COLUMN_NAME = 'joinedAt'
     )
     BEGIN
-        EXEC sp_rename 'team_members.joinedAt', 'createdAt', 'COLUMN';
+        EXEC sp_rename 'team_members.joinedAt', 'inserted_at', 'COLUMN';
+    END
+    ELSE IF EXISTS (
+        SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_NAME = 'team_members' AND COLUMN_NAME = 'createdAt'
+    )
+    BEGIN
+        EXEC sp_rename 'team_members.createdAt', 'inserted_at', 'COLUMN';
     END
     ELSE
     BEGIN
-        ALTER TABLE team_members ADD createdAt DATETIME2 NOT NULL DEFAULT GETUTCDATE();
+        ALTER TABLE team_members ADD inserted_at DATETIME2 NOT NULL DEFAULT GETUTCDATE();
     END
 END;
 
@@ -190,9 +229,12 @@ BEGIN
         calculation_result     NVARCHAR(MAX)  NULL,
         approvals              NVARCHAR(MAX)  NULL,
         approval_status        NVARCHAR(64)   NOT NULL DEFAULT 'pending',
-        created_by             NVARCHAR(256)  NOT NULL DEFAULT '',
-        created_at             DATETIME2      NOT NULL DEFAULT GETUTCDATE(),
-        updated_at             DATETIME2      NOT NULL DEFAULT GETUTCDATE()
+        inserted_by            NVARCHAR(256)  NULL,
+        inserted_at            DATETIME2      NOT NULL DEFAULT GETUTCDATE(),
+        updated_by             NVARCHAR(256)  NULL,
+        updated_at             DATETIME2      NOT NULL DEFAULT GETUTCDATE(),
+        deleted_by             NVARCHAR(256)  NULL,
+        deleted_at             DATETIME2      NULL
     );
 END;
 
@@ -204,7 +246,12 @@ BEGIN
         row_label NVARCHAR(64) NOT NULL,
         col_label NVARCHAR(64) NOT NULL,
         cell_value NVARCHAR(64) NOT NULL DEFAULT '',
-        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL,
         CONSTRAINT UQ_cut_to_ship_grid UNIQUE (row_label, col_label)
     );
 END;
@@ -217,7 +264,12 @@ BEGIN
         row_label NVARCHAR(64) NOT NULL,
         col_label NVARCHAR(64) NOT NULL,
         cell_value NVARCHAR(64) NOT NULL DEFAULT '',
-        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL,
         CONSTRAINT UQ_rejection_grid UNIQUE (process_name, row_label, col_label)
     );
 END;
@@ -227,7 +279,12 @@ BEGIN
     CREATE TABLE customer_rejections (
         customer_name NVARCHAR(256) PRIMARY KEY,
         rate NVARCHAR(64) NOT NULL DEFAULT '0%',
-        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
     );
 END;
 
@@ -237,7 +294,12 @@ BEGIN
         id INT PRIMARY KEY DEFAULT 1,
         is_grid_mode_active BIT NOT NULL DEFAULT 1,
         default_rejection_rate NVARCHAR(64) NOT NULL DEFAULT '4.15%',
-        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
     );
 END;
 
@@ -247,7 +309,12 @@ BEGIN
         customer_name NVARCHAR(256) PRIMARY KEY,
         rate_per_sam FLOAT NOT NULL DEFAULT 0,
         row_order INT NOT NULL DEFAULT 0,
-        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
     );
 END;
 
@@ -256,7 +323,12 @@ BEGIN
     CREATE TABLE testing_cost_settings (
         id INT PRIMARY KEY DEFAULT 1,
         default_rate_per_sam FLOAT NOT NULL DEFAULT 0,
-        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
     );
 END;
 
@@ -271,7 +343,12 @@ BEGIN
         description NVARCHAR(256) NOT NULL,
         percent_of_sales NVARCHAR(64) NOT NULL DEFAULT '',
         sort_order INT NOT NULL DEFAULT 0,
-        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
     );
 END;
 
@@ -289,7 +366,12 @@ BEGIN
         cost_per_minute NVARCHAR(64) NOT NULL DEFAULT '',
         total NVARCHAR(64) NOT NULL DEFAULT '',
         sort_order INT NOT NULL DEFAULT 0,
-        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
     );
 END;
 
@@ -299,56 +381,134 @@ BEGIN
         list_key NVARCHAR(128) PRIMARY KEY,
         label NVARCHAR(256) NOT NULL,
         items_json NVARCHAR(MAX) NOT NULL DEFAULT '[]',
-        updated_at DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
     );
 END;
 
 -- ==============================================================================
--- 8. DEFAULT SEED DATA (USERS & ROLES)
+-- 8. AUDIT COLUMNS BACKFILL & LEGACY COLUMN MIGRATION
+-- ==============================================================================
+DECLARE @tbl NVARCHAR(128);
+DECLARE tbl_cursor CURSOR FOR
+    SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE';
+
+OPEN tbl_cursor;
+FETCH NEXT FROM tbl_cursor INTO @tbl;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@tbl) AND name = 'inserted_by')
+        EXEC('ALTER TABLE [' + @tbl + '] ADD inserted_by NVARCHAR(256) NULL;');
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@tbl) AND name = 'inserted_at')
+        EXEC('ALTER TABLE [' + @tbl + '] ADD inserted_at DATETIME2 NULL DEFAULT GETDATE();');
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@tbl) AND name = 'updated_by')
+        EXEC('ALTER TABLE [' + @tbl + '] ADD updated_by NVARCHAR(256) NULL;');
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@tbl) AND name = 'updated_at')
+        EXEC('ALTER TABLE [' + @tbl + '] ADD updated_at DATETIME2 NULL;');
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@tbl) AND name = 'deleted_by')
+        EXEC('ALTER TABLE [' + @tbl + '] ADD deleted_by NVARCHAR(256) NULL;');
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@tbl) AND name = 'deleted_at')
+        EXEC('ALTER TABLE [' + @tbl + '] ADD deleted_at DATETIME2 NULL;');
+
+    -- Migrate legacy createdAt to inserted_at without data loss
+    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@tbl) AND name = 'createdAt')
+    BEGIN
+        EXEC('UPDATE [' + @tbl + '] SET inserted_at = createdAt WHERE createdAt IS NOT NULL AND inserted_at IS NULL;');
+        DECLARE @dfCreatedAt NVARCHAR(200);
+        SELECT @dfCreatedAt = d.name 
+        FROM sys.tables t
+        JOIN sys.columns c ON t.object_id = c.object_id
+        JOIN sys.default_constraints d ON c.default_object_id = d.object_id
+        WHERE t.name = @tbl AND c.name = 'createdAt';
+        IF @dfCreatedAt IS NOT NULL
+            EXEC('ALTER TABLE [' + @tbl + '] DROP CONSTRAINT [' + @dfCreatedAt + '];');
+        EXEC('ALTER TABLE [' + @tbl + '] DROP COLUMN [createdAt];');
+    END;
+
+    -- Migrate legacy updatedAt to updated_at without data loss
+    IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(@tbl) AND name = 'updatedAt')
+    BEGIN
+        EXEC('UPDATE [' + @tbl + '] SET updated_at = updatedAt WHERE updatedAt IS NOT NULL AND updated_at IS NULL;');
+        DECLARE @dfUpdatedAt NVARCHAR(200);
+        SELECT @dfUpdatedAt = d.name 
+        FROM sys.tables t
+        JOIN sys.columns c ON t.object_id = c.object_id
+        JOIN sys.default_constraints d ON c.default_object_id = d.object_id
+        WHERE t.name = @tbl AND c.name = 'updatedAt';
+        IF @dfUpdatedAt IS NOT NULL
+            EXEC('ALTER TABLE [' + @tbl + '] DROP CONSTRAINT [' + @dfUpdatedAt + '];');
+        EXEC('ALTER TABLE [' + @tbl + '] DROP COLUMN [updatedAt];');
+    END;
+
+    FETCH NEXT FROM tbl_cursor INTO @tbl;
+END;
+
+CLOSE tbl_cursor;
+DEALLOCATE tbl_cursor;
+
+-- Soft-delete column for users
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('users') AND name = 'isdeleted')
+BEGIN
+    ALTER TABLE users ADD isdeleted BIT NOT NULL DEFAULT 0;
+END;
+
+-- ==============================================================================
+-- 9. DEFAULT SEED DATA (USERS & ROLES)
 -- ==============================================================================
 
 -- Seed Default Admin User (admin@gmail.com / Admin@123)
 IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@gmail.com')
 BEGIN
-    INSERT INTO users (email, displayName, passwordHash, role, isActive, mustResetPassword)
+    INSERT INTO users (email, displayName, passwordHash, role, isActive, mustResetPassword, isdeleted, inserted_by, inserted_at, updated_by, updated_at)
     VALUES (
         'admin@gmail.com',
         'Admin',
         '$2b$10$mR3GW5rCIswkJa6/KXYnu.7Wpcfnh0w5KAwEg2YESj278SdCZ6e3q',
         'admin',
         1,
-        0
+        0,
+        0,
+        'system',
+        GETUTCDATE(),
+        'system',
+        GETUTCDATE()
     );
 END
 ELSE
 BEGIN
     UPDATE users 
-    SET passwordHash = '$2b$10$mR3GW5rCIswkJa6/KXYnu.7Wpcfnh0w5KAwEg2YESj278SdCZ6e3q'
+    SET passwordHash = '$2b$10$mR3GW5rCIswkJa6/KXYnu.7Wpcfnh0w5KAwEg2YESj278SdCZ6e3q',
+        isdeleted = 0
     WHERE email = 'admin@gmail.com';
 END;
 
 -- Seed Default Roles
 IF NOT EXISTS (SELECT 1 FROM roles WHERE slug = 'admin')
-    INSERT INTO roles (name, slug, description, isSystem, isActive) VALUES ('Admin', 'admin', 'Full access to all sections and features.', 1, 1);
+    INSERT INTO roles (name, slug, description, isSystem, isActive, inserted_by, inserted_at, updated_by, updated_at) VALUES ('Admin', 'admin', 'Full access to all sections and features.', 1, 1, 'system', GETUTCDATE(), 'system', GETUTCDATE());
 IF NOT EXISTS (SELECT 1 FROM roles WHERE slug = 'merchant')
-    INSERT INTO roles (name, slug, description, isSystem, isActive) VALUES ('Merchant (Costing Creator)', 'merchant', 'Creates and manages cost sheets.', 0, 1);
+    INSERT INTO roles (name, slug, description, isSystem, isActive, inserted_by, inserted_at, updated_by, updated_at) VALUES ('Merchant (Costing Creator)', 'merchant', 'Creates and manages cost sheets.', 0, 1, 'system', GETUTCDATE(), 'system', GETUTCDATE());
 IF NOT EXISTS (SELECT 1 FROM roles WHERE slug = 'fabric_head')
-    INSERT INTO roles (name, slug, description, isSystem, isActive) VALUES ('Fabric Head', 'fabric_head', 'Approves fabric details on cost sheets.', 0, 1);
+    INSERT INTO roles (name, slug, description, isSystem, isActive, inserted_by, inserted_at, updated_by, updated_at) VALUES ('Fabric Head', 'fabric_head', 'Approves fabric details on cost sheets.', 0, 1, 'system', GETUTCDATE(), 'system', GETUTCDATE());
 IF NOT EXISTS (SELECT 1 FROM roles WHERE slug = 'mmc_head')
-    INSERT INTO roles (name, slug, description, isSystem, isActive) VALUES ('MMC Head (Trims)', 'mmc_head', 'Approves trims and accessories on cost sheets.', 0, 1);
+    INSERT INTO roles (name, slug, description, isSystem, isActive, inserted_by, inserted_at, updated_by, updated_at) VALUES ('MMC Head (Trims)', 'mmc_head', 'Approves trims and accessories on cost sheets.', 0, 1, 'system', GETUTCDATE(), 'system', GETUTCDATE());
 IF NOT EXISTS (SELECT 1 FROM roles WHERE slug = 'ie_head')
-    INSERT INTO roles (name, slug, description, isSystem, isActive) VALUES ('IE Head (SAM)', 'ie_head', 'Approves IE and SAM breakdowns.', 0, 1);
+    INSERT INTO roles (name, slug, description, isSystem, isActive, inserted_by, inserted_at, updated_by, updated_at) VALUES ('IE Head (SAM)', 'ie_head', 'Approves IE and SAM breakdowns.', 0, 1, 'system', GETUTCDATE(), 'system', GETUTCDATE());
 IF NOT EXISTS (SELECT 1 FROM roles WHERE slug = 'washing_head')
-    INSERT INTO roles (name, slug, description, isSystem, isActive) VALUES ('Washing Head', 'washing_head', 'Approves washing rates and recipes.', 0, 1);
+    INSERT INTO roles (name, slug, description, isSystem, isActive, inserted_by, inserted_at, updated_by, updated_at) VALUES ('Washing Head', 'washing_head', 'Approves washing rates and recipes.', 0, 1, 'system', GETUTCDATE(), 'system', GETUTCDATE());
 IF NOT EXISTS (SELECT 1 FROM roles WHERE slug = 'marketing')
-    INSERT INTO roles (name, slug, description, isSystem, isActive) VALUES ('Marketing', 'marketing', 'Reviews commercial FOB pricing.', 0, 1);
+    INSERT INTO roles (name, slug, description, isSystem, isActive, inserted_by, inserted_at, updated_by, updated_at) VALUES ('Marketing', 'marketing', 'Reviews commercial FOB pricing.', 0, 1, 'system', GETUTCDATE(), 'system', GETUTCDATE());
 IF NOT EXISTS (SELECT 1 FROM roles WHERE slug = 'costing_head')
-    INSERT INTO roles (name, slug, description, isSystem, isActive) VALUES ('Costing Head', 'costing_head', 'Verifies margins, overhead, and conversion.', 0, 1);
+    INSERT INTO roles (name, slug, description, isSystem, isActive, inserted_by, inserted_at, updated_by, updated_at) VALUES ('Costing Head', 'costing_head', 'Verifies margins, overhead, and conversion.', 0, 1, 'system', GETUTCDATE(), 'system', GETUTCDATE());
 IF NOT EXISTS (SELECT 1 FROM roles WHERE slug = 'director')
-    INSERT INTO roles (name, slug, description, isSystem, isActive) VALUES ('Director', 'director', 'Final authorization that locks cost sheets.', 0, 1);
+    INSERT INTO roles (name, slug, description, isSystem, isActive, inserted_by, inserted_at, updated_by, updated_at) VALUES ('Director', 'director', 'Final authorization that locks cost sheets.', 0, 1, 'system', GETUTCDATE(), 'system', GETUTCDATE());
 
 -- ==============================================================================
--- 9. SEED DEFAULT ROLE PERMISSIONS
+-- 10. SEED DEFAULT ROLE PERMISSIONS
 -- ==============================================================================
 
 -- Helper CTE & Merge to populate permissions for all roles
@@ -365,8 +525,8 @@ DECLARE @DirectorId INT = (SELECT id FROM roles WHERE slug = 'director');
 -- Seed Admin (All sections = Full access)
 IF @AdminId IS NOT NULL
 BEGIN
-    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove)
-    SELECT @AdminId, s.section, 1, 1, 1, 1, 1
+    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove, inserted_by, inserted_at, updated_by, updated_at)
+    SELECT @AdminId, s.section, 1, 1, 1, 1, 1, 'system', GETUTCDATE(), 'system', GETUTCDATE()
     FROM (VALUES 
         ('page_cost_sheets'), ('page_parameters'), ('page_users'), ('page_roles'), ('page_teams'),
         ('section_header'), ('section_fabric'), ('section_pocket_lining'), ('section_trims'),
@@ -380,8 +540,8 @@ END;
 -- Seed Merchant Permissions
 IF @MerchantId IS NOT NULL
 BEGIN
-    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove)
-    SELECT @MerchantId, s.section, s.canView, s.canCreate, s.canEdit, s.canDelete, s.canApprove
+    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove, inserted_by, inserted_at, updated_by, updated_at)
+    SELECT @MerchantId, s.section, s.canView, s.canCreate, s.canEdit, s.canDelete, s.canApprove, 'system', GETUTCDATE(), 'system', GETUTCDATE()
     FROM (VALUES 
         ('page_cost_sheets', 1, 1, 1, 0, 0),
         ('page_parameters', 1, 0, 0, 0, 0),
@@ -400,8 +560,8 @@ END;
 -- Seed Department Head Approvals
 IF @FabricHeadId IS NOT NULL
 BEGIN
-    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove)
-    SELECT @FabricHeadId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove
+    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove, inserted_by, inserted_at, updated_by, updated_at)
+    SELECT @FabricHeadId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove, 'system', GETUTCDATE(), 'system', GETUTCDATE()
     FROM (VALUES 
         ('page_cost_sheets', 1, 0, 0),
         ('section_fabric', 1, 1, 0),
@@ -413,8 +573,8 @@ END;
 
 IF @MmcHeadId IS NOT NULL
 BEGIN
-    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove)
-    SELECT @MmcHeadId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove
+    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove, inserted_by, inserted_at, updated_by, updated_at)
+    SELECT @MmcHeadId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove, 'system', GETUTCDATE(), 'system', GETUTCDATE()
     FROM (VALUES 
         ('page_cost_sheets', 1, 0, 0),
         ('section_trims', 1, 1, 0),
@@ -425,8 +585,8 @@ END;
 
 IF @IeHeadId IS NOT NULL
 BEGIN
-    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove)
-    SELECT @IeHeadId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove
+    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove, inserted_by, inserted_at, updated_by, updated_at)
+    SELECT @IeHeadId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove, 'system', GETUTCDATE(), 'system', GETUTCDATE()
     FROM (VALUES 
         ('page_cost_sheets', 1, 0, 0),
         ('section_sam_labor', 1, 1, 0),
@@ -437,8 +597,8 @@ END;
 
 IF @WashingHeadId IS NOT NULL
 BEGIN
-    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove)
-    SELECT @WashingHeadId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove
+    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove, inserted_by, inserted_at, updated_by, updated_at)
+    SELECT @WashingHeadId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove, 'system', GETUTCDATE(), 'system', GETUTCDATE()
     FROM (VALUES 
         ('page_cost_sheets', 1, 0, 0),
         ('section_chemicals', 1, 1, 0),
@@ -449,8 +609,8 @@ END;
 
 IF @MarketingId IS NOT NULL
 BEGIN
-    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove)
-    SELECT @MarketingId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove
+    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove, inserted_by, inserted_at, updated_by, updated_at)
+    SELECT @MarketingId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove, 'system', GETUTCDATE(), 'system', GETUTCDATE()
     FROM (VALUES 
         ('page_cost_sheets', 1, 0, 0),
         ('section_header', 1, 1, 0),
@@ -461,8 +621,8 @@ END;
 
 IF @CostingHeadId IS NOT NULL
 BEGIN
-    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove)
-    SELECT @CostingHeadId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove
+    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove, inserted_by, inserted_at, updated_by, updated_at)
+    SELECT @CostingHeadId, s.section, s.canView, 0, s.canEdit, 0, s.canApprove, 'system', GETUTCDATE(), 'system', GETUTCDATE()
     FROM (VALUES 
         ('page_cost_sheets', 1, 0, 0),
         ('section_profitability', 1, 1, 0),
@@ -473,8 +633,8 @@ END;
 
 IF @DirectorId IS NOT NULL
 BEGIN
-    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove)
-    SELECT @DirectorId, s.section, s.canView, 0, 0, 0, s.canApprove
+    INSERT INTO role_permissions (roleId, section, canView, canCreate, canEdit, canDelete, canApprove, inserted_by, inserted_at, updated_by, updated_at)
+    SELECT @DirectorId, s.section, s.canView, 0, 0, 0, s.canApprove, 'system', GETUTCDATE(), 'system', GETUTCDATE()
     FROM (VALUES 
         ('page_cost_sheets', 1, 0),
         ('approval_director', 1, 1)

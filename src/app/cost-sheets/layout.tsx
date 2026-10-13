@@ -18,7 +18,7 @@ export default function CostSheetsLayout({
           <Image src="/logo-icon.png" alt="" width={22} height={22} className="hidden sm:block" />
           <span className="text-sm font-medium text-muted-foreground">Pre-Order Costing</span>
         </header>
-        <main className="flex-1 overflow-auto bg-muted/20 p-3 sm:p-4 md:p-6 lg:p-8">{children}</main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-muted/20 p-3 sm:p-4 lg:p-5">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );

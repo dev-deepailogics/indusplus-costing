@@ -13,87 +13,17 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { AlertCircle } from "lucide-react";
 
-export type QtyBandMode = "range" | "operator" | "capacity";
+import {
+  parseQtyBandValidation,
+  sortQtyRowLabels,
+  type QtyBandMode,
+} from "@/lib/parameters/rejection-grid-sync";
 
-export function parseQtyBandValidation(label: string): {
-  isValid: boolean;
-  error?: string;
-  from?: number;
-  to?: number;
-} {
-  const clean = label.trim().toLowerCase().replace(/,/g, "");
-  if (!clean) {
-    return { isValid: false, error: "Quantity band cannot be empty." };
-  }
-
-  if (clean === "capacity qty" || clean === "capacity") {
-    return { isValid: true, from: 125000, to: Infinity };
-  }
-
-  // Operator check: e.g. <=500, <500, >=30000, >30000
-  const opMatch = clean.match(/^([<>]=?)\s*(\d+)$/);
-  if (opMatch) {
-    const op = opMatch[1];
-    const val = parseInt(opMatch[2], 10);
-    if (isNaN(val) || val <= 0) {
-      return { isValid: false, error: "Please enter a valid positive number." };
-    }
-    if (op === "<=") return { isValid: true, from: 1, to: val };
-    if (op === "<") return { isValid: true, from: 1, to: Math.max(1, val - 1) };
-    if (op === ">=") return { isValid: true, from: val, to: Infinity };
-    if (op === ">") return { isValid: true, from: val + 1, to: Infinity };
-  }
-
-  // Range check: 501-1000 or 501 to 1000 (strictly numbers on both sides)
-  const rangeMatch = clean.match(/^(\d+)\s*(?:-|to)\s*(\d+)$/);
-  if (rangeMatch) {
-    const from = parseInt(rangeMatch[1], 10);
-    const to = parseInt(rangeMatch[2], 10);
-    if (isNaN(from) || isNaN(to)) {
-      return { isValid: false, error: "Both range values must be valid numbers." };
-    }
-    if (from <= 0 || to <= 0) {
-      return { isValid: false, error: "Quantities must be greater than 0." };
-    }
-    if (from >= to) {
-      return {
-        isValid: false,
-        error: `Start quantity (${from}) must be less than end quantity (${to}).`,
-      };
-    }
-    return { isValid: true, from, to };
-  }
-
-  // Single number
-  if (/^\d+$/.test(clean)) {
-    const val = parseInt(clean, 10);
-    if (val <= 0) return { isValid: false, error: "Quantity must be greater than 0." };
-    return { isValid: true, from: val, to: val };
-  }
-
-  return {
-    isValid: false,
-    error: "Only numerical values or ranges are allowed (e.g. 25001-30000, >30000, <=500).",
-  };
-}
-
-export function sortQtyRowLabels(rowLabels: string[]): string[] {
-  return [...rowLabels].sort((a, b) => {
-    const resA = parseQtyBandValidation(a);
-    const resB = parseQtyBandValidation(b);
-
-    const fromA = resA.isValid && resA.from !== undefined ? resA.from : 999999999;
-    const fromB = resB.isValid && resB.from !== undefined ? resB.from : 999999999;
-
-    if (fromA !== fromB) {
-      return fromA - fromB;
-    }
-
-    const toA = resA.isValid && resA.to !== undefined ? resA.to : 999999999;
-    const toB = resB.isValid && resB.to !== undefined ? resB.to : 999999999;
-    return toA - toB;
-  });
-}
+export {
+  parseQtyBandValidation,
+  sortQtyRowLabels,
+  type QtyBandMode,
+};
 
 export function AddQuantityBandDialog({
   open,

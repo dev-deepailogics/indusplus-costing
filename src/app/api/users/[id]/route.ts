@@ -93,10 +93,17 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "No valid fields to update." }, { status: 400 });
     }
 
-    updates.push("updatedAt = GETUTCDATE()");
+    const updatedBy = session.email || session.displayName || String(session.userId);
+    req.input("updatedBy", updatedBy);
+    updates.push(
+      "updated_at = GETUTCDATE()",
+      "updated_by = @updatedBy"
+    );
     const setClause = updates.join(", ");
 
-    const result = await req.query(`UPDATE users SET ${setClause} WHERE id = @id`);
+    const result = await req.query(
+      `UPDATE users SET ${setClause} WHERE id = @id AND (isdeleted = 0 OR isdeleted IS NULL)`
+    );
 
     if (result.rowsAffected[0] === 0) {
       return NextResponse.json({ error: "User not found." }, { status: 404 });
@@ -122,7 +129,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 }
 
 /**
- * DELETE /api/users/[id] — delete user (admin or users:delete)
+ * DELETE /api/users/[id] — soft delete user (admin or users:delete)
  */
 export async function DELETE(request: Request, context: RouteContext) {
   try {
@@ -149,13 +156,36 @@ export async function DELETE(request: Request, context: RouteContext) {
     }
 
     const pool = await getPool();
+    const deletedBy = session.email || session.displayName || String(session.userId);
+
+    // Soft deletion: do not remove row, set isdeleted = 1, isActive = 0, deleted_by, deleted_at
     const result = await pool
       .request()
       .input("id", id)
-      .query(`DELETE FROM users WHERE id = @id`);
+      .input("deletedBy", deletedBy)
+      .query(
+        `UPDATE users 
+         SET isdeleted = 1,
+             isActive = 0,
+             deleted_by = @deletedBy,
+             deleted_at = GETUTCDATE(),
+             updated_by = @deletedBy,
+             updated_at = GETUTCDATE()
+         WHERE id = @id AND (isdeleted = 0 OR isdeleted IS NULL)`
+      );
 
     if (result.rowsAffected[0] === 0) {
-      return NextResponse.json({ error: "User not found." }, { status: 404 });
+      return NextResponse.json({ error: "User not found or already deleted." }, { status: 404 });
+    }
+
+    // Clean up team_members for the soft-deleted user
+    try {
+      await pool
+        .request()
+        .input("userId", id)
+        .query(`DELETE FROM team_members WHERE userId = @userId`);
+    } catch (teamSyncErr) {
+      console.warn("[DELETE /api/users/[id]] Failed to clean up team_members:", teamSyncErr);
     }
 
     return NextResponse.json({ ok: true });

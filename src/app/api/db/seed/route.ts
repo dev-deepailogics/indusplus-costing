@@ -26,8 +26,13 @@ export async function POST() {
           assignedCustomer NVARCHAR(255) NULL,
           isActive        BIT           NOT NULL DEFAULT 1,
           mustResetPassword BIT         NOT NULL DEFAULT 0,
-          createdAt       DATETIME2     NOT NULL DEFAULT GETUTCDATE(),
-          updatedAt       DATETIME2     NOT NULL DEFAULT GETUTCDATE()
+          isdeleted       BIT           NOT NULL DEFAULT 0,
+          inserted_by     NVARCHAR(256) NULL,
+          inserted_at     DATETIME2     NOT NULL DEFAULT GETUTCDATE(),
+          updated_by      NVARCHAR(256) NULL,
+          updated_at      DATETIME2     NOT NULL DEFAULT GETUTCDATE(),
+          deleted_by      NVARCHAR(256) NULL,
+          deleted_at      DATETIME2     NULL
         );
       END
       IF NOT EXISTS (
@@ -37,12 +42,19 @@ export async function POST() {
       BEGIN
         ALTER TABLE users ADD assignedCustomer NVARCHAR(255) NULL;
       END
+      IF NOT EXISTS (
+        SELECT * FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'isdeleted'
+      )
+      BEGIN
+        ALTER TABLE users ADD isdeleted BIT NOT NULL DEFAULT 0;
+      END
     `);
 
     // Check if any users exist
     const countResult = await pool
       .request()
-      .query<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM users`);
+      .query<{ cnt: number }>(`SELECT COUNT(*) AS cnt FROM users WHERE (isdeleted = 0 OR isdeleted IS NULL)`);
     const count = countResult.recordset[0]?.cnt ?? 0;
 
     if (count > 0) {

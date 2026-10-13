@@ -38,7 +38,7 @@ export async function GET() {
         }>(
           `SELECT id, email, displayName, role, assignedCustomer, isActive, mustResetPassword
            FROM users
-           WHERE id = @id`,
+           WHERE id = @id AND (isdeleted = 0 OR isdeleted IS NULL)`,
         );
       user = result.recordset[0];
     } catch {
@@ -55,7 +55,7 @@ export async function GET() {
         }>(
           `SELECT id, email, displayName, role, isActive, mustResetPassword
            FROM users
-           WHERE id = @id`,
+           WHERE id = @id AND (isdeleted = 0 OR isdeleted IS NULL)`,
         );
       if (fallbackResult.recordset[0]) {
         user = {

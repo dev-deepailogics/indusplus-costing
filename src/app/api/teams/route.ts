@@ -17,8 +17,12 @@ export async function ensureTeamsTables(pool: ConnectionPool) {
         description NVARCHAR(500) NULL,
         customers   NVARCHAR(MAX) NOT NULL DEFAULT '[]',
         isActive    BIT NOT NULL DEFAULT 1,
-        createdAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        updatedAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
       );
       CREATE INDEX IX_teams_isActive ON teams (isActive);
     END
@@ -31,7 +35,12 @@ export async function ensureTeamsTables(pool: ConnectionPool) {
         userId      INT NOT NULL,
         roleSlug    NVARCHAR(100) NOT NULL,
         notes       NVARCHAR(255) NULL,
-        createdAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL,
         CONSTRAINT FK_team_members_teamId FOREIGN KEY (teamId) REFERENCES teams(id) ON DELETE CASCADE,
         CONSTRAINT FK_team_members_userId FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
         CONSTRAINT UQ_team_user_role UNIQUE (teamId, userId, roleSlug)
@@ -47,7 +56,7 @@ export async function ensureTeamsTables(pool: ConnectionPool) {
       UPDATE m
       SET m.roleSlug = u.role
       FROM team_members m
-      INNER JOIN users u ON u.id = m.userId
+      INNER JOIN users u ON u.id = m.userId AND (u.isdeleted = 0 OR u.isdeleted IS NULL)
       WHERE u.role IS NOT NULL AND u.role <> '' AND m.roleSlug <> u.role;
     `);
   } catch {
@@ -104,22 +113,22 @@ export async function GET() {
         t.description,
         t.customers,
         t.isActive,
-        t.createdAt,
-        t.updatedAt,
+        t.inserted_at,
+        t.updated_at,
         m.id AS memberId,
         m.userId,
         COALESCE(u.role, m.roleSlug) AS roleSlug,
         m.notes,
-        m.createdAt AS memberCreatedAt,
+        m.inserted_at AS memberInsertedAt,
         u.email AS userEmail,
         u.displayName AS userDisplayName,
         u.role AS userDefaultRole,
         COALESCE(r.name, u.role, m.roleSlug) AS roleName
       FROM teams t
       LEFT JOIN team_members m ON m.teamId = t.id
-      LEFT JOIN users u ON u.id = m.userId
+      LEFT JOIN users u ON u.id = m.userId AND (u.isdeleted = 0 OR u.isdeleted IS NULL)
       LEFT JOIN roles r ON r.slug = COALESCE(u.role, m.roleSlug)
-      ORDER BY t.createdAt DESC, m.id ASC
+      ORDER BY t.inserted_at DESC, m.id ASC
     `;
 
     const result = await pool.request().query(query);
@@ -149,8 +158,8 @@ export async function GET() {
           isActive: Boolean(row.isActive),
           memberCount: 0,
           members: [],
-          createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : "",
-          updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : "",
+          createdAt: row.inserted_at ? new Date(row.inserted_at).toISOString() : "",
+          updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : "",
         });
       }
 
@@ -165,7 +174,7 @@ export async function GET() {
           roleSlug: row.roleSlug,
           roleName: row.roleName || row.roleSlug,
           notes: row.notes ?? null,
-          createdAt: row.memberCreatedAt ? new Date(row.memberCreatedAt).toISOString() : "",
+          createdAt: row.memberInsertedAt ? new Date(row.memberInsertedAt).toISOString() : "",
         });
       }
     }
@@ -229,17 +238,18 @@ export async function POST(request: Request) {
     const pool = await getPool();
     await ensureTeamsTables(pool);
 
-    // Insert team
+    const insertedBy = session.email || session.displayName || String(session.userId);
     const insertTeamRes = await pool
       .request()
       .input("name", name)
       .input("description", description)
       .input("customers", customersJson)
       .input("isActive", isActive ? 1 : 0)
+      .input("insertedBy", insertedBy)
       .query<{ id: number }>(`
-        INSERT INTO teams (name, description, customers, isActive, createdAt, updatedAt)
+        INSERT INTO teams (name, description, customers, isActive, inserted_by, inserted_at, updated_by, updated_at)
         OUTPUT INSERTED.id
-        VALUES (@name, @description, @customers, @isActive, GETUTCDATE(), GETUTCDATE())
+        VALUES (@name, @description, @customers, @isActive, @insertedBy, GETUTCDATE(), @insertedBy, GETUTCDATE())
       `);
 
     const newTeamId = insertTeamRes.recordset[0]?.id;
@@ -262,8 +272,8 @@ export async function POST(request: Request) {
               SELECT 1 FROM team_members WHERE teamId = @teamId AND userId = @userId AND roleSlug = @roleSlug
             )
             BEGIN
-              INSERT INTO team_members (teamId, userId, roleSlug, notes, createdAt)
-              VALUES (@teamId, @userId, @roleSlug, @notes, GETUTCDATE())
+              INSERT INTO team_members (teamId, userId, roleSlug, notes, inserted_by, inserted_at)
+              VALUES (@teamId, @userId, @roleSlug, @notes, @insertedBy, GETUTCDATE())
             END
           `);
       } catch (memberErr) {

@@ -22,9 +22,12 @@ export async function GET() {
 
 
     const result = await pool.request().query(
-      `SELECT id, email, displayName, role, assignedCustomer, isActive, mustResetPassword, createdAt, updatedAt
+      `SELECT id, email, displayName, role, assignedCustomer, isActive, mustResetPassword,
+              inserted_by, inserted_at, updated_by, updated_at,
+              inserted_at AS createdAt, updated_at AS updatedAt
        FROM users
-       ORDER BY createdAt ASC`,
+       WHERE (isdeleted = 0 OR isdeleted IS NULL)
+       ORDER BY inserted_at ASC`,
     );
 
     return NextResponse.json({ users: result.recordset });
@@ -107,35 +110,69 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check uniqueness
+    const insertedBy = session.email || session.displayName || String(session.userId);
+
+    // Check uniqueness (including soft deletion check)
     const existing = await pool
       .request()
       .input("email", email)
-      .query<{ id: number }>(`SELECT id FROM users WHERE email = @email`);
+      .query<{ id: number; isdeleted: boolean }>(`SELECT id, isdeleted FROM users WHERE email = @email`);
 
+    let newId: number;
     if (existing.recordset.length > 0) {
-      return NextResponse.json(
-        { error: "A user with this email already exists." },
-        { status: 409 },
-      );
+      const rec = existing.recordset[0];
+      if (!rec.isdeleted) {
+        return NextResponse.json(
+          { error: "A user with this email already exists." },
+          { status: 409 },
+        );
+      }
+
+      // Re-activate previously soft-deleted user with new details
+      const passwordHash = await hashPassword(password);
+      await pool
+        .request()
+        .input("id", rec.id)
+        .input("displayName", displayName)
+        .input("passwordHash", passwordHash)
+        .input("role", role)
+        .input("assignedCustomer", assignedCustomer)
+        .input("updatedBy", insertedBy)
+        .query(
+          `UPDATE users
+           SET displayName = @displayName,
+               passwordHash = @passwordHash,
+               role = @role,
+               assignedCustomer = @assignedCustomer,
+               isActive = 1,
+               mustResetPassword = 1,
+               isdeleted = 0,
+               deleted_by = NULL,
+               deleted_at = NULL,
+               updated_by = @updatedBy,
+               updated_at = GETUTCDATE()
+           WHERE id = @id`
+        );
+      newId = rec.id;
+    } else {
+      // Hash & insert new record
+      const passwordHash = await hashPassword(password);
+      const insert = await pool
+        .request()
+        .input("email", email)
+        .input("displayName", displayName)
+        .input("passwordHash", passwordHash)
+        .input("role", role)
+        .input("assignedCustomer", assignedCustomer)
+        .input("insertedBy", insertedBy)
+        .query<{ id: number }>(
+          `INSERT INTO users (email, displayName, passwordHash, role, assignedCustomer, mustResetPassword, inserted_by, inserted_at, isdeleted)
+           OUTPUT INSERTED.id
+           VALUES (@email, @displayName, @passwordHash, @role, @assignedCustomer, 1, @insertedBy, GETUTCDATE(), 0)`,
+        );
+
+      newId = insert.recordset[0]?.id;
     }
-
-    // Hash & insert
-    const passwordHash = await hashPassword(password);
-    const insert = await pool
-      .request()
-      .input("email", email)
-      .input("displayName", displayName)
-      .input("passwordHash", passwordHash)
-      .input("role", role)
-      .input("assignedCustomer", assignedCustomer)
-      .query<{ id: number }>(
-        `INSERT INTO users (email, displayName, passwordHash, role, assignedCustomer, mustResetPassword)
-         OUTPUT INSERTED.id
-         VALUES (@email, @displayName, @passwordHash, @role, @assignedCustomer, 1)`,
-      );
-
-    const newId = insert.recordset[0]?.id;
 
     return NextResponse.json(
       {

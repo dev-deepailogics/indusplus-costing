@@ -42,8 +42,12 @@ async function runMigration() {
         description NVARCHAR(500) NULL,
         isSystem    BIT NOT NULL DEFAULT 0,
         isActive    BIT NOT NULL DEFAULT 1,
-        createdAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        updatedAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL
       );
     END
   `);
@@ -61,6 +65,12 @@ async function runMigration() {
         canEdit     BIT NOT NULL DEFAULT 0,
         canDelete   BIT NOT NULL DEFAULT 0,
         canApprove  BIT NOT NULL DEFAULT 0,
+        inserted_by NVARCHAR(256) NULL,
+        inserted_at DATETIME2 NULL DEFAULT GETDATE(),
+        updated_by  NVARCHAR(256) NULL,
+        updated_at  DATETIME2 NULL,
+        deleted_by  NVARCHAR(256) NULL,
+        deleted_at  DATETIME2 NULL,
         CONSTRAINT FK_role_permissions_roleId FOREIGN KEY (roleId) REFERENCES roles(id) ON DELETE CASCADE,
         CONSTRAINT UQ_role_section UNIQUE (roleId, section)
       );

@@ -38,20 +38,20 @@ export async function GET(
         t.description,
         t.customers,
         t.isActive,
-        t.createdAt,
-        t.updatedAt,
+        t.inserted_at,
+        t.updated_at,
         m.id AS memberId,
         m.userId,
         COALESCE(u.role, m.roleSlug) AS roleSlug,
         m.notes,
-        m.createdAt AS memberCreatedAt,
+        m.inserted_at AS memberInsertedAt,
         u.email AS userEmail,
         u.displayName AS userDisplayName,
         u.role AS userDefaultRole,
         COALESCE(r.name, u.role, m.roleSlug) AS roleName
       FROM teams t
       LEFT JOIN team_members m ON m.teamId = t.id
-      LEFT JOIN users u ON u.id = m.userId
+      LEFT JOIN users u ON u.id = m.userId AND (u.isdeleted = 0 OR u.isdeleted IS NULL)
       LEFT JOIN roles r ON r.slug = COALESCE(u.role, m.roleSlug)
       WHERE t.id = @teamId
       ORDER BY m.id ASC
@@ -85,8 +85,8 @@ export async function GET(
       isActive: Boolean(first.isActive),
       memberCount: 0,
       members: [],
-      createdAt: first.createdAt ? new Date(first.createdAt).toISOString() : "",
-      updatedAt: first.updatedAt ? new Date(first.updatedAt).toISOString() : "",
+      createdAt: first.inserted_at ? new Date(first.inserted_at).toISOString() : "",
+      updatedAt: first.updated_at ? new Date(first.updated_at).toISOString() : "",
     };
 
     for (const row of result.recordset) {
@@ -100,7 +100,7 @@ export async function GET(
           roleSlug: row.roleSlug,
           roleName: row.roleName || row.roleSlug,
           notes: row.notes ?? null,
-          createdAt: row.memberCreatedAt ? new Date(row.memberCreatedAt).toISOString() : "",
+          createdAt: row.memberInsertedAt ? new Date(row.memberInsertedAt).toISOString() : "",
         });
       }
     }
@@ -165,8 +165,9 @@ export async function PATCH(
       body.customers !== undefined ||
       body.isActive !== undefined
     ) {
-      const updates: string[] = ["updatedAt = GETUTCDATE()"];
-      const req = pool.request().input("id", teamId);
+      const updatedBy = session.email || session.displayName || String(session.userId);
+      const req = pool.request().input("id", teamId).input("updatedBy", updatedBy);
+      const updates: string[] = ["updated_at = GETUTCDATE()", "updated_by = @updatedBy"];
 
       if (body.name !== undefined) {
         const name = String(body.name).trim();
@@ -213,19 +214,21 @@ export async function PATCH(
       for (const m of body.members) {
         if (!m.userId || !m.roleSlug) continue;
         try {
+          const updatedBy = session.email || session.displayName || String(session.userId);
           await pool
             .request()
             .input("teamId", teamId)
             .input("userId", Number(m.userId))
             .input("roleSlug", String(m.roleSlug).trim())
             .input("notes", m.notes ? String(m.notes).trim() : null)
+            .input("insertedBy", updatedBy)
             .query(`
               IF NOT EXISTS (
                 SELECT 1 FROM team_members WHERE teamId = @teamId AND userId = @userId AND roleSlug = @roleSlug
               )
               BEGIN
-                INSERT INTO team_members (teamId, userId, roleSlug, notes, createdAt)
-                VALUES (@teamId, @userId, @roleSlug, @notes, GETUTCDATE())
+                INSERT INTO team_members (teamId, userId, roleSlug, notes, inserted_by, inserted_at)
+                VALUES (@teamId, @userId, @roleSlug, @notes, @insertedBy, GETUTCDATE())
               END
             `);
         } catch (memberErr) {

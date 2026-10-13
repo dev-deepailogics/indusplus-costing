@@ -604,10 +604,13 @@ export function useCostSheetFacade() {
         savedAt: new Date().toISOString(),
       };
 
-      await CostSheetService.save(costSheetItem);
+      const saveRes = await CostSheetService.save(costSheetItem);
+      if (saveRes?.costSheetNumber) {
+        costSheetItem.costSheetNumber = saveRes.costSheetNumber;
+      }
       setLoadedCostSheet(costSheetItem);
       setSaveModalOpen(false);
-      toast.success(`Cost sheet saved (${sheetId})`);
+      toast.success(`Cost sheet saved (${costSheetItem.costSheetNumber || sheetId})`);
     } catch (err) {
       console.error("Save cost sheet error:", err);
       toast.error("Failed to save cost sheet");

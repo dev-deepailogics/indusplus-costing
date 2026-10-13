@@ -9,7 +9,8 @@ interface RouteContext {
 }
 
 /**
- * POST /api/users/[id]/reset-password — admin/authorized user resets another user's password
+ * POST /api/users/[id]/reset-password
+ * Admin forces password reset for a user.
  */
 export async function POST(request: Request, context: RouteContext) {
   try {
@@ -45,13 +46,20 @@ export async function POST(request: Request, context: RouteContext) {
 
     const passwordHash = await hashPassword(body.newPassword);
     const pool = await getPool();
+    const updatedBy = session.email || session.displayName || String(session.userId);
 
     const result = await pool
       .request()
       .input("id", id)
       .input("hash", passwordHash)
+      .input("updatedBy", updatedBy)
       .query(
-        `UPDATE users SET passwordHash = @hash, mustResetPassword = 1, updatedAt = GETUTCDATE() WHERE id = @id`,
+        `UPDATE users 
+         SET passwordHash = @hash, 
+             mustResetPassword = 1, 
+             updated_at = GETUTCDATE(),
+             updated_by = @updatedBy
+         WHERE id = @id AND (isdeleted = 0 OR isdeleted IS NULL)`,
       );
 
     if (result.rowsAffected[0] === 0) {

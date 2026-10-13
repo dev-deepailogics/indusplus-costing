@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession, createSession } from "@/lib/auth/session";
 import { verifyPassword, hashPassword } from "@/lib/auth/password";
-import { getPool, sql } from "@/lib/db";
-import type { Role } from "@/features/auth/types";
+import { getPool } from "@/lib/db";
 
 export async function POST(request: Request) {
   try {
@@ -38,7 +37,7 @@ export async function POST(request: Request) {
       .request()
       .input("id", session.userId)
       .query<{ passwordHash: string; role: string; displayName: string; email: string }>(
-        `SELECT passwordHash, role, displayName, email FROM users WHERE id = @id AND isActive = 1`,
+        `SELECT passwordHash, role, displayName, email FROM users WHERE id = @id AND isActive = 1 AND (isdeleted = 0 OR isdeleted IS NULL)`,
       );
 
     const user = result.recordset[0];
@@ -57,12 +56,19 @@ export async function POST(request: Request) {
 
     // Hash new password and update
     const newHash = await hashPassword(newPassword);
+    const updatedBy = user.email || session.displayName || String(session.userId);
     await pool
       .request()
       .input("id", session.userId)
       .input("hash", newHash)
+      .input("updatedBy", updatedBy)
       .query(
-        `UPDATE users SET passwordHash = @hash, mustResetPassword = 0, updatedAt = GETUTCDATE() WHERE id = @id`,
+        `UPDATE users 
+         SET passwordHash = @hash, 
+             mustResetPassword = 0, 
+             updated_at = GETUTCDATE(),
+             updated_by = @updatedBy 
+         WHERE id = @id AND (isdeleted = 0 OR isdeleted IS NULL)`,
       );
 
     // Refresh session to reflect cleared mustResetPassword
@@ -78,7 +84,7 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("Reset password error:", err);
     return NextResponse.json(
-      { error: "An unexpected error occurred." },
+      { error: "Failed to reset password." },
       { status: 500 },
     );
   }

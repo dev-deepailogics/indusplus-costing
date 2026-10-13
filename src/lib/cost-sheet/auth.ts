@@ -75,6 +75,7 @@ export function rowToCostSheetItem(row: Record<string, any>): SavedCostSheetItem
 
   return {
     id: row.id,
+    costSheetNumber: row.cost_sheet_number || undefined,
     referenceName: row.reference_name,
     styleId: row.style_id,
     styleName: row.style_name,

@@ -36,7 +36,7 @@ export async function GET(request: Request, context: RouteContext) {
       .request()
       .input("id", id)
       .query(
-        `SELECT id, name, slug, description, isSystem, isActive, createdAt, updatedAt
+        `SELECT id, name, slug, description, isSystem, isActive, inserted_at, updated_at
          FROM roles WHERE id = @id`,
       );
 
@@ -79,8 +79,10 @@ export async function GET(request: Request, context: RouteContext) {
         isSystem: !!r.isSystem,
         isActive: !!r.isActive,
         permissions,
-        createdAt: r.createdAt,
-        updatedAt: r.updatedAt,
+        createdAt: r.inserted_at,
+        inserted_at: r.inserted_at,
+        updatedAt: r.updated_at,
+        updated_at: r.updated_at,
       },
     });
   } catch (err) {
@@ -151,7 +153,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     if (updates.length > 0) {
-      updates.push("updatedAt = GETUTCDATE()");
+      const updatedBy = session.email || session.displayName || String(session.userId);
+      req.input("updatedBy", updatedBy);
+      updates.push("updated_at = GETUTCDATE()", "updated_by = @updatedBy");
       await req.query(`UPDATE roles SET ${updates.join(", ")} WHERE id = @id`);
     }
 
@@ -241,12 +245,12 @@ export async function DELETE(request: Request, context: RouteContext) {
       );
     }
 
-    // Check if any active users have this role
+    // Check if any active users have this role (excluding soft-deleted users)
     const usersWithRole = await pool
       .request()
       .input("slug", existing.recordset[0].slug)
       .query<{ cnt: number }>(
-        `SELECT COUNT(*) as cnt FROM users WHERE role = @slug AND isActive = 1`,
+        `SELECT COUNT(*) as cnt FROM users WHERE role = @slug AND isActive = 1 AND (isdeleted = 0 OR isdeleted IS NULL)`,
       );
 
     if (usersWithRole.recordset[0]?.cnt > 0) {
@@ -258,10 +262,12 @@ export async function DELETE(request: Request, context: RouteContext) {
       );
     }
 
+    const updatedBy = session.email || session.displayName || String(session.userId);
     await pool
       .request()
       .input("id", id)
-      .query(`UPDATE roles SET isActive = 0, updatedAt = GETUTCDATE() WHERE id = @id`);
+      .input("updatedBy", updatedBy)
+      .query(`UPDATE roles SET isActive = 0, updated_at = GETUTCDATE(), updated_by = @updatedBy, deleted_at = GETUTCDATE(), deleted_by = @updatedBy WHERE id = @id`);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

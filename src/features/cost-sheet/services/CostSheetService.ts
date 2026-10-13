@@ -89,7 +89,7 @@ export class CostSheetService {
     }
   }
 
-  public static async save(item: SavedCostSheetItem): Promise<void> {
+  public static async save(item: SavedCostSheetItem): Promise<{ ok: boolean; costSheetNumber?: string }> {
     const checkRes = await fetch(`${BASE}/${encodeURIComponent(item.id)}`, {
       cache: "no-store",
     });
@@ -109,7 +109,9 @@ export class CostSheetService {
       throw new Error(`Failed to save cost sheet: ${text}`);
     }
 
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; costSheetNumber?: string };
     notifyAllSubscribers();
+    return { ok: true, costSheetNumber: data.costSheetNumber };
   }
 
   public static async delete(id: string): Promise<void> {

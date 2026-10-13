@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth/session";
 import { checkSessionPermission } from "@/lib/rbac/server";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 import { canUserAccessCostSheet, rowToCostSheetItem } from "@/lib/cost-sheet/auth";
-import { ensureCostSheetTable, resolveTeamCustomers } from "@/lib/cost-sheet/db";
+import { ensureCostSheetTable, resolveTeamCustomers, generateNextCostSheetNumber } from "@/lib/cost-sheet/db";
 
 // ---------------------------------------------------------------------------
 // GET /api/cost-sheets/[id]  — fetch single cost sheet
@@ -98,13 +98,16 @@ export async function PUT(
       .input("checkId", id)
       .query<{
         id: string;
+        cost_sheet_number: string | null;
         customer_name: string;
         created_by_id: number | null;
         created_by_email: string | null;
         approval_status: string | null;
         approvals: string | null;
+        saved_at: string | Date | null;
+        costing_date: string | null;
       }>(`
-        SELECT id, customer_name, created_by_id, created_by_email, approval_status, approvals
+        SELECT id, cost_sheet_number, customer_name, created_by_id, created_by_email, approval_status, approvals, saved_at, costing_date
         FROM pre_order_cost_sheets
         WHERE id = @checkId
       `);
@@ -133,6 +136,11 @@ export async function PUT(
       );
     }
 
+    let costSheetNumber = existingRow.cost_sheet_number || item.costSheetNumber;
+    if (!costSheetNumber || !costSheetNumber.startsWith("POC")) {
+      costSheetNumber = await generateNextCostSheetNumber(pool);
+    }
+
     const effectiveRejection =
       item.rejectionPct ??
       item.rejectionOverride ??
@@ -141,6 +149,7 @@ export async function PUT(
     await pool
       .request()
       .input("id", id)
+      .input("cost_sheet_number", costSheetNumber)
       .input("reference_name", item.referenceName)
       .input("style_id", item.styleId)
       .input("style_name", item.styleName)
@@ -254,11 +263,12 @@ export async function PUT(
           bom_special_charges    = @bom_special_charges,
           direct_labour_foh_snapshot = @direct_labour_foh_snapshot,
           calculations           = @calculations,
+          cost_sheet_number      = COALESCE(cost_sheet_number, @cost_sheet_number),
           saved_at               = @saved_at
         WHERE id = @id
       `);
 
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, costSheetNumber });
   } catch (err) {
     console.error("[PUT /api/cost-sheets/[id]]", err);
     return Response.json(
