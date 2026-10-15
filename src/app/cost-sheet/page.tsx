@@ -2264,9 +2264,10 @@ function CostSheetContent() {
             {loadedCostSheet && (
               <Badge
                 variant="outline"
-                className="text-xs border-blue-200 bg-blue-50 text-blue-800 font-semibold px-2.5 py-1 rounded-md"
+                className="text-sm font-black font-mono border-2 border-blue-500 bg-blue-100/90 text-blue-900 dark:bg-blue-950/80 dark:border-blue-400 dark:text-blue-200 px-3.5 py-1 rounded-lg shadow-xs tracking-wide"
+                title={loadedCostSheet.referenceName || undefined}
               >
-                Snapshot: {loadedCostSheet.costSheetNumber || loadedCostSheet.id} ({loadedCostSheet.referenceName})
+                {loadedCostSheet.costSheetNumber || loadedCostSheet.id}
               </Badge>
             )}
             {isReadOnly && (
@@ -2288,10 +2289,7 @@ function CostSheetContent() {
               </Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">
-            Real-time interactive order costing dashboard connected directly
-            with style specifications and factory overheads.
-          </p>
+          
         </div>
         <div className="flex items-center gap-2 print:hidden">
           {/* Only show DUER PRINT button when the customer is DUER */}
