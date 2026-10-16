@@ -104,10 +104,10 @@ export function CostSheetPrintView({
               <span className="text-[10px] text-slate-400 block">CM / Min</span>
               <strong className="text-sm">{results.cmMinuteUSD.toFixed(2)}$</strong>
             </div>
-            <div>
+            {/* <div>
               <span className="text-[10px] text-slate-400 block">EBITDA / Pc</span>
               <strong className="text-sm">${results.ebitdaUSD.toFixed(2)}</strong>
-            </div>
+            </div> */}
             <div>
               <span className="text-[10px] text-slate-400 block">Net Profit Margin</span>
               <strong className="text-sm text-emerald-400">{(results.netProfitPct * 100).toFixed(2)}%</strong>
@@ -216,12 +216,12 @@ export function CostSheetPrintView({
                   <td className="p-2 text-right text-muted-foreground">${results.totalCostUSD.toFixed(2)}</td>
                   <td className="p-2 text-right text-muted-foreground">{(results.totalCostPct * 100).toFixed(1)}%</td>
                 </tr>
-                <tr className="bg-emerald-500/10 font-bold text-emerald-700 dark:text-emerald-300">
+                {/* <tr className="bg-emerald-500/10 font-bold text-emerald-700 dark:text-emerald-300">
                   <td className="p-2">EBITDA</td>
                   <td className="p-2 text-right">Rs. {results.ebitdaPKR.toFixed(1)}</td>
                   <td className="p-2 text-right">${results.ebitdaUSD.toFixed(2)}</td>
                   <td className="p-2 text-right">{(results.ebitdaPct * 100).toFixed(1)}%</td>
-                </tr>
+                </tr> */}
                 <tr className="bg-muted/20 font-bold">
                   <td className="p-2">Net Profit (EBITDA - Depreciation)</td>
                   <td className="p-2 text-right">Rs. {results.netProfitPKR.toFixed(1)}</td>

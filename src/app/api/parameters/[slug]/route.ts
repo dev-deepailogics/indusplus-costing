@@ -331,6 +331,10 @@ async function ensureTables(pool: Awaited<ReturnType<typeof getPool>>) {
          ALTER TABLE admin_selling ADD is_active BIT NOT NULL DEFAULT 1;
        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'card_serial')
          ALTER TABLE admin_selling ADD card_serial INT NOT NULL DEFAULT 1;
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'per_piece')
+         ALTER TABLE admin_selling ADD per_piece NVARCHAR(64) NULL DEFAULT '';
+       IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('admin_selling') AND name = 'use_type')
+         ALTER TABLE admin_selling ADD use_type NVARCHAR(32) NOT NULL DEFAULT 'sam';
      END`,
 
     // ── dropdown_lists ──────────────────────────────────────────────────────
@@ -1788,12 +1792,19 @@ async function getAdminSelling(pool: Awaited<ReturnType<typeof getPool>>): Promi
     card_serial?: number;
     description: string;
     cost_per_sam: string;
+    per_piece?: string;
+    use_type?: string;
     row_order: number;
-  }>("SELECT id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, cost_per_sam, row_order FROM admin_selling ORDER BY card_serial, card_id, row_order, id");
+  }>("SELECT id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, cost_per_sam, per_piece, use_type, row_order FROM admin_selling ORDER BY card_serial, card_id, row_order, id");
 
   const defaultColumns = [
     { key: "description", label: "Description" },
-    { key: "costPerSam", label: "Cost/SAM" },
+    { key: "perPiece", label: "PER PIECE" },
+  ];
+
+  const defaultRows = [
+    { id: "row-1", values: { description: "Admin Expenses", perPiece: "11", useType: "piece" } },
+    { id: "row-2", values: { description: "Selling expenses", perPiece: "22", useType: "piece" } },
   ];
 
   if (result.recordset.length === 0) {
@@ -1804,9 +1815,9 @@ async function getAdminSelling(pool: Awaited<ReturnType<typeof getPool>>): Promi
       isDefault: true,
       isActive: true,
       columns: defaultColumns,
-      rows: [],
+      rows: defaultRows,
     };
-    return { columns: defaultColumns, rows: [], cards: [initialCard], activeCardId: "card-1" };
+    return { columns: defaultColumns, rows: defaultRows, cards: [initialCard], activeCardId: "card-1" };
   }
 
   const cardMap = new Map<string, SimpleTableCard>();
@@ -1825,9 +1836,14 @@ async function getAdminSelling(pool: Awaited<ReturnType<typeof getPool>>): Promi
       });
     }
     const card = cardMap.get(cId)!;
+    const resolvedPerPiece = (r.per_piece && r.per_piece.trim() !== "") ? r.per_piece : (r.cost_per_sam || "");
     card.rows.push({
       id: r.id,
-      values: { description: r.description, costPerSam: r.cost_per_sam },
+      values: {
+        description: r.description,
+        perPiece: resolvedPerPiece,
+        useType: "piece",
+      },
     });
   }
 
@@ -1839,7 +1855,7 @@ async function getAdminSelling(pool: Awaited<ReturnType<typeof getPool>>): Promi
   }
 
   return {
-    columns: activeCard.columns || defaultColumns,
+    columns: defaultColumns,
     rows: activeCard.rows,
     cards,
     activeCardId: activeCard.id,
@@ -1857,6 +1873,16 @@ async function saveAdminSelling(pool: Awaited<ReturnType<typeof getPool>>, data:
     for (const card of cardsToSave) {
       for (let i = 0; i < card.rows.length; i++) {
         const row = card.rows[i];
+        const rawPerPiece =
+          row.values.perPiece ??
+          row.values.per_piece ??
+          row.values["PER PIECE"] ??
+          row.values.costPerSam ??
+          row.values.cost_per_sam ??
+          "";
+        const perPieceVal = rawPerPiece;
+        const costPerSamVal = rawPerPiece; // Keep cost_per_sam synced for backwards compatibility
+        const useTypeVal = "piece";
         await new sql.Request(tx)
           .input("id", sql.NVarChar(128), row.id)
           .input("card_id", sql.NVarChar(128), card.id)
@@ -1866,9 +1892,13 @@ async function saveAdminSelling(pool: Awaited<ReturnType<typeof getPool>>, data:
           .input("is_active", sql.Bit, card.isActive ? 1 : 0)
           .input("card_serial", sql.Int, card.serialNo || 1)
           .input("description", sql.NVarChar(256), row.values.description ?? "")
-          .input("cost_per_sam", sql.NVarChar(64), row.values.costPerSam ?? "")
+          .input("cost_per_sam", sql.NVarChar(64), costPerSamVal)
+          .input("per_piece", sql.NVarChar(64), perPieceVal)
+          .input("use_type", sql.NVarChar(32), useTypeVal)
           .input("row_order", sql.Int, i)
-          .query("INSERT INTO admin_selling (id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, cost_per_sam, row_order) VALUES (@id, @card_id, @card_name, @card_customer, @is_default, @is_active, @card_serial, @description, @cost_per_sam, @row_order)");
+          .query(
+            "INSERT INTO admin_selling (id, card_id, card_name, card_customer, is_default, is_active, card_serial, description, cost_per_sam, per_piece, use_type, row_order) VALUES (@id, @card_id, @card_name, @card_customer, @is_default, @is_active, @card_serial, @description, @cost_per_sam, @per_piece, @use_type, @row_order)"
+          );
       }
     }
     await tx.commit();

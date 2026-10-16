@@ -80,19 +80,73 @@ function findLaborOrFohCost(
 
   // 1. If explicit radio button selection is PER PIECE
   if (useType === "piece" || useType === "perpiece") {
-    return !isNaN(perPieceVal) ? perPieceVal : 0;
+    return !isNaN(perPieceVal) ? perPieceVal : (cpm > 0 ? cpm : 0);
   }
 
   // 2. If explicit radio button selection is SAM
   if (useType === "sam") {
-    return efficiency > 0 ? (cpm * smv) / efficiency : 0;
+    if (cpm === 0 && !isNaN(perPieceVal) && perPieceVal > 0) {
+      return perPieceVal;
+    }
+    if (efficiency > 0 && smv > 0) {
+      return (cpm * smv) / efficiency;
+    }
+    return cpm > 0 ? cpm : (!isNaN(perPieceVal) && perPieceVal > 0 ? perPieceVal : 0);
   }
 
   // 3. If no radio button selection is stored
   if (!isNaN(perPieceVal) && perPieceStr !== "" && perPieceVal > 0) {
     return perPieceVal;
   }
-  return efficiency > 0 ? (cpm * smv) / efficiency : 0;
+  if (cpm > 0) {
+    if (efficiency > 0 && smv > 0) {
+      return (cpm * smv) / efficiency;
+    }
+    return cpm;
+  }
+  return 0;
+}
+
+function findAdminSellingCost(
+  tableData: SimpleTableData | undefined,
+  description: string,
+  customerName?: string
+): number {
+  const rows = getActiveRows(tableData, customerName);
+  if (!rows || rows.length === 0) return 0;
+  const row = rows.find(
+    (r) =>
+      r.values.description?.toLowerCase().replace(/\s+/g, "") ===
+      description.toLowerCase().replace(/\s+/g, "")
+  );
+  if (!row) return 0;
+
+  const perPieceStr = (
+    row.values.perPiece ??
+    row.values.per_piece ??
+    row.values["PER PIECE"] ??
+    ""
+  ).toString().trim();
+  const perPieceVal = parseFloat(perPieceStr);
+
+  const costPerSamStr = (
+    row.values.costPerSam ??
+    row.values.cost_per_sam ??
+    ""
+  ).toString().trim();
+  const cpm = parseFloat(costPerSamStr) || 0;
+
+  // If perPiece is provided, use perPiece
+  if (!isNaN(perPieceVal) && perPieceStr !== "" && perPieceVal > 0) {
+    return perPieceVal;
+  }
+
+  // If entered in Cost/SAM (e.g. 11 or 22), use that directly
+  if (cpm > 0) {
+    return cpm;
+  }
+
+  return 0;
 }
 
 export function mapSMVToCategory(smv: number, stylesGrid?: SimpleTableData): string {
@@ -416,8 +470,32 @@ export interface CalculationResult {
   totalCostUSD: number;
   totalCostPct: number;
 
+  totalManufacturingFohPKR: number;
+  totalManufacturingFohUSD: number;
+  totalManufacturingFohPct: number;
+
   conversionCostPerMinPKR: number;
   conversionCostPerMinUSD: number;
+
+  grossProfitPKR: number;
+  grossProfitUSD: number;
+  grossProfitPct: number;
+
+  adminExpensesPKR: number;
+  adminExpensesUSD: number;
+  adminExpensesPct: number;
+
+  sellingExpensesPKR: number;
+  sellingExpensesUSD: number;
+  sellingExpensesPct: number;
+
+  totalAdminSellingPKR: number;
+  totalAdminSellingUSD: number;
+  totalAdminSellingPct: number;
+
+  operatingProfitPKR: number;
+  operatingProfitUSD: number;
+  operatingProfitPct: number;
 
   ebitdaPKR: number;
   ebitdaUSD: number;
@@ -466,6 +544,7 @@ export function runFormulaEngine(
   },
   params: {
     directLabourFoh?: SimpleTableData;
+    adminSelling?: SimpleTableData;
     cutToShipGrid?: MatrixTableData;
     rejectionGrid?: ProcessMatrixTableData;
     stylesCategoryGrid?: SimpleTableData;
@@ -745,10 +824,38 @@ export function runFormulaEngine(
   const totalCostUSD = totalCostPKR / paritySale;
   const totalCostPct = totalCostUSD / netPriceUSD;
 
+  const totalManufacturingFohPKR = totalCostPKR;
+  const totalManufacturingFohUSD = totalCostUSD;
+  const totalManufacturingFohPct = totalCostPct;
+
   const conversionCostPerMinPKR = smv > 0 ? (totalCostPKR * efficiency) / smv : 0;
   const conversionCostPerMinUSD = smv > 0 ? (totalCostUSD * efficiency / smv) * 100 : 0;
 
-  const ebitdaPKR = cmPKR - totalCostPKR;
+  // Gross Profit = CM / Pc - Total Manufacturing FOH
+  const grossProfitPKR = cmPKR - totalManufacturingFohPKR;
+  const grossProfitUSD = grossProfitPKR / paritySale;
+  const grossProfitPct = grossProfitUSD / netPriceUSD;
+
+  // Admin & Selling Expenses from params.adminSelling
+  const adminExpensesPKR = findAdminSellingCost(params.adminSelling, "Admin Expenses", custName);
+  const adminExpensesUSD = adminExpensesPKR / paritySale;
+  const adminExpensesPct = adminExpensesUSD / netPriceUSD;
+
+  const sellingExpensesPKR = findAdminSellingCost(params.adminSelling, "Selling expenses", custName);
+  const sellingExpensesUSD = sellingExpensesPKR / paritySale;
+  const sellingExpensesPct = sellingExpensesUSD / netPriceUSD;
+
+  const totalAdminSellingPKR = adminExpensesPKR + sellingExpensesPKR;
+  const totalAdminSellingUSD = totalAdminSellingPKR / paritySale;
+  const totalAdminSellingPct = totalAdminSellingUSD / netPriceUSD;
+
+  // Operating Profit = Gross Profit - Total Admin & Selling
+  const operatingProfitPKR = grossProfitPKR - totalAdminSellingPKR;
+  const operatingProfitUSD = operatingProfitPKR / paritySale;
+  const operatingProfitPct = operatingProfitUSD / netPriceUSD;
+
+  // EBITDA / PC = Gross CM / PC - Total Cost FOH
+  const ebitdaPKR = cmPKR - totalManufacturingFohPKR;
   const ebitdaUSD = ebitdaPKR / paritySale;
   const ebitdaPct = ebitdaUSD / netPriceUSD;
 
@@ -756,7 +863,8 @@ export function runFormulaEngine(
   const depreciationCostUSD = depreciationCostPKR / paritySale;
   const depreciationCostPct = depreciationCostUSD / netPriceUSD;
 
-  const netProfitPKR = ebitdaPKR - depreciationCostPKR;
+  // Net Profit / Pc = Operating Profit - Depreciation
+  const netProfitPKR = operatingProfitPKR - depreciationCostPKR;
   const netProfitUSD = netProfitPKR / paritySale;
   const netProfitPct = netProfitUSD / netPriceUSD;
 
@@ -866,8 +974,26 @@ export function runFormulaEngine(
     totalCostPKR,
     totalCostUSD,
     totalCostPct,
+    totalManufacturingFohPKR,
+    totalManufacturingFohUSD,
+    totalManufacturingFohPct,
     conversionCostPerMinPKR,
     conversionCostPerMinUSD,
+    grossProfitPKR,
+    grossProfitUSD,
+    grossProfitPct,
+    adminExpensesPKR,
+    adminExpensesUSD,
+    adminExpensesPct,
+    sellingExpensesPKR,
+    sellingExpensesUSD,
+    sellingExpensesPct,
+    totalAdminSellingPKR,
+    totalAdminSellingUSD,
+    totalAdminSellingPct,
+    operatingProfitPKR,
+    operatingProfitUSD,
+    operatingProfitPct,
     ebitdaPKR,
     ebitdaUSD,
     ebitdaPct,

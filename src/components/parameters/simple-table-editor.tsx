@@ -204,12 +204,14 @@ export function SimpleTableEditor({
   canCreate = true,
   canEdit = true,
   canDelete = true,
+  slug,
 }: {
   data: SimpleTableData;
   onSave: (data: SimpleTableData) => Promise<void>;
   canCreate?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
+  slug?: string;
 }) {
   // Local state for cards
   const [cards, setCards] = useState<SimpleTableCard[]>(
@@ -312,6 +314,7 @@ export function SimpleTableEditor({
 
   // Detect if this table has SAM and PER PIECE columns
   const hasSamAndPiece =
+    slug !== "admin-selling" &&
     currentColumns.some(
       (c) =>
         c.key.toLowerCase().includes("costsam") ||

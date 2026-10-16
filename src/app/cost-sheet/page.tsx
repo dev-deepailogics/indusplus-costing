@@ -374,6 +374,9 @@ function CostSheetContent() {
   const [directLabourFoh, setDirectLabourFoh] = useState<
     SimpleTableData | undefined
   >(undefined);
+  const [adminSelling, setAdminSelling] = useState<
+    SimpleTableData | undefined
+  >(undefined);
   const [costOfSalesTable, setCostOfSalesTable] = useState<
     SimpleTableData | undefined
   >(undefined);
@@ -882,6 +885,10 @@ function CostSheetContent() {
       "direct-labour-foh",
       setDirectLabourFoh,
     );
+    const unsubAdminSelling = subscribeToTable<SimpleTableData>(
+      "admin-selling",
+      setAdminSelling,
+    );
     const unsubCTS = subscribeToTable<MatrixTableData>(
       "efficiency",
       setCutToShipGrid,
@@ -990,6 +997,7 @@ function CostSheetContent() {
 
     return () => {
       unsubDLF();
+      unsubAdminSelling();
       unsubCTS();
       unsubRej();
       unsubStylesGrid();
@@ -2182,6 +2190,7 @@ function CostSheetContent() {
       },
       {
         directLabourFoh: effectiveDLF,
+        adminSelling,
         cutToShipGrid,
         rejectionGrid,
         stylesCategoryGrid,
@@ -2217,6 +2226,7 @@ function CostSheetContent() {
     inhouseOrSubcontract,
     rebateInput,
     directLabourFoh,
+    adminSelling,
     cutToShipGrid,
     rejectionGrid,
     stylesCategoryGrid,
@@ -2239,6 +2249,8 @@ function CostSheetContent() {
   // Helper formatting classes
   const isProfitPositive = calcs.netProfitUSD >= 0;
   const isEbitdaPositive = calcs.ebitdaUSD >= 0;
+  const isGrossProfitPositive = calcs.grossProfitUSD >= 0;
+  const isOperatingProfitPositive = calcs.operatingProfitUSD >= 0;
   const isDbSelected = Boolean(
     activeStyle && activeStyle.id && activeStyle.id !== "custom"
   );
@@ -3030,14 +3042,14 @@ function CostSheetContent() {
                   US$ {calcs.targetFobUSD.toFixed(2)}
                 </span>
               </div>
-              <div className="flex items-center justify-between gap-2">
+              {/* <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   EBITDA/Min-Cents
                 </span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 pr-2">
                   {calcs.ebitdaMinCents.toFixed(2)}
                 </span>
-              </div>
+              </div> */}
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
@@ -3054,14 +3066,14 @@ function CostSheetContent() {
                   />
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-2">
+              {/* <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
                   EBITDA/PC
                 </span>
                 <span className="font-extrabold text-slate-800 dark:text-slate-200 pr-2">
                   US$ {calcs.ebitdaUSD.toFixed(2)}
                 </span>
-              </div>
+              </div> */}
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
@@ -3420,7 +3432,7 @@ function CostSheetContent() {
             </p>
           </CardContent>
         </Card>
-        <Card
+        {/* <Card
           className={`shadow-sm transition-colors border-muted/50 ${isEbitdaPositive ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200" : "bg-red-50/50 dark:bg-red-950/20 border-red-200"}`}
         >
           <CardContent className="p-3 text-center">
@@ -3439,7 +3451,7 @@ function CostSheetContent() {
               $
             </p>
           </CardContent>
-        </Card>
+        </Card> */}
         <Card
           className={`shadow-sm transition-colors border-muted/50 ${isProfitPositive ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200" : "bg-red-50/50 dark:bg-red-950/20 border-red-200"}`}
         >
@@ -3919,17 +3931,17 @@ function CostSheetContent() {
                       </TableCell>
                     </TableRow>
 
-                    {/* TOTAL COST */}
+                    {/* TOTAL MANUFACTURING FOH */}
                     <TableRow className="font-semibold border-t h-7">
-                      <TableCell className="px-2 py-1 text-foreground text-xs font-semibold">Total Cost</TableCell>
+                      <TableCell className="px-2 py-1 text-foreground text-xs font-semibold">Total Cost FOH</TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
-                        Rs. {calcs.totalCostPKR.toFixed(0)}
+                        Rs. {calcs.totalManufacturingFohPKR.toFixed(0)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
-                        ${calcs.totalCostUSD.toFixed(2)}
+                        ${calcs.totalManufacturingFohUSD.toFixed(2)}
                       </TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
-                        {fmtPct(calcs.totalCostPct, 1)}
+                        {fmtPct(calcs.totalManufacturingFohPct, 1)}
                       </TableCell>
                     </TableRow>
                     <TableRow className="h-7">
@@ -3947,11 +3959,87 @@ function CostSheetContent() {
                       </TableCell>
                     </TableRow>
 
-                    {/* EBITDA */}
+                    {/* GROSS PROFIT */}
                     <TableRow
-                      className={`font-extrabold border-t border-b h-7 ${isEbitdaPositive ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50/10" : "text-red-700 dark:text-red-400 bg-red-50/10"}`}
+                      className={`font-extrabold border-t border-b h-7 ${isGrossProfitPositive ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50/10" : "text-red-700 dark:text-red-400 bg-red-50/10"}`}
                     >
-                      <TableCell className="px-2 py-1 text-xs">EBITDA / PC</TableCell>
+                      <TableCell className="px-2 py-1 text-xs">Gross Profit (CM/Pc - Total Manufacturing FOH)</TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold text-xs">
+                        Rs. {calcs.grossProfitPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold text-xs">
+                        ${calcs.grossProfitUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold text-xs">
+                        {fmtPct(calcs.grossProfitPct, 1)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* ADMIN & SELLING EXPENSES */}
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        Admin Expenses
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.adminExpensesPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.adminExpensesUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.adminExpensesPct, 2)}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow className="h-7">
+                      <TableCell className="px-2 py-1 text-muted-foreground truncate text-xs">
+                        Selling expenses
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {calcs.sellingExpensesPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        ${calcs.sellingExpensesUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right text-muted-foreground tabular-nums whitespace-nowrap text-xs">
+                        {fmtPct(calcs.sellingExpensesPct, 2)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* TOTAL ADMIN & SELLING */}
+                    <TableRow className="font-semibold border-t h-7">
+                      <TableCell className="px-2 py-1 text-foreground text-xs font-semibold">Total Admin &amp; Selling</TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
+                        Rs. {calcs.totalAdminSellingPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
+                        ${calcs.totalAdminSellingUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-semibold text-xs">
+                        {fmtPct(calcs.totalAdminSellingPct, 2)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* OPERATING PROFIT */}
+                    <TableRow
+                      className={`font-bold border-t border-b h-7 ${isOperatingProfitPositive ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50/10" : "text-red-700 dark:text-red-400 bg-red-50/10"}`}
+                    >
+                      <TableCell className="px-2 py-1 text-xs">Operating Profit</TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-xs">
+                        Rs. {calcs.operatingProfitPKR.toFixed(0)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-xs">
+                        ${calcs.operatingProfitUSD.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-bold text-xs">
+                        {fmtPct(calcs.operatingProfitPct, 1)}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* EBITDA / PC */}
+                    {/* <TableRow
+                      className={`font-extrabold border-b h-7 ${isEbitdaPositive ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50/10" : "text-red-700 dark:text-red-400 bg-red-50/10"}`}
+                    >
+                      <TableCell className="px-2 py-1 text-xs font-bold">EBITDA / PC</TableCell>
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold text-xs">
                         Rs. {calcs.ebitdaPKR.toFixed(0)}
                       </TableCell>
@@ -3961,7 +4049,7 @@ function CostSheetContent() {
                       <TableCell className="px-1.5 py-1 text-right tabular-nums whitespace-nowrap font-extrabold text-xs">
                         {fmtPct(calcs.ebitdaPct, 1)}
                       </TableCell>
-                    </TableRow>
+                    </TableRow> */}
 
                     {/* DEPRECIATION */}
                     <TableRow className="h-7">
@@ -4718,13 +4806,13 @@ function CostSheetContent() {
                   {/* CHEMICALS */}
                   {canViewChemicals && (
                     <>
-                      <TableRow className="bg-muted/20 font-bold h-6">
-                        <TableCell colSpan={7} className="px-2 py-0.5 text-xs font-bold text-foreground">
+                      <TableRow className="bg-slate-800 dark:bg-slate-900 font-bold h-7 border-y border-slate-700">
+                        <TableCell colSpan={7} className="px-3.5 py-1 text-xs font-bold text-white">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <span>Chemical Costs</span>
                               {washType && (
-                                <Badge variant="outline" className="text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                                <Badge variant="outline" className="text-[10px] font-semibold bg-slate-700 text-slate-100 dark:bg-slate-800 dark:text-slate-200 border-slate-600/60">
                                   Wash Type: {washType}
                                 </Badge>
                               )}
@@ -4897,8 +4985,8 @@ function CostSheetContent() {
                   {/* SPECIAL CHARGES */}
                   {canViewSpecialCharges && (
                     <>
-                      <TableRow className="bg-muted/20 font-bold h-6">
-                        <TableCell colSpan={7} className="px-2 py-0.5 text-xs font-bold text-foreground">
+                      <TableRow className="bg-slate-800 dark:bg-slate-900 font-bold h-7 border-y border-slate-700">
+                        <TableCell colSpan={7} className="px-3.5 py-1 text-xs font-bold text-white">
                           Special Charges (Embroidery, Testing, etc.)
                         </TableCell>
                       </TableRow>

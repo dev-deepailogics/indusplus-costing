@@ -333,12 +333,12 @@ export function PrintCostSheetReport({
           {/* Sub-col 3B (Right) */}
           <div className="p-1 flex flex-col justify-between">
             <div className="grid grid-cols-12 gap-y-[2px] items-center">
-              <span className="col-span-9 font-semibold">EBITDA/Min-Cents</span>
+              {/* <span className="col-span-9 font-semibold">EBITDA/Min-Cents</span>
               <span className="col-span-3 font-bold text-right">{fmtDec2(calcs.ebitdaMinCents)}</span>
 
               <span className="col-span-6 font-semibold">EBITDA/PC</span>
               <span className="col-span-3 text-right pr-1">US$</span>
-              <span className="col-span-3 font-bold text-right">{fmtDec2(calcs.ebitdaUSD)}</span>
+              <span className="col-span-3 font-bold text-right">{fmtDec2(calcs.ebitdaUSD)}</span> */}
 
               <span className="col-span-9 font-semibold">Net Profit/Min-Cents</span>
               <span className="col-span-3 font-bold text-right">{fmtDec2(calcs.netProfitMinCents)}</span>
@@ -558,10 +558,10 @@ export function PrintCostSheetReport({
 
               {/* BOTTOM TOTALS */}
               <tr className="border-t border-black font-bold">
-                <td className="py-[1px]">Total Cost</td>
-                <td className="text-right">{fmtInt(calcs.totalCostPKR)}</td>
-                <td className="text-right">{fmtDec2(calcs.totalCostUSD)}</td>
-                <td className="text-right text-[#2563eb]">{fmtPct(calcs.totalCostPct, 0)}</td>
+                <td className="py-[1px]">Total Cost FOH</td>
+                <td className="text-right">{fmtInt(calcs.totalManufacturingFohPKR)}</td>
+                <td className="text-right">{fmtDec2(calcs.totalManufacturingFohUSD)}</td>
+                <td className="text-right text-[#2563eb]">{fmtPct(calcs.totalManufacturingFohPct, 0)}</td>
               </tr>
               <tr className="font-bold">
                 <td className="py-[1px]">Conversion Cost per Minute</td>
@@ -570,19 +570,49 @@ export function PrintCostSheetReport({
                 <td className="text-right" />
               </tr>
               <tr className="bg-[#fef9c3] font-bold border-t border-black">
-                <td className="py-[1px]">EBITDA</td>
-                <td className="text-right">{fmtInt(calcs.ebitdaPKR)}</td>
-                <td className="text-right">{fmtDec2(calcs.ebitdaUSD)}</td>
-                <td className="text-right text-[#2563eb]">{fmtPct(calcs.ebitdaPct, 0)}</td>
+                <td className="py-[1px]">Gross Profit</td>
+                <td className="text-right">{fmtInt(calcs.grossProfitPKR)}</td>
+                <td className="text-right">{fmtDec2(calcs.grossProfitUSD)}</td>
+                <td className="text-right text-[#2563eb]">{fmtPct(calcs.grossProfitPct, 0)}</td>
               </tr>
               <tr>
-                <td className="py-[1px]">Dep</td>
+                <td className="py-[1px] pl-1">Admin Expenses</td>
+                <td className="text-right">{fmtInt(calcs.adminExpensesPKR)}</td>
+                <td className="text-right">{fmtDec2(calcs.adminExpensesUSD)}</td>
+                <td className="text-right text-[#2563eb]">{fmtPct(calcs.adminExpensesPct, 2)}</td>
+              </tr>
+              <tr>
+                <td className="py-[1px] pl-1">Selling expenses</td>
+                <td className="text-right">{fmtInt(calcs.sellingExpensesPKR)}</td>
+                <td className="text-right">{fmtDec2(calcs.sellingExpensesUSD)}</td>
+                <td className="text-right text-[#2563eb]">{fmtPct(calcs.sellingExpensesPct, 2)}</td>
+              </tr>
+              <tr className="font-bold border-t border-slate-300">
+                <td className="py-[1px]">Total Admin &amp; Selling</td>
+                <td className="text-right">{fmtInt(calcs.totalAdminSellingPKR)}</td>
+                <td className="text-right">{fmtDec2(calcs.totalAdminSellingUSD)}</td>
+                <td className="text-right text-[#2563eb]">{fmtPct(calcs.totalAdminSellingPct, 2)}</td>
+              </tr>
+              <tr className="bg-[#e0f2fe] font-bold border-t border-black">
+                <td className="py-[1px]">Operating Profit</td>
+                <td className="text-right">{fmtInt(calcs.operatingProfitPKR)}</td>
+                <td className="text-right">{fmtDec2(calcs.operatingProfitUSD)}</td>
+                <td className="text-right text-[#2563eb]">{fmtPct(calcs.operatingProfitPct, 0)}</td>
+              </tr>
+              {/* <tr className="font-bold border-t border-slate-300">
+                <td className="py-[1px]">EBITDA / PC</td>
+                <td className="text-right">{fmtInt(calcs.ebitdaPKR)}</td>
+                <td className="text-right">{fmtDec2(calcs.ebitdaUSD)}</td>
+                <td className="text-right text-[#2563eb]">{fmtPct(calcs.ebitdaPct, 1)}</td>
+              </tr> */}
+              <tr>
+                <td className="py-[1px]">Depreciation</td>
                 <td className="text-right">{fmtInt(calcs.depreciationCostPKR)}</td>
                 <td className="text-right">{fmtDec2(calcs.depreciationCostUSD)}</td>
                 <td className="text-right text-[#2563eb]">{fmtPct(calcs.depreciationCostPct, 2)}</td>
               </tr>
               <tr className="border-t border-black font-bold">
-                <td className="py-[1px]">Net Profit</td>
+                <td className="py-[1px]">Net Profit / PC</td>
                 <td className="text-right">{fmtInt(calcs.netProfitPKR)}</td>
                 <td className="text-right">{fmtDec2(calcs.netProfitUSD)}</td>
                 <td className="text-right text-[#2563eb] font-bold">{fmtPct(calcs.netProfitPct, 2)}</td>

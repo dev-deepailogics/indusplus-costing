@@ -319,9 +319,9 @@ export default function SavedCostSheetsPage() {
                   <TableHead className="w-[9.5%] font-semibold text-foreground py-2 px-1 text-center text-[11px] whitespace-nowrap">
                     Approval
                   </TableHead>
-                  <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
+                  {/* <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
                     EBITDA/m
-                  </TableHead>
+                  </TableHead> */}
                   <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
                     Profit/Pc
                   </TableHead>
@@ -418,9 +418,9 @@ export default function SavedCostSheetsPage() {
                       <TableCell className="text-center py-2 px-1 overflow-hidden">
                         {getApprovalBadge(sheet)}
                       </TableCell>
-                      <TableCell className="text-right text-[10.5px] font-semibold py-2 px-1 whitespace-nowrap">
+                      {/* <TableCell className="text-right text-[10.5px] font-semibold py-2 px-1 whitespace-nowrap">
                         {formattedEbitda}
-                      </TableCell>
+                      </TableCell> */}
                       <TableCell
                         className={`text-right text-[10.5px] font-bold py-2 px-1 whitespace-nowrap ${isProfitPositive ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}
                       >

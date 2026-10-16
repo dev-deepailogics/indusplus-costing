@@ -113,6 +113,7 @@ function ParameterTable({
             canCreate={canCreate}
             canEdit={canEdit}
             canDelete={canDelete}
+            slug={slug}
           />
         )}
       </div>

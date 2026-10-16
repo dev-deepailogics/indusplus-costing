@@ -62,6 +62,7 @@ export function useCostSheetFacade() {
 
   // Parameter grids from database
   const [directLabourFoh, setDirectLabourFoh] = useState<SimpleTableData>();
+  const [adminSelling, setAdminSelling] = useState<SimpleTableData>();
   const [cutToShipGrid, setCutToShipGrid] = useState<MatrixTableData>();
   const [rejectionGrid, setRejectionGrid] = useState<ProcessMatrixTableData>();
   const [stylesGrid, setStylesGrid] = useState<SimpleTableData>();
@@ -157,6 +158,7 @@ export function useCostSheetFacade() {
     const unsubCTS = ParametersService.subscribeToTable<MatrixTableData>("efficiency", setCutToShipGrid);
     const unsubRej = ParametersService.subscribeToTable<ProcessMatrixTableData>("rejection-grid", setRejectionGrid);
     const unsubStylesGrid = ParametersService.subscribeToTable<SimpleTableData>("styles", setStylesGrid);
+    const unsubAdminSelling = ParametersService.subscribeToTable<SimpleTableData>("admin-selling", setAdminSelling);
 
     const unsubDropdowns = ParametersService.subscribeToTable<DropdownListsData>("dropdown-lists", (data) => {
       if (data?.lists) {
@@ -190,6 +192,7 @@ export function useCostSheetFacade() {
 
     return () => {
       unsubDLF();
+      unsubAdminSelling();
       unsubCTS();
       unsubRej();
       unsubStylesGrid();
@@ -377,6 +380,7 @@ export function useCostSheetFacade() {
       },
       {
         directLabourFoh: effectiveDLF,
+        adminSelling,
         cutToShipGrid,
         rejectionGrid,
         stylesCategoryGrid: stylesGrid,
@@ -403,6 +407,7 @@ export function useCostSheetFacade() {
     inhouseOrSubcontract,
     rebatePct,
     directLabourFoh,
+    adminSelling,
     cutToShipGrid,
     rejectionGrid,
     stylesGrid,
@@ -662,6 +667,8 @@ export function useCostSheetFacade() {
     setNewFabricRows,
     newLiningRows,
     setNewLiningRows,
+    directLabourFoh,
+    adminSelling,
     results,
     // Dropdown lists
     paymentTermsList,
