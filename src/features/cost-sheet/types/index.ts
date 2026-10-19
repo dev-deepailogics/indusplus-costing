@@ -104,6 +104,7 @@ export interface SavedCostSheetItem {
   orderType: string;
   washType: string;
   directLabourFohSnapshot?: SimpleTableData | null;
+  adminSellingSnapshot?: SimpleTableData | null;
 
   // Costing & Order Inputs
   costingDate: string;

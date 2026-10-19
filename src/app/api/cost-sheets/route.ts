@@ -206,6 +206,7 @@ export async function POST(request: NextRequest) {
       .input("bom_chemicals", JSON.stringify(item.bomChemicals || []))
       .input("bom_special_charges", JSON.stringify(item.bomSpecialCharges || []))
       .input("direct_labour_foh_snapshot", item.directLabourFohSnapshot ? JSON.stringify(item.directLabourFohSnapshot) : null)
+      .input("admin_selling_snapshot", item.adminSellingSnapshot ? JSON.stringify(item.adminSellingSnapshot) : null)
       .input("calculations", JSON.stringify(item.calculations || {}))
       .input("created_by_id", createdById)
       .input("created_by_email", createdByEmail)
@@ -225,7 +226,7 @@ export async function POST(request: NextRequest) {
           intl_insurance, no_of_colors, merch_group, work_order_number,
           delivery_destination, ex_factory_date, inhouse_or_subcontract,
           rebate_pct, approvals, approval_status, bom_fabric, bom_lining, bom_accessories, bom_chemicals,
-          bom_special_charges, direct_labour_foh_snapshot, calculations,
+          bom_special_charges, direct_labour_foh_snapshot, admin_selling_snapshot, calculations,
           created_by_id, created_by_email, created_by_name, saved_at
         ) VALUES (
           @id, @cost_sheet_number, @reference_name, @style_id, @style_name, @customer_name,
@@ -240,7 +241,7 @@ export async function POST(request: NextRequest) {
           @intl_insurance, @no_of_colors, @merch_group, @work_order_number,
           @delivery_destination, @ex_factory_date, @inhouse_or_subcontract,
           @rebate_pct, @approvals, @approval_status, @bom_fabric, @bom_lining, @bom_accessories, @bom_chemicals,
-          @bom_special_charges, @direct_labour_foh_snapshot, @calculations,
+          @bom_special_charges, @direct_labour_foh_snapshot, @admin_selling_snapshot, @calculations,
           @created_by_id, @created_by_email, @created_by_name, @saved_at
         )
       `);

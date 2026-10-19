@@ -1938,6 +1938,7 @@ function CostSheetContent() {
       bomSpecialCharges: activeStyle.bomSpecialCharges,
 
       directLabourFohSnapshot: directLabourFoh ?? null,
+      adminSellingSnapshot: adminSelling ?? null,
 
       calculations: {
         targetFobUSD: calcs.targetFobUSD,
@@ -2074,6 +2075,10 @@ function CostSheetContent() {
         ? (loadedCostSheet.directLabourFohSnapshot ?? directLabourFoh ?? null)
         : (directLabourFoh ?? null),
 
+      adminSellingSnapshot: (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet, approvals))
+        ? (loadedCostSheet.adminSellingSnapshot !== undefined ? loadedCostSheet.adminSellingSnapshot : null)
+        : (adminSelling ?? null),
+
       calculations: {
         targetFobUSD: calcs.targetFobUSD,
         orderFobUSD: calcs.sellingPriceUSD,
@@ -2150,6 +2155,10 @@ function CostSheetContent() {
       ? (loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh)
       : directLabourFoh;
 
+    const effectiveAdminSelling = isApproved
+      ? (loadedCostSheet?.adminSellingSnapshot ?? undefined)
+      : adminSelling;
+
     const savedRej =
       loadedCostSheet?.rejectionPct ??
       loadedCostSheet?.rejectionOverride ??
@@ -2190,7 +2199,7 @@ function CostSheetContent() {
       },
       {
         directLabourFoh: effectiveDLF,
-        adminSelling,
+        adminSelling: effectiveAdminSelling,
         cutToShipGrid,
         rejectionGrid,
         stylesCategoryGrid,

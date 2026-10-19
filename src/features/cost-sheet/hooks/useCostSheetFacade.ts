@@ -345,6 +345,10 @@ export function useCostSheetFacade() {
       ? (loadedCostSheet?.directLabourFohSnapshot ?? directLabourFoh)
       : directLabourFoh;
 
+    const effectiveAdminSelling = isApproved
+      ? (loadedCostSheet?.adminSellingSnapshot ?? undefined)
+      : adminSelling;
+
     const savedRej =
       loadedCostSheet?.rejectionPct ??
       loadedCostSheet?.rejectionOverride ??
@@ -380,7 +384,7 @@ export function useCostSheetFacade() {
       },
       {
         directLabourFoh: effectiveDLF,
-        adminSelling,
+        adminSelling: effectiveAdminSelling,
         cutToShipGrid,
         rejectionGrid,
         stylesCategoryGrid: stylesGrid,
@@ -590,6 +594,10 @@ export function useCostSheetFacade() {
         directLabourFohSnapshot: (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet))
           ? (loadedCostSheet.directLabourFohSnapshot ?? directLabourFoh ?? null)
           : (directLabourFoh ?? null),
+
+        adminSellingSnapshot: (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet))
+          ? (loadedCostSheet.adminSellingSnapshot !== undefined ? loadedCostSheet.adminSellingSnapshot : null)
+          : (adminSelling ?? null),
 
         calculations: {
           targetFobUSD: results.targetFobUSD,

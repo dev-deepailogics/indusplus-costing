@@ -106,6 +106,8 @@ export async function ensureCostSheetTable(pool: Pool): Promise<void> {
       ALTER TABLE pre_order_cost_sheets ADD rejection_pct FLOAT NULL;
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'direct_labour_foh_snapshot')
       ALTER TABLE pre_order_cost_sheets ADD direct_labour_foh_snapshot NVARCHAR(MAX) NULL;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'admin_selling_snapshot')
+      ALTER TABLE pre_order_cost_sheets ADD admin_selling_snapshot NVARCHAR(MAX) NULL;
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'cutting_sam')
       ALTER TABLE pre_order_cost_sheets ADD cutting_sam FLOAT NULL;
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('pre_order_cost_sheets') AND name = 'washing_sam')

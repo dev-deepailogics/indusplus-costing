@@ -1803,8 +1803,8 @@ async function getAdminSelling(pool: Awaited<ReturnType<typeof getPool>>): Promi
   ];
 
   const defaultRows = [
-    { id: "row-1", values: { description: "Admin Expenses", perPiece: "11", useType: "piece" } },
-    { id: "row-2", values: { description: "Selling expenses", perPiece: "22", useType: "piece" } },
+    { id: "row-1", values: { description: "Admin Expenses", costPerSam: "", perPiece: "", useType: "sam" } },
+    { id: "row-2", values: { description: "Selling expenses", costPerSam: "", perPiece: "", useType: "sam" } },
   ];
 
   if (result.recordset.length === 0) {

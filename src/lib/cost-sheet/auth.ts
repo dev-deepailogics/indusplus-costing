@@ -91,6 +91,9 @@ export function rowToCostSheetItem(row: Record<string, any>): SavedCostSheetItem
     directLabourFohSnapshot: row.direct_labour_foh_snapshot
       ? JSON.parse(row.direct_labour_foh_snapshot)
       : undefined,
+    adminSellingSnapshot: row.admin_selling_snapshot
+      ? JSON.parse(row.admin_selling_snapshot)
+      : undefined,
     costingDate: row.costing_date,
     costingStage: row.costing_stage,
     country: row.country,

@@ -204,6 +204,7 @@ export async function PUT(
       .input("bom_chemicals", JSON.stringify(item.bomChemicals || []))
       .input("bom_special_charges", JSON.stringify(item.bomSpecialCharges || []))
       .input("direct_labour_foh_snapshot", item.directLabourFohSnapshot ? JSON.stringify(item.directLabourFohSnapshot) : null)
+      .input("admin_selling_snapshot", item.adminSellingSnapshot ? JSON.stringify(item.adminSellingSnapshot) : null)
       .input("calculations", JSON.stringify(item.calculations || {}))
       .input("saved_at", item.savedAt)
       .query(`
@@ -262,6 +263,7 @@ export async function PUT(
           bom_chemicals          = @bom_chemicals,
           bom_special_charges    = @bom_special_charges,
           direct_labour_foh_snapshot = @direct_labour_foh_snapshot,
+          admin_selling_snapshot = @admin_selling_snapshot,
           calculations           = @calculations,
           cost_sheet_number      = COALESCE(cost_sheet_number, @cost_sheet_number),
           saved_at               = @saved_at

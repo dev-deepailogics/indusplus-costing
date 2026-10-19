@@ -60,6 +60,8 @@ IF NOT EXISTS (SELECT 1
             bom_special_charges        NVARCHAR (MAX) DEFAULT '[]' NOT NULL,
             -- Direct Labour & FOH parameters active card snapshot (JSON)
             direct_labour_foh_snapshot NVARCHAR (MAX) NULL,
+            -- Admin & Selling parameters active card snapshot (JSON)
+            admin_selling_snapshot     NVARCHAR (MAX) NULL,
             -- Calculated KPIs snapshot (JSON)
             calculations               NVARCHAR (MAX) DEFAULT '{}' NOT NULL,
             saved_at                   NVARCHAR (64)  NOT NULL,
@@ -83,6 +85,13 @@ IF NOT EXISTS (SELECT 1
                       AND name = 'direct_labour_foh_snapshot')
     ALTER TABLE pre_order_cost_sheets
         ADD direct_labour_foh_snapshot NVARCHAR (MAX) NULL;
+
+IF NOT EXISTS (SELECT 1
+               FROM   sys.columns
+               WHERE  object_id = OBJECT_ID('pre_order_cost_sheets')
+                      AND name = 'admin_selling_snapshot')
+    ALTER TABLE pre_order_cost_sheets
+        ADD admin_selling_snapshot NVARCHAR (MAX) NULL;
 
 IF NOT EXISTS (SELECT 1
                FROM   sys.columns
