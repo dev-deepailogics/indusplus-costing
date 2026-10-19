@@ -18,6 +18,7 @@ export function SearchableSelect({
   onChange,
   placeholder,
   className,
+  inputClassName,
   align = "left",
   disabled,
   allowCustom,
@@ -27,6 +28,7 @@ export function SearchableSelect({
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  inputClassName?: string;
   align?: "left" | "right";
   disabled?: boolean;
   allowCustom?: boolean;
@@ -180,7 +182,7 @@ export function SearchableSelect({
       ref={containerRef}
       className={cn("relative inline-block", className || "w-32")}
     >
-      <div className="relative flex items-center w-full h-6">
+      <div className="relative flex items-center w-full">
         <input
           ref={inputRef}
           type="text"
@@ -188,7 +190,8 @@ export function SearchableSelect({
             "w-full h-6 pl-1.5 pr-5 text-xs rounded text-left truncate transition-all outline-none",
             disabled
               ? "bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed select-none shadow-none"
-              : "bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 shadow-2xs hover:border-blue-500 focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 cursor-pointer font-medium"
+              : "bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 shadow-2xs hover:border-blue-500 focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 cursor-pointer font-medium",
+            inputClassName
           )}
           placeholder={placeholder}
           value={displayVal}

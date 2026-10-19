@@ -21,6 +21,8 @@ import {
   Timer,
   CheckCircle2,
   Clock,
+  FileSpreadsheet,
+  Search,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth/auth-provider";
 import {
@@ -52,6 +54,7 @@ import {
   getNextCostSheetId,
   saveCostSheet,
   approveCostSheet,
+  subscribeToCostSheets,
 } from "@/lib/cost-sheet/api";
 import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
 import {
@@ -303,11 +306,21 @@ function CostSheetContent() {
   // Snapshot States
   const [loadedCostSheet, setLoadedCostSheet] =
     useState<SavedCostSheetItem | null>(null);
+  const [savedCostSheets, setSavedCostSheets] = useState<SavedCostSheetItem[]>([]);
   const [approvals, setApprovals] = useState<CostSheetApprovals>({});
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [newSnapshotName, setNewSnapshotName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [printTemplate, setPrintTemplate] = useState<"standard" | "duer">("standard");
+
+  // Subscribe to all saved cost sheets for the dropdown switcher
+  useEffect(() => {
+    const unsub = subscribeToCostSheets(
+      (data) => setSavedCostSheets(data),
+      (err) => console.error("Error loading cost sheets for switcher:", err)
+    );
+    return () => unsub();
+  }, []);
 
   const handlePrint = (type?: "standard" | "duer") => {
     const isDuer = (customerName || activeStyle?.customerName || "").toLowerCase().trim().includes("duer");
@@ -536,7 +549,7 @@ function CostSheetContent() {
   const [rebateInput, setRebateInput] = useState<string>("0");
 
   // Operational Inputs
-  const [manpower, setManpower] = useState(60);
+  const [manpower, setManpower] = useState<number | string>(60);
   const [efficiencyOverride, setEfficiencyOverride] = useState<string>("");
   const [rejectionOverride, setRejectionOverride] = useState<string>("");
   const [lineTargetOverride, setLineTargetOverride] = useState<string>("");
@@ -1025,7 +1038,10 @@ function CostSheetContent() {
     if (loadedCostSheet && isCostSheetApprovedByAnyHead(loadedCostSheet, approvals)) return;
     if (!customerTestingCostData || !activeStyle || isSpecialChargesLocked) return;
 
-    const sam = parseFloat(smvSewingInput) || activeStyle.smvSewing || 0;
+    const sam =
+      smvSewingInput.trim() !== "" && !isNaN(parseFloat(smvSewingInput))
+        ? parseFloat(smvSewingInput)
+        : activeStyle.smvSewing ?? 0;
     const custNorm = (customerName || "").trim().toLowerCase();
     const rates = customerTestingCostData.customerRates || {};
     const matchKey = Object.keys(rates).find(
@@ -1509,6 +1525,33 @@ function CostSheetContent() {
     });
   }
 
+  // Switch to a selected saved cost sheet from the header dropdown
+  function handleCostSheetSelect(targetId: string) {
+    if (!targetId) {
+      // Clear selection -> new cost sheet
+      const targetUrl = "/cost-sheet";
+      if (isDirtyRef.current) {
+        setPendingNavigation({ type: "url", target: targetUrl });
+        setUnsavedModalOpen(true);
+      } else {
+        router.push(targetUrl);
+      }
+      return;
+    }
+
+    if (loadedCostSheet && (loadedCostSheet.id === targetId || loadedCostSheet.costSheetNumber === targetId)) {
+      return; // Already open
+    }
+
+    const targetUrl = `/cost-sheet?costSheetId=${targetId}&mode=view`;
+    if (isDirtyRef.current) {
+      setPendingNavigation({ type: "url", target: targetUrl });
+      setUnsavedModalOpen(true);
+    } else {
+      router.push(targetUrl);
+    }
+  }
+
   // Handle active style change from dropdown (directly executes and marks dirty without showing confirmation modal)
   function handleStyleChange(id: string, overrideCustomer?: string) {
     executeStyleChange(id, overrideCustomer);
@@ -1869,7 +1912,10 @@ function CostSheetContent() {
       createdByName: user?.displayName || user?.email,
       styleCategory,
       orderQuantity,
-      smvSewing: parseFloat(smvSewingInput) || activeStyle.smvSewing,
+      smvSewing:
+        smvSewingInput.trim() !== "" && !isNaN(parseFloat(smvSewingInput))
+          ? parseFloat(smvSewingInput)
+          : activeStyle.smvSewing ?? 0,
       cuttingSAM: parseFloat(cuttingSAMInput) || 0,
       washingSAM: parseFloat(washingSAMInput) || 0,
       finishingSAM: parseFloat(finishingSAMInput) || 0,
@@ -1893,7 +1939,7 @@ function CostSheetContent() {
       deliveryTerms,
       paritySale: paritySale ?? 0,
       parityProcurement: parityProcurement ?? 0,
-      manpower,
+      manpower: Number(manpower) || 0,
       efficiencyOverride:
         efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
       rejectionOverride:
@@ -2004,10 +2050,22 @@ function CostSheetContent() {
       customerName,
       styleCategory,
       orderQuantity,
-      smvSewing: parseFloat(smvSewingInput) || loadedCostSheet.smvSewing,
-      cuttingSAM: parseFloat(cuttingSAMInput) || loadedCostSheet.cuttingSAM || 0,
-      washingSAM: parseFloat(washingSAMInput) || loadedCostSheet.washingSAM || 0,
-      finishingSAM: parseFloat(finishingSAMInput) || loadedCostSheet.finishingSAM || 0,
+      smvSewing:
+        smvSewingInput.trim() !== "" && !isNaN(parseFloat(smvSewingInput))
+          ? parseFloat(smvSewingInput)
+          : loadedCostSheet.smvSewing ?? 0,
+      cuttingSAM:
+        cuttingSAMInput.trim() !== "" && !isNaN(parseFloat(cuttingSAMInput))
+          ? parseFloat(cuttingSAMInput)
+          : loadedCostSheet.cuttingSAM ?? 0,
+      washingSAM:
+        washingSAMInput.trim() !== "" && !isNaN(parseFloat(washingSAMInput))
+          ? parseFloat(washingSAMInput)
+          : loadedCostSheet.washingSAM ?? 0,
+      finishingSAM:
+        finishingSAMInput.trim() !== "" && !isNaN(parseFloat(finishingSAMInput))
+          ? parseFloat(finishingSAMInput)
+          : loadedCostSheet.finishingSAM ?? 0,
       approvals: approvals || loadedCostSheet.approvals,
       approvalStatus: approvals?.overallStatus || loadedCostSheet.approvalStatus || "draft",
       orderType,
@@ -2027,7 +2085,7 @@ function CostSheetContent() {
       deliveryTerms,
       paritySale: paritySale ?? 0,
       parityProcurement: parityProcurement ?? 0,
-      manpower,
+      manpower: Number(manpower) || 0,
       efficiencyOverride:
         efficiencyOverride !== "" ? parseFloat(efficiencyOverride) / 100 : null,
       rejectionOverride:
@@ -2147,7 +2205,10 @@ function CostSheetContent() {
       washType,
       orderQuantity,
       orderType: (orderType as "Denim" | "Non Denim") || activeStyle.orderType || "",
-      smvSewing: parseFloat(smvSewingInput) || activeStyle.smvSewing,
+      smvSewing:
+        smvSewingInput.trim() !== "" && !isNaN(parseFloat(smvSewingInput))
+          ? parseFloat(smvSewingInput)
+          : activeStyle.smvSewing ?? 0,
     };
 
     const isApproved = isCostSheetApprovedByAnyHead(loadedCostSheet, approvals);
@@ -2178,7 +2239,7 @@ function CostSheetContent() {
         orderFOB: calculatedOrderFOB,
         paritySale: paritySale ?? 0,
         parityProcurement: parityProcurement ?? 0,
-        manpower,
+        manpower: Number(manpower) || 0,
         efficiencyOverride: effOv,
         rejectionOverride: effRejOv,
         lineTargetOverride: tgtOv,
@@ -2276,41 +2337,62 @@ function CostSheetContent() {
         onChange={markDirty}
         className="space-y-6 max-w-7xl mx-auto print:hidden"
       >
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight">
-              Cost Sheet Calculator
-            </h1>
-            {loadedCostSheet && (
-              <Badge
-                variant="outline"
-                className="text-sm font-black font-mono border-2 border-blue-500 bg-blue-100/90 text-blue-900 dark:bg-blue-950/80 dark:border-blue-400 dark:text-blue-200 px-3.5 py-1 rounded-lg shadow-xs tracking-wide"
-                title={loadedCostSheet.referenceName || undefined}
-              >
-                {loadedCostSheet.costSheetNumber || loadedCostSheet.id}
-              </Badge>
-            )}
-            {isReadOnly && (
-              <Badge
-                variant="outline"
-                className="text-xs border-amber-300 bg-amber-50 text-amber-900 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm"
-              >
-                <Eye className="size-3.5 text-amber-700" />
-                View Mode (Read-Only)
-              </Badge>
-            )}
-            {isDirty && !isReadOnly && (
-              <Badge
-                variant="outline"
-                className="text-xs border-amber-300 bg-amber-50 text-amber-800 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm"
-              >
-                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                Unsaved Changes
-              </Badge>
-            )}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between pb-1 border-b border-border/40">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight">
+            Cost Sheet Calculator
+          </h1>
+
+          {/* Modern Cost Sheet Switcher */}
+          <div className="flex items-center rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 shadow-2xs hover:border-slate-400 dark:hover:border-slate-600 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all h-9 overflow-hidden">
+            <div className="flex items-center gap-1.5 px-2.5 h-full bg-slate-50 dark:bg-slate-800/70 border-r border-slate-200 dark:border-slate-700/80 text-slate-500 dark:text-slate-400 select-none shrink-0">
+              <FileSpreadsheet className="size-4 text-blue-600 dark:text-blue-400" />
+              <span className="text-xs font-semibold tracking-tight text-slate-700 dark:text-slate-300 hidden sm:inline">
+                Cost Sheet
+              </span>
+            </div>
+            <div className="w-60 sm:w-80">
+              <SearchableSelect
+                className="w-full"
+                inputClassName="h-9 border-0 rounded-none bg-transparent shadow-none px-2.5 text-xs font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:ring-0 focus:border-0 hover:border-0"
+                placeholder="Search or Switch Cost Sheet…"
+                value={loadedCostSheet ? loadedCostSheet.id : ""}
+                onChange={(selectedId) => handleCostSheetSelect(selectedId)}
+                options={[
+                  { value: "", label: "+ New Cost Sheet (Blank)" },
+                  ...savedCostSheets.map((cs) => {
+                    const num = cs.costSheetNumber || cs.id;
+                    const desc = cs.referenceName || cs.styleName || cs.styleId || "Untitled";
+                    const meta = [cs.styleId, cs.customerName].filter(Boolean).join(" • ");
+                    return {
+                      value: cs.id,
+                      label: `${num} — ${desc}`,
+                      subLabel: meta || undefined,
+                    };
+                  }),
+                ]}
+              />
+            </div>
           </div>
-          
+
+          {isReadOnly && (
+            <Badge
+              variant="outline"
+              className="text-xs border-amber-300 bg-amber-50 text-amber-900 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-2xs"
+            >
+              <Eye className="size-3.5 text-amber-700" />
+              View Mode (Read-Only)
+            </Badge>
+          )}
+          {isDirty && !isReadOnly && (
+            <Badge
+              variant="outline"
+              className="text-xs border-amber-300 bg-amber-50 text-amber-800 font-semibold px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-2xs"
+            >
+              <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+              Unsaved Changes
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-2 print:hidden">
           {/* Only show DUER PRINT button when the customer is DUER */}
@@ -2436,40 +2518,7 @@ function CostSheetContent() {
         </div>
       )}
 
-      {/* View Mode Warning Banner (if not director locked) */}
-      {isReadOnly && !isDirectorApproved && (
-        <div className="bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded-xl p-3.5 px-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-in fade-in duration-200">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
-              <Eye className="size-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-amber-900 dark:text-amber-200 text-sm">
-                  View Mode (Read-Only)
-                </span>
-                <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-800 dark:text-amber-300 bg-amber-100/60 py-0">
-                  Locked
-                </Badge>
-              </div>
-              <p className="text-xs text-amber-700/90 dark:text-amber-400 mt-0.5">
-                {canEditCostSheet
-                  ? "This cost sheet is opened for viewing. Click \"Edit Cost Sheet\" to enable editing of all fields and BOM items."
-                  : "This cost sheet is opened in read-only view mode."}
-              </p>
-            </div>
-          </div>
-          {canEditCostSheet && (
-            <Button
-              size="sm"
-              onClick={enableEditMode}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-8 px-4 shadow-sm flex items-center gap-1.5 shrink-0"
-            >
-              <Pencil className="size-3.5" /> Edit Cost Sheet
-            </Button>
-          )}
-        </div>
-      )}
+
 
       {/* Cost Sheet Approval Workflow Header / Stepper */}
       {loadedCostSheet && (
@@ -3211,8 +3260,12 @@ function CostSheetContent() {
                 <input
                   type="number"
                   className="w-32 h-7 px-2 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-bold text-slate-900 dark:text-slate-100 rounded text-right shadow-2xs hover:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500/25"
-                  value={manpower || ""}
-                  onChange={(e) => setManpower(Number(e.target.value))}
+                  value={manpower === "" ? "" : manpower}
+                  onChange={(e) => {
+                    markDirty();
+                    const val = e.target.value;
+                    setManpower(val === "" ? "" : Number(val));
+                  }}
                 />
               </div>
               <div className="flex items-center justify-between gap-2">
@@ -5386,14 +5439,18 @@ function CostSheetContent() {
           paritySale={paritySale}
           parityProcurement={parityProcurement}
           inhouseOrSubcontract={inhouseOrSubcontract}
-          manpower={manpower}
+          manpower={Number(manpower) || 0}
           commissionInput={commissionInput}
           taxEdsInput={taxEdsInput}
           inlandFreightInput={inlandFreightInput}
           localBankChargesInput={localBankChargesInput}
           discountRateInput={discountRateInput}
           rebateInput={rebateInput}
-          smvSewing={parseFloat(smvSewingInput) || activeStyle.smvSewing}
+          smvSewing={
+            smvSewingInput.trim() !== "" && !isNaN(parseFloat(smvSewingInput))
+              ? parseFloat(smvSewingInput)
+              : activeStyle.smvSewing ?? 0
+          }
           approvals={approvals}
           costSheetNumber={loadedCostSheet?.costSheetNumber || loadedCostSheet?.id || ""}
           preparedByName={user?.displayName || "Muhammad Uzair"}
@@ -5431,14 +5488,18 @@ function CostSheetContent() {
           paritySale={paritySale}
           parityProcurement={parityProcurement}
           inhouseOrSubcontract={inhouseOrSubcontract}
-          manpower={manpower}
+          manpower={Number(manpower) || 0}
           commissionInput={commissionInput}
           taxEdsInput={taxEdsInput}
           inlandFreightInput={inlandFreightInput}
           localBankChargesInput={localBankChargesInput}
           discountRateInput={discountRateInput}
           rebateInput={rebateInput}
-          smvSewing={parseFloat(smvSewingInput) || activeStyle.smvSewing}
+          smvSewing={
+            smvSewingInput.trim() !== "" && !isNaN(parseFloat(smvSewingInput))
+              ? parseFloat(smvSewingInput)
+              : activeStyle.smvSewing ?? 0
+          }
         />
       )}
     </div>

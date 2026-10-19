@@ -17,6 +17,9 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,12 +34,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import {
   subscribeToCostSheets,
   deleteCostSheet,
 } from "@/lib/cost-sheet/api";
-import type { SavedCostSheetItem } from "@/lib/cost-sheet/types";
+import type { SavedCostSheetItem, ApprovalStep } from "@/lib/cost-sheet/types";
 import { useAuth } from "@/lib/auth/auth-provider";
 
 export default function SavedCostSheetsPage() {
@@ -51,6 +59,7 @@ export default function SavedCostSheetsPage() {
 
   // Filter State
   const [search, setSearch] = useState("");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc" | "none">("none");
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -110,68 +119,142 @@ export default function SavedCostSheetsPage() {
     }
   }
 
-  // Approval badge helper
+  // Format date helper: returns readable DD-MMM-YYYY
+  function formatDisplayDate(dateStr?: string | null) {
+    if (!dateStr) return "—";
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  }
+
+  // Approval badge helper with department hover breakdown
   function getApprovalBadge(sheet: SavedCostSheetItem) {
     const status = sheet.approvalStatus || (sheet.approvals?.director?.status === "approved" ? "approved" : "draft");
     const approvals = sheet.approvals;
 
+    const deptList: { key: string; label: string; step?: ApprovalStep }[] = [
+      { key: "cad", label: "CAD", step: approvals?.cad },
+      { key: "fabric", label: "Fabric", step: approvals?.fabric },
+      { key: "mmc", label: "MMC (Trims)", step: approvals?.mmc },
+      { key: "ie", label: "IE & SAMs", step: approvals?.ie },
+      { key: "washing", label: "Washing", step: approvals?.washing },
+      { key: "marketing", label: "Marketing", step: approvals?.marketing },
+      { key: "costingHead", label: "Costing Head", step: approvals?.costingHead },
+      { key: "director", label: "Director", step: approvals?.director },
+    ];
+
+    let badgeElement: React.ReactNode;
+
     if (status === "approved" || approvals?.director?.status === "approved") {
-      return (
-        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
+      badgeElement = (
+        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap cursor-help">
           <CheckCircle2 className="size-2.5" /> Dir Approved
         </Badge>
       );
-    }
-    if (status === "rejected") {
-      return (
-        <Badge variant="destructive" className="font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
+    } else if (status === "rejected") {
+      badgeElement = (
+        <Badge variant="destructive" className="font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap cursor-help">
           <XCircle className="size-2.5" /> Rejected
         </Badge>
       );
-    }
-    if (approvals?.costingHead?.status === "approved") {
-      return (
-        <Badge className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
+    } else if (approvals?.costingHead?.status === "approved") {
+      badgeElement = (
+        <Badge className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap cursor-help">
           <Clock className="size-2.5" /> Costing Appr
         </Badge>
       );
-    }
-    if (approvals?.marketing?.status === "approved") {
-      return (
-        <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
+    } else if (approvals?.marketing?.status === "approved") {
+      badgeElement = (
+        <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap cursor-help">
           <Clock className="size-2.5" /> Mktg Appr
         </Badge>
       );
-    }
+    } else {
+      const cadApproved = approvals?.cad?.status === "approved";
+      const deptApprovedCount = [
+        approvals?.fabric?.status === "approved",
+        approvals?.mmc?.status === "approved",
+        approvals?.ie?.status === "approved",
+        approvals?.washing?.status === "approved",
+      ].filter(Boolean).length;
 
-    const cadApproved = approvals?.cad?.status === "approved";
-    const deptApprovedCount = [
-      approvals?.fabric?.status === "approved",
-      approvals?.mmc?.status === "approved",
-      approvals?.ie?.status === "approved",
-      approvals?.washing?.status === "approved",
-    ].filter(Boolean).length;
-
-    if (deptApprovedCount > 0) {
-      return (
-        <Badge className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
-          <Clock className="size-2.5" /> {deptApprovedCount}/4 Depts
-        </Badge>
-      );
-    }
-
-    if (cadApproved) {
-      return (
-        <Badge className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap">
-          <Clock className="size-2.5" /> CAD Appr
-        </Badge>
-      );
+      if (deptApprovedCount > 0) {
+        badgeElement = (
+          <Badge className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap cursor-help">
+            <Clock className="size-2.5" /> {deptApprovedCount}/4 Depts
+          </Badge>
+        );
+      } else if (cadApproved) {
+        badgeElement = (
+          <Badge className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-[9px] px-1 py-0.5 gap-0.5 inline-flex items-center whitespace-nowrap cursor-help">
+            <Clock className="size-2.5" /> CAD Appr
+          </Badge>
+        );
+      } else {
+        badgeElement = (
+          <Badge variant="outline" className="text-slate-500 dark:text-slate-400 font-medium text-[9px] px-1.5 py-0.5 whitespace-nowrap cursor-help">
+            Draft
+          </Badge>
+        );
+      }
     }
 
     return (
-      <Badge variant="outline" className="text-slate-500 dark:text-slate-400 font-medium text-[9px] px-1.5 py-0.5 whitespace-nowrap">
-        Draft
-      </Badge>
+      <Tooltip>
+        <TooltipTrigger render={<span className="inline-flex cursor-help">{badgeElement}</span>} />
+        <TooltipContent
+          side="top"
+          align="center"
+          className="p-2.5 bg-slate-900/95 text-slate-100 border border-slate-800 shadow-xl rounded-lg max-w-xs z-50 text-left pointer-events-none"
+        >
+          <div className="space-y-1.5 min-w-[200px]">
+            <div className="flex items-center justify-between border-b border-slate-700/80 pb-1 text-[11px] font-bold">
+              <span>Department Approvals</span>
+              <span className="text-slate-400 text-[10px] font-mono">
+                {sheet.costSheetNumber || sheet.id}
+              </span>
+            </div>
+            <div className="space-y-1 pt-0.5">
+              {deptList.map((d) => {
+                const s = d.step?.status || "pending";
+                const isApproved = s === "approved";
+                const isRejected = s === "rejected";
+                return (
+                  <div key={d.key} className="flex items-center justify-between text-[10.5px] py-0.5">
+                    <span className="text-slate-300 font-medium">{d.label}</span>
+                    <span className="inline-flex items-center gap-1 font-semibold text-[10px]">
+                      {isApproved ? (
+                        <>
+                          <CheckCircle2 className="size-3 text-emerald-400" />
+                          <span className="text-emerald-300">
+                            {d.step?.approvedBy ? `Approved (${d.step.approvedBy})` : "Approved"}
+                          </span>
+                        </>
+                      ) : isRejected ? (
+                        <>
+                          <XCircle className="size-3 text-red-400" />
+                          <span className="text-red-300">
+                            {d.step?.approvedBy ? `Rejected (${d.step.approvedBy})` : "Rejected"}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="size-3 text-amber-400/70" />
+                          <span className="text-slate-400">Pending</span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </TooltipContent>
+      </Tooltip>
     );
   }
 
@@ -186,6 +269,8 @@ export default function SavedCostSheetsPage() {
       Customer: s.customerName,
       Category: s.styleCategory,
       "Quantity (Pcs)": s.orderQuantity,
+      "Date Created": formatDisplayDate(s.savedAt),
+      "Created By": s.createdByName || s.createdByEmail || "—",
       "Costing Date": s.costingDate,
       "Costing Stage": s.costingStage,
       "Approval Status":
@@ -209,21 +294,34 @@ export default function SavedCostSheetsPage() {
   }
 
   // Filter & Search Logic (Server already handles team & customer scope)
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredSheets = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return costSheets;
-    return costSheets.filter((s) => {
-      return (
-        s.referenceName?.toLowerCase().includes(q) ||
-        s.workOrderNumber?.toLowerCase().includes(q) ||
-        s.styleId?.toLowerCase().includes(q) ||
-        s.styleName?.toLowerCase().includes(q) ||
-        s.costSheetNumber?.toLowerCase().includes(q) ||
-        s.customerName?.toLowerCase().includes(q) ||
-        s.costingStage?.toLowerCase().includes(q)
-      );
+    const searched = q
+      ? costSheets.filter((s) => {
+          return (
+            s.referenceName?.toLowerCase().includes(q) ||
+            s.workOrderNumber?.toLowerCase().includes(q) ||
+            s.styleId?.toLowerCase().includes(q) ||
+            s.styleName?.toLowerCase().includes(q) ||
+            s.costSheetNumber?.toLowerCase().includes(q) ||
+            s.customerName?.toLowerCase().includes(q) ||
+            s.createdByName?.toLowerCase().includes(q) ||
+            s.createdByEmail?.toLowerCase().includes(q) ||
+            s.costingStage?.toLowerCase().includes(q)
+          );
+        })
+      : costSheets;
+
+    if (sortOrder === "none") return searched;
+
+    return [...searched].sort((a, b) => {
+      const aVal = (a.costSheetNumber || a.id || "").trim();
+      const bVal = (b.costSheetNumber || b.id || "").trim();
+      const cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: "base" });
+      return sortOrder === "asc" ? cmp : -cmp;
     });
-  }, [costSheets, search]);
+  }, [costSheets, search, sortOrder]);
 
   return (
     <div className="space-y-6 w-full">
@@ -261,15 +359,66 @@ export default function SavedCostSheetsPage() {
       {/* Filter Control Header */}
       <Card className="bg-card/50 backdrop-blur-sm border-muted/60">
         <CardContent className="p-4">
-          <div className="relative w-full">
-            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search by Cost Sheet #, Work Order, Style, Customer, Scenario..."
-              className="pl-9 h-9 w-full"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search by Cost Sheet #, Work Order, Style, Customer, Scenario..."
+                className="pl-9 h-9 w-full"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-xs font-medium text-muted-foreground mr-1">
+                Cost Sheet #:
+              </span>
+              <div className="inline-flex rounded-md border border-input bg-background p-0.5 shadow-xs">
+                <Button
+                  type="button"
+                  variant={sortOrder === "asc" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setSortOrder(sortOrder === "asc" ? "none" : "asc")}
+                  className={`h-7 px-2.5 text-xs gap-1 font-medium ${
+                    sortOrder === "asc"
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Sort Cost Sheet # Ascending (A-Z / 1-9)"
+                >
+                  <ArrowUp className="size-3.5" />
+                  <span>Ascending</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant={sortOrder === "desc" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setSortOrder(sortOrder === "desc" ? "none" : "desc")}
+                  className={`h-7 px-2.5 text-xs gap-1 font-medium ${
+                    sortOrder === "desc"
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  title="Sort Cost Sheet # Descending (Z-A / 9-1)"
+                >
+                  <ArrowDown className="size-3.5" />
+                  <span>Descending</span>
+                </Button>
+                {sortOrder !== "none" && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSortOrder("none")}
+                    className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground font-normal"
+                    title="Clear Cost Sheet # sorting"
+                  >
+                    Reset
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -292,43 +441,74 @@ export default function SavedCostSheetsPage() {
             <Table className="w-full text-xs table-fixed" containerClassName="overflow-x-hidden">
               <TableHeader className="bg-muted/40">
                 <TableRow>
-                  <TableHead className="w-[8.5%] font-semibold text-foreground py-2 pl-2 pr-1 text-[11px] truncate">
-                    Cost Sheet #
+                  <TableHead
+                    className="w-[9%] font-semibold text-foreground py-2 pl-2 pr-1 text-[11px] cursor-pointer select-none hover:bg-muted/70 transition-colors"
+                    onClick={() => {
+                      setSortOrder((prev) =>
+                        prev === "asc" ? "desc" : prev === "desc" ? "none" : "asc"
+                      );
+                    }}
+                    title={`Click to sort Cost Sheet # (${
+                      sortOrder === "asc"
+                        ? "Ascending active — click for Descending"
+                        : sortOrder === "desc"
+                        ? "Descending active — click to Reset"
+                        : "Click to sort Ascending"
+                    })`}
+                  >
+                    <div className="inline-flex items-center gap-1.5">
+                      <span className={sortOrder !== "none" ? "text-primary font-bold" : "text-foreground"}>
+                        Cost Sheet #
+                      </span>
+                      {sortOrder === "asc" ? (
+                        <ArrowUp className="size-3.5 text-primary stroke-[2.5] shrink-0" />
+                      ) : sortOrder === "desc" ? (
+                        <ArrowDown className="size-3.5 text-primary stroke-[2.5] shrink-0" />
+                      ) : (
+                        <ArrowUpDown className="size-3.5 text-slate-500 hover:text-foreground shrink-0" />
+                      )}
+                    </div>
                   </TableHead>
                   <TableHead className="w-[10.5%] font-semibold text-foreground py-2 px-1 text-[11px] truncate">
                     Description
                   </TableHead>
+                  <TableHead className="w-[7%] font-semibold text-foreground py-2 px-1 text-[11px] whitespace-nowrap">
+                    Date Created
+                  </TableHead>
                   <TableHead className="w-[7.5%] font-semibold text-foreground py-2 px-1 text-[11px] truncate">
+                    Created By
+                  </TableHead>
+                  <TableHead className="w-[7%] font-semibold text-foreground py-2 px-1 text-[11px] truncate">
                     Work Order
                   </TableHead>
-                  <TableHead className="w-[11%] font-semibold text-foreground py-2 px-1 text-[11px] truncate">
+                  <TableHead className="w-[10%] font-semibold text-foreground py-2 px-1 text-[11px] truncate">
                     Style ID & Name
                   </TableHead>
-                  <TableHead className="w-[8.5%] font-semibold text-foreground py-2 px-1 text-[11px] truncate">
+                  <TableHead className="w-[8%] font-semibold text-foreground py-2 px-1 text-[11px] truncate">
                     Customer
                   </TableHead>
-                  <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
+                  <TableHead className="w-[6%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
                     Order Qty
                   </TableHead>
-                  <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
+                  <TableHead className="w-[6%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
                     Order FOB
                   </TableHead>
-                  <TableHead className="w-[4.5%] font-semibold text-foreground py-2 px-1 text-center text-[11px] whitespace-nowrap">
+                  <TableHead className="w-[4%] font-semibold text-foreground py-2 px-1 text-center text-[11px] whitespace-nowrap">
                     Stage
                   </TableHead>
-                  <TableHead className="w-[9.5%] font-semibold text-foreground py-2 px-1 text-center text-[11px] whitespace-nowrap">
+                  <TableHead className="w-[9%] font-semibold text-foreground py-2 px-1 text-center text-[11px] whitespace-nowrap">
                     Approval
                   </TableHead>
                   {/* <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
                     EBITDA/m
                   </TableHead> */}
-                  <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
+                  <TableHead className="w-[6%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
                     Profit/Pc
                   </TableHead>
                   <TableHead className="w-[5.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
                     Profit %
                   </TableHead>
-                  <TableHead className="w-[8.5%] font-semibold text-foreground py-2 pr-2 pl-1 text-right text-[11px] whitespace-nowrap">
+                  <TableHead className="w-[8%] font-semibold text-foreground py-2 pr-2 pl-1 text-right text-[11px] whitespace-nowrap">
                     Actions
                   </TableHead>
                 </TableRow>
@@ -363,6 +543,8 @@ export default function SavedCostSheetsPage() {
                     (sheet.approvalStatus && sheet.approvalStatus !== "draft" && sheet.approvalStatus !== "rejected")
                   );
 
+                  const creatorDisplay = sheet.createdByName || (sheet.createdByEmail ? sheet.createdByEmail.split("@")[0] : "—");
+
                   return (
                     <TableRow
                       key={sheet.id}
@@ -376,6 +558,14 @@ export default function SavedCostSheetsPage() {
                       </TableCell>
                       <TableCell className="font-semibold text-foreground text-[11px] py-2 px-1 truncate" title={sheet.referenceName}>
                         {sheet.referenceName}
+                      </TableCell>
+                      <TableCell className="text-[10px] text-muted-foreground py-2 px-1 whitespace-nowrap" title={sheet.savedAt}>
+                        {formatDisplayDate(sheet.savedAt)}
+                      </TableCell>
+                      <TableCell className="text-[10.5px] py-2 px-1 truncate" title={sheet.createdByName || sheet.createdByEmail || "—"}>
+                        <span className="font-medium text-slate-700 dark:text-slate-300 truncate block">
+                          {creatorDisplay}
+                        </span>
                       </TableCell>
                       <TableCell className="text-[10px] py-2 px-1 font-mono truncate" title={sheet.workOrderNumber || "—"}>
                         {sheet.workOrderNumber ? (
