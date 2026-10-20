@@ -55,13 +55,7 @@ export async function GET(request: NextRequest) {
     }
 
     let query = `
-      SELECT 
-        id, cost_sheet_number, reference_name, style_id, style_name, customer_name,
-        work_order_number,
-        style_category, order_quantity, smv_sewing, cutting_sam, washing_sam, finishing_sam,
-        order_type, wash_type, costing_date, costing_stage, order_fob, quoted_price,
-        rejection_pct, rejection_override, approvals, approval_status, calculations,
-        created_by_id, created_by_email, created_by_name, saved_at
+      SELECT *
       FROM pre_order_cost_sheets
     `;
     if (styleId) {

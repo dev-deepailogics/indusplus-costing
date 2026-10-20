@@ -53,6 +53,10 @@ function isRouteAllowed(
     return can("page_cost_sheets", "view") || can("cost_sheets", "view");
   }
 
+  if (pathname === "/reports" || pathname.startsWith("/reports/")) {
+    return can("page_reports", "view") || can("reports", "view");
+  }
+
   if (pathname.startsWith("/parameters")) {
     return can("page_parameters", "view") || can("parameters", "view");
   }

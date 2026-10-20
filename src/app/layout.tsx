@@ -32,6 +32,13 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('app_bg_theme')||'#a0d9ef';if(t.startsWith('#')||t.startsWith('rgb')){document.documentElement.style.setProperty('--background',t);document.documentElement.style.setProperty('--sidebar',t);document.documentElement.removeAttribute('data-theme');}else{document.documentElement.setAttribute('data-theme',t);}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <AuthProvider>
           <AuthGate>{children}</AuthGate>

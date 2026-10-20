@@ -27,26 +27,100 @@ export interface CostSheetCalculations {
   qtyRangeError?: string;
 
   // Breakdown fields
+  sellingPricePKR?: number;
+  sellingPriceUSD?: number;
+  netPricePKR?: number;
+  netPriceUSD?: number;
+  netPricePct?: number;
+
+  fabricCostPKR?: number;
+  fabricCostUSD?: number;
+  fabricCostPct?: number;
+
+  liningCostPKR?: number;
+  liningCostUSD?: number;
+  liningCostPct?: number;
+
+  accessoriesCostPKR?: number;
+  accessoriesCostUSD?: number;
+  accessoriesCostPct?: number;
+
+  chemicalsCostPKR?: number;
+  chemicalsCostUSD?: number;
+  chemicalsCostPct?: number;
+
+  specialChargesCostPKR?: number;
+  specialChargesCostUSD?: number;
+  specialChargesCostPct?: number;
+
   directLaborCostPKR?: number;
   directLaborCostUSD?: number;
+  directLaborCostPct?: number;
+
   utilitiesCostPKR?: number;
   utilitiesCostUSD?: number;
+  utilitiesCostPct?: number;
+
   leftoverCostPKR?: number;
   leftoverCostUSD?: number;
+  leftoverCostPct?: number;
+
   totalVariableCostPKR?: number;
   totalVariableCostUSD?: number;
+  totalVariableCostPct?: number;
+
+  cmPKR?: number;
+  cmPct?: number;
+
   salariesCostPKR?: number;
   salariesCostUSD?: number;
+  salariesCostPct?: number;
+
   fohAdminCostPKR?: number;
   fohAdminCostUSD?: number;
+  fohAdminCostPct?: number;
+
   repairMtcCostPKR?: number;
   repairMtcCostUSD?: number;
-  totalCostPKR?: number;
-  totalCostUSD?: number;
-  depreciationCostPKR?: number;
-  depreciationCostUSD?: number;
+  repairMtcCostPct?: number;
+
+  totalManufacturingFohPKR?: number;
+  totalManufacturingFohUSD?: number;
+  totalManufacturingFohPct?: number;
+
   conversionCostPerMinPKR?: number;
   conversionCostPerMinUSD?: number;
+
+  grossProfitPKR?: number;
+  grossProfitUSD?: number;
+  grossProfitPct?: number;
+
+  adminExpensesPKR?: number;
+  adminExpensesUSD?: number;
+  adminExpensesPct?: number;
+
+  sellingExpensesPKR?: number;
+  sellingExpensesUSD?: number;
+  sellingExpensesPct?: number;
+
+  totalAdminSellingPKR?: number;
+  totalAdminSellingUSD?: number;
+  totalAdminSellingPct?: number;
+
+  operatingProfitPKR?: number;
+  operatingProfitUSD?: number;
+  operatingProfitPct?: number;
+
+  totalCostPKR?: number;
+  totalCostUSD?: number;
+  totalCostPct?: number;
+
+  depreciationCostPKR?: number;
+  depreciationCostUSD?: number;
+  depreciationCostPct?: number;
+
+  netProfitPKR?: number;
+
   grossCmPKR?: number;
   grossCmUSD?: number;
 }

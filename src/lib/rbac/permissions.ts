@@ -31,6 +31,13 @@ export interface SectionDefinition {
 export const SECTION_REGISTRY: SectionDefinition[] = [
   // ── 1. Page Access (Sidebar Navigation) ──
   {
+    key: "page_reports",
+    label: "Reports & Analytics",
+    group: "pages",
+    description: "Production performance, work order tracking, style analysis, customer metrics, and employee operations",
+    applicableActions: ["view"],
+  },
+  {
     key: "page_cost_sheets",
     label: "Cost Sheets List",
     group: "pages",
@@ -210,6 +217,7 @@ export interface RoleDefinition {
 
 // Legacy key backwards compatibility mapping — also used by server.ts
 export const SECTION_ALIASES: Record<string, string> = {
+  reports: "page_reports",
   cost_sheets: "page_cost_sheets",
   cost_sheet_editor: "section_header",
   parameters: "page_parameters",
@@ -285,8 +293,9 @@ export function buildDefaultPermissions(slug: string): SectionPermission[] {
     if (p) Object.assign(p, overrides);
   };
 
-  // Base: everyone can view cost sheets
+  // Base: everyone can view cost sheets & reports
   set("page_cost_sheets", { view: true });
+  set("page_reports", { view: true });
 
   switch (slug) {
     case "admin":

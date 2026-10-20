@@ -76,22 +76,36 @@ export function AppSidebar() {
         </Link>
       </SidebarHeader>
       <SidebarContent>
-        {/* Cost Sheets — visible to anyone who can view them */}
-        {canViewCostSheets && (
+        {/* Cost Sheets & Reports */}
+        {(canViewCostSheets || can("reports", "view") || can("page_reports", "view")) && (
           <SidebarGroup>
-            <SidebarGroupLabel>Pre-Order Costing</SidebarGroupLabel>
+            <SidebarGroupLabel>Pre-Order Costing & Analytics</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    tooltip="Cost Sheets"
-                    isActive={pathname === "/cost-sheets"}
-                    render={<Link href="/cost-sheets" onClick={handleNavClick} />}
-                  >
-                    <FileSpreadsheet className="size-4 shrink-0" />
-                    <span>Cost Sheets</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                {canViewCostSheets && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      tooltip="Cost Sheets"
+                      isActive={pathname === "/cost-sheets"}
+                      render={<Link href="/cost-sheets" onClick={handleNavClick} />}
+                    >
+                      <FileSpreadsheet className="size-4 shrink-0" />
+                      <span>Cost Sheets</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+                {(can("reports", "view") || can("page_reports", "view")) && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      tooltip="Reports & Analytics"
+                      isActive={pathname === "/reports" || pathname.startsWith("/reports/")}
+                      render={<Link href="/reports" onClick={handleNavClick} />}
+                    >
+                      <Layers className="size-4 shrink-0" />
+                      <span>Reports</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

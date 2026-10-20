@@ -46,6 +46,8 @@ import {
 } from "@/lib/cost-sheet/api";
 import type { SavedCostSheetItem, ApprovalStep } from "@/lib/cost-sheet/types";
 import { useAuth } from "@/lib/auth/auth-provider";
+import { runFormulaEngine } from "@/features/cost-sheet/services/CostSheetFormulaEngine";
+import type { StyleMasterItem } from "@/features/style-master/types";
 
 export default function SavedCostSheetsPage() {
   const router = useRouter();
@@ -260,37 +262,155 @@ export default function SavedCostSheetsPage() {
 
   // Excel Export
   function handleExport() {
-    const dataToExport = filteredSheets.map((s) => ({
-      "Cost Sheet #": s.costSheetNumber || s.id,
-      "Scenario Reference": s.referenceName,
-      "Work Order": s.workOrderNumber || "—",
-      "Style ID": s.styleId,
-      "Style Name": s.styleName,
-      Customer: s.customerName,
-      Category: s.styleCategory,
-      "Quantity (Pcs)": s.orderQuantity,
-      "Date Created": formatDisplayDate(s.savedAt),
-      "Created By": s.createdByName || s.createdByEmail || "—",
-      "Costing Date": s.costingDate,
-      "Costing Stage": s.costingStage,
-      "Approval Status":
-        s.approvals?.director?.status === "approved"
-          ? "Director Approved"
-          : s.approvalStatus || "Draft",
-      Country: s.country,
-      "Payment Terms": s.paymentTerms,
-      "Order FOB ($)": s.orderFOB,
-      "EBITDA / Min (Cents)": s.calculations.ebitdaMinCents,
-      "Net Profit / Pc ($)": s.calculations.netProfitUSD,
-      "Net Profit %": s.calculations.netProfitPct * 100,
-      "Saved At": s.savedAt,
-    }));
+    const dataToExport = filteredSheets.map((s) => {
+      let calcs = s.calculations || {};
+      const orderFOB = typeof s.orderFOB === "number" && !isNaN(s.orderFOB) ? s.orderFOB : 0;
+      const smv = s.smvSewing ?? 0;
+      const rejection =
+        s.rejectionPct !== null && s.rejectionPct !== undefined
+          ? s.rejectionPct
+          : s.rejectionOverride !== null && s.rejectionOverride !== undefined
+          ? s.rejectionOverride
+          : (calcs.rejectionPct ?? 0);
+      const rejectionPctVal = rejection <= 1 && rejection > 0 ? rejection * 100 : rejection;
+
+      // If breakdown fields are missing, recompute them using the formula engine
+      if (calcs.fabricCostPKR === undefined && calcs.sellingPricePKR === undefined) {
+        try {
+          const styleItem: StyleMasterItem = {
+            id: s.styleId,
+            styleName: s.styleName,
+            customerName: s.customerName,
+            styleCategory: s.styleCategory,
+            orderQuantity: s.orderQuantity,
+            smvSewing: s.smvSewing,
+            orderType: (s.orderType as "Denim" | "Non Denim") || "Non Denim",
+            washType: s.washType,
+            sizeBracket: calcs.sizeBracket || "",
+            targetEfficiency: calcs.efficiency || 0,
+            rejectionPct: rejection,
+            baseSellingPrice: orderFOB,
+            bomFabric: s.bomFabric || [],
+            bomLining: s.bomLining || [],
+            bomAccessories: s.bomAccessories || [],
+            bomChemicals: s.bomChemicals || [],
+            bomSpecialCharges: s.bomSpecialCharges || [],
+          };
+
+          const recomputed = runFormulaEngine(
+            styleItem,
+            {
+              orderFOB,
+              paritySale: s.paritySale || 278,
+              parityProcurement: s.parityProcurement || 278,
+              manpower: s.manpower || 60,
+              efficiencyOverride: s.efficiencyOverride ?? null,
+              rejectionOverride: s.rejectionOverride ?? rejection,
+              lineTargetOverride: s.lineTargetOverride ?? null,
+              costingStage: s.costingStage || "",
+              paymentTerms: s.paymentTerms || "",
+              discountRate: s.discountRate || 0,
+              paymentTermsDays: s.paymentTermsDays || 0,
+              factoringDays: s.factoringDays || 0,
+              commissionPct: s.commissionPct || 0,
+              foreignBankCharges: s.foreignBankCharges || 0,
+              taxEdsPct: s.taxEdsPct || 0,
+              inlandFreightPct: s.inlandFreightPct || 0,
+              localBankChargesPct: s.localBankChargesPct || 0,
+              inhouseOrSubcontract: s.inhouseOrSubcontract || "INHOUSE",
+              rebatePct: s.rebatePct ?? 0.015,
+            },
+            {
+              directLabourFoh: s.directLabourFohSnapshot || undefined,
+              adminSelling: s.adminSellingSnapshot || undefined,
+            }
+          );
+          calcs = { ...calcs, ...recomputed };
+        } catch (err) {
+          console.error("Failed to recompute calcs for export row:", s.id, err);
+        }
+      }
+
+      const targetFob = calcs.targetFobUSD ?? (typeof s.quotedPrice === "number" ? s.quotedPrice : 0);
+
+      // Selling price & Net price
+      const sellingPKR = calcs.sellingPricePKR ?? (orderFOB * (s.paritySale || 278));
+      const netPKR = calcs.netPricePKR ?? 0;
+
+      // Material Costs
+      const fabricPKR = calcs.fabricCostPKR ?? 0;
+      const liningPKR = calcs.liningCostPKR ?? 0;
+      const accPKR = calcs.accessoriesCostPKR ?? 0;
+      const chemPKR = calcs.chemicalsCostPKR ?? 0;
+      const specialPKR = calcs.specialChargesCostPKR ?? 0;
+
+      // Conversion & Variable Costs
+      const laborPKR = calcs.directLaborCostPKR ?? 0;
+      const utilPKR = calcs.utilitiesCostPKR ?? 0;
+      const leftoverPKR = calcs.leftoverCostPKR ?? 0;
+
+      // Gross CM / PC
+      const cmPKR = calcs.cmPKR ?? (calcs.grossCmPKR ?? 0);
+
+      // Overheads / Total Cost FOH
+      const fohPKR = calcs.totalManufacturingFohPKR ?? (calcs.totalCostPKR ?? 0);
+
+      // Gross Profit
+      const grossProfitPKR = calcs.grossProfitPKR ?? (cmPKR - fohPKR);
+
+      // Total Admin & Selling
+      const adminSellingPKR = calcs.totalAdminSellingPKR ?? 0;
+
+      // Operating Profit
+      const opProfitPKR = calcs.operatingProfitPKR ?? (grossProfitPKR - adminSellingPKR);
+
+      // Net Profit / PC
+      const netProfitPKR = calcs.netProfitPKR ?? (opProfitPKR - (calcs.depreciationCostPKR ?? 0));
+
+      return {
+        // --- 1. Saved Cost Sheet Table Columns ---
+        "Cost Sheet #": s.costSheetNumber || s.id,
+        "Description": s.referenceName,
+        "Date Created": formatDisplayDate(s.savedAt),
+        "Created By": s.createdByName || s.createdByEmail || "—",
+        "Work Order": s.workOrderNumber || "—",
+        "Style ID": s.styleId,
+        "Style Name": s.styleName,
+        "Customer": s.customerName,
+        "Order Qty": s.orderQuantity,
+        "Order FOB ($)": Number(orderFOB.toFixed(2)),
+
+        // --- 2. Cost Sheet Header Highlighted Fields ---
+        "Wash Type": s.washType || "—",
+        "Rejection %": Number(rejectionPctVal.toFixed(2)),
+        "SMV": Number(smv.toFixed(2)),
+        "Target FOB/PC ($)": Number(targetFob.toFixed(2)),
+
+        // --- 3. Cost & Profitability Summary Highlighted Fields (PKR) ---
+        "Selling Price (FOB)": Number(sellingPKR.toFixed(0)),
+        "Net Selling Price": Number(netPKR.toFixed(0)),
+        "Fabric Cost": Number(fabricPKR.toFixed(0)),
+        "Lining Cost": Number(liningPKR.toFixed(0)),
+        "Accessories Cost": Number(accPKR.toFixed(0)),
+        "Chemical & Washing Cost": Number(chemPKR.toFixed(0)),
+        "Special Charges Cost": Number(specialPKR.toFixed(0)),
+        "Direct Labor Cost (CPM-linked)": Number(laborPKR.toFixed(0)),
+        "Utilities Cost (CPM-linked)": Number(utilPKR.toFixed(0)),
+        "Leftover Factor Cost": Number(leftoverPKR.toFixed(0)),
+        "Gross CM / PC": Number(cmPKR.toFixed(0)),
+        "Total Cost FOH": Number(fohPKR.toFixed(0)),
+        "Gross Profit (CM/Pc - Total Manufacturing FOH)": Number(grossProfitPKR.toFixed(0)),
+        "Total Admin & Selling": Number(adminSellingPKR.toFixed(0)),
+        "Operating Profit": Number(opProfitPKR.toFixed(0)),
+        "Net Profit / PC": Number(netProfitPKR.toFixed(0)),
+      };
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Cost Sheets Snapshots");
-    XLSX.writeFile(workbook, "Saved_PreOrder_CostSheets.xlsx");
-    toast.success("Costing grid exported to Excel");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Cost Sheets History");
+    XLSX.writeFile(workbook, "Saved_Cost_Sheets_History.xlsx");
+    toast.success("Cost sheets history exported to Excel");
   }
 
   // Filter & Search Logic (Server already handles team & customer scope)
