@@ -245,22 +245,22 @@ export function CostSheetApprovalWorkflow({
 
     if (action === "revoke") {
       if (stage === "cad") {
-        if (directorApproved || directorPending) {
+        if (directorApproved) {
           return {
             allowed: false,
-            reason: "Locked: Cost sheet is at Director stage. Cannot skip approval hierarchy.",
+            reason: "Locked: Director has already approved. Revoke Director first.",
           };
         }
-        if (costingHeadApproved || costingHeadPending) {
+        if (costingHeadApproved) {
           return {
             allowed: false,
-            reason: "Locked: Cost sheet is at Costing Head stage. Cannot skip approval hierarchy.",
+            reason: "Locked: Costing Head has already approved. Revoke Costing Head first.",
           };
         }
-        if (marketingApproved || marketingPending) {
+        if (marketingApproved) {
           return {
             allowed: false,
-            reason: "Locked: Cost sheet is at Marketing stage. Cannot skip approval hierarchy.",
+            reason: "Locked: Marketing has already approved. Revoke Marketing first.",
           };
         }
         if (fabricApproved || mmcApproved || ieApproved || washingApproved) {
@@ -278,19 +278,13 @@ export function CostSheetApprovalWorkflow({
             reason: "Locked: Director has approved. Director must revoke first.",
           };
         }
-        if (directorPending) {
-          return {
-            allowed: false,
-            reason: "Locked: Approval is currently with Director. Director must reject before Costing Head can revoke.",
-          };
-        }
       }
 
       if (stage === "marketing") {
-        if (directorApproved || directorPending) {
+        if (directorApproved) {
           return {
             allowed: false,
-            reason: "Locked: Cost sheet is at Director stage. Cannot skip approval hierarchy.",
+            reason: "Locked: Director has approved. Director must revoke first.",
           };
         }
         if (costingHeadApproved) {
@@ -299,37 +293,25 @@ export function CostSheetApprovalWorkflow({
             reason: "Locked: Costing Head has approved. Costing Head must revoke first.",
           };
         }
-        if (costingHeadPending) {
-          return {
-            allowed: false,
-            reason: "Locked: Approval is currently with Costing Head. Costing Head must reject before Marketing can revoke.",
-          };
-        }
       }
 
       if (stage === "fabric" || stage === "mmc" || stage === "ie" || stage === "washing") {
-        if (directorApproved || directorPending) {
+        if (directorApproved) {
           return {
             allowed: false,
-            reason: "Locked: Cost sheet is at Director stage. Cannot skip approval hierarchy.",
+            reason: "Locked: Director has approved. Director must revoke first.",
           };
         }
-        if (costingHeadApproved || costingHeadPending) {
+        if (costingHeadApproved) {
           return {
             allowed: false,
-            reason: "Locked: Cost sheet is at Costing Head stage. Cannot skip approval hierarchy.",
+            reason: "Locked: Costing Head has approved. Costing Head must revoke first.",
           };
         }
         if (marketingApproved) {
           return {
             allowed: false,
             reason: "Locked: Marketing has approved. Marketing must revoke first.",
-          };
-        }
-        if (marketingPending) {
-          return {
-            allowed: false,
-            reason: "Locked: Approval is currently with Marketing. Marketing must reject before departmental stages can revoke.",
           };
         }
       }

@@ -362,23 +362,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
       const costingHeadPending = marketingApproved && !costingHeadApproved && !costingHeadRejected;
       const marketingPending = deptCompleted && !marketingApproved && !marketingRejected;
 
-      // Enforce strict reverse hierarchical workflow - no direct jump allowed for revoke
+      // Reverse hierarchical workflow: only block if a subsequent step has already APPROVED
       if (stage === "cad") {
-        if (directorApproved || directorPending) {
+        if (directorApproved) {
           return NextResponse.json(
-            { error: "Cannot revoke CAD: Approval is at Director stage. Cannot skip approval hierarchy." },
+            { error: "Cannot revoke CAD: Director has approved. Director approval must be revoked first." },
             { status: 400 }
           );
         }
-        if (costingHeadApproved || costingHeadPending) {
+        if (costingHeadApproved) {
           return NextResponse.json(
-            { error: "Cannot revoke CAD: Approval is at Costing Head stage. Cannot skip approval hierarchy." },
+            { error: "Cannot revoke CAD: Costing Head has approved. Costing Head approval must be revoked first." },
             { status: 400 }
           );
         }
-        if (marketingApproved || marketingPending) {
+        if (marketingApproved) {
           return NextResponse.json(
-            { error: "Cannot revoke CAD: Approval is at Marketing stage. Cannot skip approval hierarchy." },
+            { error: "Cannot revoke CAD: Marketing has approved. Marketing approval must be revoked first." },
             { status: 400 }
           );
         }
@@ -395,16 +395,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
             { status: 400 }
           );
         }
-        if (directorPending) {
-          return NextResponse.json(
-            { error: "Cannot revoke Costing Head: Approval is currently with Director. Director must reject before Costing Head can revoke." },
-            { status: 400 }
-          );
-        }
       } else if (stage === "marketing") {
-        if (directorApproved || directorPending) {
+        if (directorApproved) {
           return NextResponse.json(
-            { error: "Cannot revoke Marketing: Cost sheet is at Director stage. Cannot skip approval hierarchy." },
+            { error: "Cannot revoke Marketing: Director has already approved. Director must revoke first." },
             { status: 400 }
           );
         }
@@ -414,34 +408,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
             { status: 400 }
           );
         }
-        if (costingHeadPending) {
-          return NextResponse.json(
-            { error: "Cannot revoke Marketing: Approval is currently with Costing Head. Costing Head must reject before Marketing can revoke." },
-            { status: 400 }
-          );
-        }
       } else if (stage === "fabric" || stage === "mmc" || stage === "ie" || stage === "washing") {
-        if (directorApproved || directorPending) {
+        if (directorApproved) {
           return NextResponse.json(
-            { error: `Cannot revoke ${stage.toUpperCase()}: Approval is at Director stage. Cannot skip approval hierarchy.` },
+            { error: `Cannot revoke ${stage.toUpperCase()}: Director has already approved. Director must revoke first.` },
             { status: 400 }
           );
         }
-        if (costingHeadApproved || costingHeadPending) {
+        if (costingHeadApproved) {
           return NextResponse.json(
-            { error: `Cannot revoke ${stage.toUpperCase()}: Approval is at Costing Head stage. Cannot skip approval hierarchy.` },
+            { error: `Cannot revoke ${stage.toUpperCase()}: Costing Head has already approved. Costing Head must revoke first.` },
             { status: 400 }
           );
         }
         if (marketingApproved) {
           return NextResponse.json(
             { error: `Cannot revoke ${stage.toUpperCase()}: Marketing has already approved. Marketing approval must be revoked first.` },
-            { status: 400 }
-          );
-        }
-        if (marketingPending) {
-          return NextResponse.json(
-            { error: `Cannot revoke ${stage.toUpperCase()}: Approval is currently with Marketing. Marketing must reject before departmental stages can revoke.` },
             { status: 400 }
           );
         }
