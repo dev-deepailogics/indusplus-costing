@@ -4,40 +4,8 @@ import { verifyPassword } from "@/lib/auth/password";
 import { createSession } from "@/lib/auth/session";
 import { fetchPermissionsForRole } from "@/lib/rbac/server";
 
-// ── Simple in-memory rate limiter (per-process; good enough for single-server) ──
-const attempts = new Map<string, { count: number; resetAt: number }>();
-const MAX_ATTEMPTS = 5;
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const entry = attempts.get(ip);
-
-  if (!entry || now > entry.resetAt) {
-    attempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
-    return false;
-  }
-
-  entry.count += 1;
-  return entry.count > MAX_ATTEMPTS;
-}
-
-function clearRateLimit(ip: string): void {
-  attempts.delete(ip);
-}
-
 export async function POST(request: Request) {
   try {
-    // Rate limiting
-    const forwarded = request.headers.get("x-forwarded-for");
-    const ip = forwarded?.split(",")[0]?.trim() ?? "unknown";
-
-    if (isRateLimited(ip)) {
-      return NextResponse.json(
-        { error: "Too many login attempts. Please try again later." },
-        { status: 429 },
-      );
-    }
 
     // Parse body
     const body = await request.json().catch(() => null);
@@ -140,9 +108,6 @@ export async function POST(request: Request) {
 
     // Fetch dynamic permissions for this user's role
     const permissions = await fetchPermissionsForRole(user.role);
-
-    // Success — clear rate limit, create session with permissions
-    clearRateLimit(ip);
 
     await createSession({
       userId: user.id,
