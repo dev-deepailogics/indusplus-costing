@@ -11,8 +11,8 @@ export const PARAMETER_TABLES: ParameterDef[] = [
   { slug: "direct-labour-foh", title: "Direct Labour and FOH", kind: "simple" },
   { slug: "admin-selling", title: "Admin and Selling", kind: "simple" },
   { slug: "other-expenses", title: "Other Expenses", kind: "simple" },
-  { slug: "ar-payment-terms", title: "AR Payment Terms (Customer)", kind: "payment-terms" },
-  { slug: "ap-payment-terms", title: "AP Payment Terms (Fabric Supplier)", kind: "payment-terms" },
+  { slug: "ar-payment-terms", title: "Customer's Payment Terms (Customer)", kind: "payment-terms" },
+  { slug: "ap-payment-terms", title: "Fabric Payment Terms (Fabric Supplier)", kind: "payment-terms" },
   { slug: "dropdown-lists", title: "Dropdown Lists", kind: "dropdown-lists" },
 ];
 

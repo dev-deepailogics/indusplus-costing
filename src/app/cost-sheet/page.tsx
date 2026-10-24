@@ -3063,7 +3063,7 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
-                  AP Payment Terms
+                  Fabric Payment Terms
                 </span>
                 <SearchableSelect
                   className="w-36"
@@ -3084,7 +3084,7 @@ function CostSheetContent() {
 
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-muted-foreground">
-                  AR Payment Terms
+                  Customer&apos;s Payment Terms
                 </span>
                 <SearchableSelect
                   className="w-36"
