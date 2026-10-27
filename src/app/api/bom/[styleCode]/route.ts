@@ -88,6 +88,7 @@ export async function GET(
       .input("styleCode", styleCode)
       .query<{
         AccessCode: string;
+        FabTypeCode?: string;
         GroupCode: string;
         GroupName: string;
         ItemCode: string;
@@ -99,7 +100,7 @@ export async function GET(
         Wash: string;
         Category: string;
       }>(
-        `SELECT AccessCode, GroupCode, GroupName, ItemCode, ItemName,
+        `SELECT AccessCode, FabTypeCode, GroupCode, GroupName, ItemCode, ItemName,
                 Consumption, UOM, LastPurchasedPrice, TotalSAM, Wash, Category
          FROM   S_StyleCardBOMConsumptionSAMView
          WHERE  StyleCode = @styleCode
@@ -160,9 +161,12 @@ export async function GET(
         totalSAM,
       };
 
+      const fabTypeCode = (row.FabTypeCode ?? "").toString().trim().toUpperCase();
+      const groupCode = (row.GroupCode ?? "").toString().trim().toUpperCase();
+
       if (row.AccessCode === "FABRIC") {
-        // Pocket Lining group → lining section
-        if (row.GroupCode === "FPL") {
+        // FabTypeCode = 'PL' (Pocket Lining) or legacy GroupCode = 'FPL' → lining section
+        if (fabTypeCode === "PL" || groupCode === "FPL") {
           lining.push(bomRow);
         } else {
           fabric.push(bomRow);
