@@ -411,7 +411,7 @@ function CostSheetContent() {
   const [selectedApTermId, setSelectedApTermId] = useState<string>("");
 
   // Loading States
-  const [loadingStyles, setLoadingStyles] = useState(true);
+  const [loadingStyles, setLoadingStyles] = useState(false);
 
   // 1. Control & Input Parameters State
   const [costingDate, setCostingDate] = useState(
@@ -428,6 +428,7 @@ function CostSheetContent() {
   // New editable style fields
   const [customerName, setCustomerName] = useState("");
   const [isManualCustomer, setIsManualCustomer] = useState(false);
+  const [isManualStyle, setIsManualStyle] = useState(false);
 
   // Auto-set customerName if user is restricted to an assigned customer
   useEffect(() => {
@@ -2116,6 +2117,8 @@ function CostSheetContent() {
 
     const snapshot: SavedCostSheetItem = {
       ...loadedCostSheet,
+      styleId: activeStyle.id,
+      styleName: activeStyle.styleName,
       createdById: loadedCostSheet.createdById ?? user?.id,
       createdByEmail: loadedCostSheet.createdByEmail ?? user?.email,
       createdByName: loadedCostSheet.createdByName ?? user?.displayName ?? user?.email,
@@ -2449,10 +2452,8 @@ function CostSheetContent() {
     approvals,
   ]);
 
-  // Block render until the rejection grid has loaded when it's the active mode
-  // (prevents the 4.15% default flashing before data arrives from the API)
-  const isRejectionGridNeeded = rejectionGrid?.useGridRejection !== false;
-  if (loadingStyles || !activeStyle || !calcs || (isRejectionGridNeeded && !rejectionGrid)) {
+  // Only block render if loading an existing cost sheet snapshot
+  if ((costSheetIdParam && loadingStyles) || !activeStyle || !calcs) {
     return (
       <div className="p-8 text-center text-sm text-muted-foreground">
         Loading Cost Sheet calculator…
@@ -2806,31 +2807,95 @@ function CostSheetContent() {
 
               {/* ── Style Select ──────────────────────────── */}
               <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-muted-foreground">
-                  Style Select
-                </span>
-                <SearchableSelect
-                  className="w-32"
-                  placeholder="Search style…"
-                  value={activeStyle.id === "custom" ? "" : activeStyle.id}
-                  onChange={(val) => {
-                    const nextStyleId = val || "custom";
-                    const currentStyleId = activeStyle.id || "custom";
-                    if (nextStyleId !== currentStyleId) {
-                      handleStyleChange(nextStyleId);
-                    }
-                  }}
-                  options={[
-                    { value: "custom", label: "-- Custom Style --" },
-                    // Indus-plus styles from SQL Server (deduplicated by StyleCode, scoped to customer)
-                    ...Array.from(
-                      new Map(scopedIndusStyleRows.map((r) => [r.styleCode, r])).values()
-                    ).map((r) => ({
-                      value: r.styleCode,
-                      label: `${r.styleCode}${r.styleName ? ` — ${r.styleName}` : ""}${r.customer ? ` (${r.customer})` : ""}`,
-                    })),
-                  ]}
-                />
+                <div className="flex items-center gap-1.5">
+                  <span className="font-semibold text-muted-foreground">
+                    Style Select
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isManualStyle) {
+                        setIsManualStyle(true);
+                        if (activeStyle.id !== "custom" && activeStyle.id !== "") {
+                          // Keep existing name or switch to custom style
+                          handleStyleChange("custom");
+                        }
+                      } else {
+                        setIsManualStyle(false);
+                      }
+                    }}
+                    className="text-[10px] text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-semibold px-1 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 transition-colors"
+                    title={isManualStyle ? "Switch to style select list" : "Switch to manual custom style name input"}
+                  >
+                    {isManualStyle ? "List" : "Custom"}
+                  </button>
+                </div>
+                {isManualStyle ? (
+                  <input
+                    type="text"
+                    disabled={false}
+                    placeholder="Enter style name…"
+                    className="w-32 h-6 px-1.5 text-xs rounded text-left transition-all outline-none bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100 shadow-2xs hover:border-blue-500 focus:border-blue-600 focus:ring-1 focus:ring-blue-500/25 font-medium"
+                    value={activeStyle.styleName || (activeStyle.id === "custom" ? "" : activeStyle.id)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setActiveStyle((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              id: "custom",
+                              styleName: val,
+                            }
+                          : prev
+                      );
+                      markDirty(e);
+                    }}
+                  />
+                ) : (
+                  <SearchableSelect
+                    className="w-32"
+                    allowCustom={true}
+                    placeholder="Search style…"
+                    value={activeStyle.id === "custom" ? (activeStyle.styleName || "") : activeStyle.id}
+                    onChange={(val) => {
+                      if (val === "__manual__") {
+                        setIsManualStyle(true);
+                        handleStyleChange("custom");
+                      } else {
+                        const isExistingDbStyle = scopedIndusStyleRows.some((r) => r.styleCode === val);
+                        if (isExistingDbStyle) {
+                          handleStyleChange(val);
+                        } else if (val === "custom" || !val) {
+                          handleStyleChange("custom");
+                        } else {
+                          // Custom entered style name
+                          setActiveStyle((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  id: "custom",
+                                  styleName: val,
+                                }
+                              : prev
+                          );
+                          setWorkOrderNumber("");
+                          markDirty();
+                        }
+                      }
+                    }}
+                    options={[
+                      { value: "custom", label: "-- Custom Style --" },
+                      { value: "__manual__", label: "✏️ Enter Manual Style…" },
+                      // Indus-plus styles from SQL Server (deduplicated by StyleCode, scoped to customer)
+                      ...Array.from(
+                        new Map(scopedIndusStyleRows.map((r) => [r.styleCode, r])).values()
+                      ).map((r) => ({
+                        value: r.styleCode,
+                        label: `${r.styleCode}${r.styleName ? ` — ${r.styleName}` : ""}${r.customer ? ` (${r.customer})` : ""}`,
+                      })),
+                    ]}
+                  />
+                )}
               </div>
 
               {/* ── Work Order No. ────────────────────────── */}
