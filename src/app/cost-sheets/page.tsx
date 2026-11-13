@@ -54,6 +54,7 @@ import {
   deleteCostSheet,
 } from "@/lib/cost-sheet/api";
 import type { SavedCostSheetItem, ApprovalStep } from "@/lib/cost-sheet/types";
+import { isCostSheetApprovedByAnyHead } from "@/features/cost-sheet/types";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { runFormulaEngine } from "@/features/cost-sheet/services/CostSheetFormulaEngine";
 import type { StyleMasterItem } from "@/features/style-master/types";
@@ -430,19 +431,9 @@ export default function SavedCostSheetsPage() {
 
     // Filter by approval status
     if (approvalFilter === "approved") {
-      result = result.filter(
-        (s) =>
-          s.approvalStatus === "approved" ||
-          s.approvalStatus === "fully_approved" ||
-          s.approvals?.director?.status === "approved"
-      );
+      result = result.filter((s) => isCostSheetApprovedByAnyHead(s, s.approvals));
     } else if (approvalFilter === "unapproved") {
-      result = result.filter(
-        (s) =>
-          s.approvalStatus !== "approved" &&
-          s.approvalStatus !== "fully_approved" &&
-          s.approvals?.director?.status !== "approved"
-      );
+      result = result.filter((s) => !isCostSheetApprovedByAnyHead(s, s.approvals));
     }
 
     const q = search.trim().toLowerCase();
