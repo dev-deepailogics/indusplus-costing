@@ -20,6 +20,7 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  Filter,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,6 +40,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 import {
   subscribeToCostSheets,
@@ -62,6 +71,7 @@ export default function SavedCostSheetsPage() {
   // Filter State
   const [search, setSearch] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc" | "none">("none");
+  const [approvalFilter, setApprovalFilter] = useState<"all" | "approved" | "unapproved">("all");
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -416,9 +426,28 @@ export default function SavedCostSheetsPage() {
   // Filter & Search Logic (Server already handles team & customer scope)
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredSheets = useMemo(() => {
+    let result = costSheets;
+
+    // Filter by approval status
+    if (approvalFilter === "approved") {
+      result = result.filter(
+        (s) =>
+          s.approvalStatus === "approved" ||
+          s.approvalStatus === "fully_approved" ||
+          s.approvals?.director?.status === "approved"
+      );
+    } else if (approvalFilter === "unapproved") {
+      result = result.filter(
+        (s) =>
+          s.approvalStatus !== "approved" &&
+          s.approvalStatus !== "fully_approved" &&
+          s.approvals?.director?.status !== "approved"
+      );
+    }
+
     const q = search.trim().toLowerCase();
     const searched = q
-      ? costSheets.filter((s) => {
+      ? result.filter((s) => {
           return (
             s.referenceName?.toLowerCase().includes(q) ||
             s.workOrderNumber?.toLowerCase().includes(q) ||
@@ -431,7 +460,7 @@ export default function SavedCostSheetsPage() {
             s.costingStage?.toLowerCase().includes(q)
           );
         })
-      : costSheets;
+      : result;
 
     if (sortOrder === "none") return searched;
 
@@ -441,7 +470,7 @@ export default function SavedCostSheetsPage() {
       const cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: "base" });
       return sortOrder === "asc" ? cmp : -cmp;
     });
-  }, [costSheets, search, sortOrder]);
+  }, [costSheets, search, sortOrder, approvalFilter]);
 
   return (
     <div className="space-y-6 w-full">
@@ -616,8 +645,47 @@ export default function SavedCostSheetsPage() {
                   <TableHead className="w-[4%] font-semibold text-foreground py-2 px-1 text-center text-[11px] whitespace-nowrap">
                     Stage
                   </TableHead>
-                  <TableHead className="w-[9%] font-semibold text-foreground py-2 px-1 text-center text-[11px] whitespace-nowrap">
-                    Approval
+                  <TableHead
+                    className="w-[9%] font-semibold text-foreground py-2 px-1 text-center text-[11px] whitespace-nowrap cursor-pointer select-none hover:bg-muted/70 transition-colors"
+                    onClick={() => {
+                      setApprovalFilter((prev) =>
+                        prev === "all" ? "approved" : prev === "approved" ? "unapproved" : "all"
+                      );
+                    }}
+                    title={`Click to cycle approval filter (${
+                      approvalFilter === "all"
+                        ? "Showing All — click for Approved"
+                        : approvalFilter === "approved"
+                        ? "Showing Approved — click for Unapproved"
+                        : "Showing Unapproved — click for All"
+                    })`}
+                  >
+                    <div className="inline-flex items-center justify-center gap-1.5">
+                      <span
+                        className={
+                          approvalFilter === "approved"
+                            ? "text-emerald-600 dark:text-emerald-400 font-bold"
+                            : approvalFilter === "unapproved"
+                            ? "text-amber-600 dark:text-amber-400 font-bold"
+                            : "text-foreground"
+                        }
+                      >
+                        {approvalFilter === "approved"
+                          ? "Approved"
+                          : approvalFilter === "unapproved"
+                          ? "Unapproved"
+                          : "Approval"}
+                      </span>
+                      <Filter
+                        className={`size-3.5 shrink-0 transition-colors ${
+                          approvalFilter === "approved"
+                            ? "text-emerald-600 dark:text-emerald-400 fill-emerald-600/20 stroke-[2.5]"
+                            : approvalFilter === "unapproved"
+                            ? "text-amber-600 dark:text-amber-400 fill-amber-600/20 stroke-[2.5]"
+                            : "text-muted-foreground/70"
+                        }`}
+                      />
+                    </div>
                   </TableHead>
                   {/* <TableHead className="w-[6.5%] font-semibold text-foreground py-2 px-1 text-right text-[11px] whitespace-nowrap">
                     EBITDA/m
