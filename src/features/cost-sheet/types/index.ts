@@ -29,6 +29,27 @@ export interface CostSheetCalculations {
   // Breakdown fields
   sellingPricePKR?: number;
   sellingPriceUSD?: number;
+  markupDiscountPKR?: number;
+  markupDiscountUSD?: number;
+  markupDiscountPct?: number;
+  bankChargesPKR?: number;
+  bankChargesUSD?: number;
+  bankChargesPct?: number;
+  factoringPKR?: number;
+  factoringUSD?: number;
+  factoringPct?: number;
+  foreignBankChargesPKR?: number;
+  foreignBankChargesUSD?: number;
+  foreignBankChargesPct?: number;
+  freightPKR?: number;
+  freightUSD?: number;
+  freightPct?: number;
+  taxEDSPKR?: number;
+  taxEDSUSD?: number;
+  taxEDSPct?: number;
+  commissionPKR?: number;
+  commissionUSD?: number;
+  commissionPct?: number;
   netPricePKR?: number;
   netPriceUSD?: number;
   netPricePct?: number;
